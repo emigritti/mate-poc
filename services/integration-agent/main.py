@@ -326,8 +326,10 @@ async def run_agentic_rag_flow() -> None:
             func_content = sanitize_llm_output(raw)
             log_agent(f"[LLM] Spec generated and sanitized for {entry_id}.")
         except LLMOutputValidationError as exc:
+            preview = (raw or "")[:120].replace("\n", " ")
             log_agent(f"[GUARD] Output rejected for {entry_id}: {exc}")
-            func_content = f"[LLM_OUTPUT_REJECTED: structural guard failed]"
+            log_agent(f"[GUARD] Raw preview: {preview!r}")
+            func_content = f"[LLM_OUTPUT_REJECTED: structural guard failed — see agent logs for raw preview]"
         except Exception as exc:
             log_agent(f"[ERROR] LLM generation failed for {entry_id}: {exc}")
             func_content = "[LLM_UNAVAILABLE: generation failed — retry after Ollama is ready]"

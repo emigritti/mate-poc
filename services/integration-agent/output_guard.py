@@ -46,21 +46,44 @@ def sanitize_llm_output(raw: str) -> str:
     """
     Validate and sanitize LLM-generated markdown (strict mode).
 
+    Strategy:
+      1. Fast path  — output starts with the required heading: use as-is.
+      2. Fallback   — LLM added a preamble: find the heading and strip before it.
+                      Small models (llama3.2:3b) routinely add courtesy intros
+                      despite explicit instructions — this handles that gracefully.
+      3. Hard fail  — required heading not found anywhere: reject. This catches
+                      completely off-topic responses and prompt-injection attempts.
+
     Raises:
-        LLMOutputValidationError: if the output does not start with the
-            expected heading, indicating the LLM deviated from instructions
-            or an injection replaced the real output.
+        LLMOutputValidationError: if _REQUIRED_PREFIX is absent entirely.
 
     Returns:
         Sanitized markdown string, truncated to _MAX_CHARS.
     """
-    if not raw or not raw.strip().startswith(_REQUIRED_PREFIX):
-        raise LLMOutputValidationError(
-            f"Output must begin with '{_REQUIRED_PREFIX}'. "
-            "Got: {!r}".format((raw or "")[:80])
-        )
+    if not raw or not raw.strip():
+        raise LLMOutputValidationError("LLM returned empty output.")
 
-    return _apply_bleach_and_truncate(raw)
+    text = raw.strip()
+
+    # Fast path — correct output
+    if text.startswith(_REQUIRED_PREFIX):
+        return _apply_bleach_and_truncate(text)
+
+    # Fallback — strip preamble added by the model
+    idx = text.find(_REQUIRED_PREFIX)
+    if idx != -1:
+        logger.warning(
+            "[OutputGuard] Preamble detected (%d chars stripped) before '%s'.",
+            idx,
+            _REQUIRED_PREFIX,
+        )
+        return _apply_bleach_and_truncate(text[idx:])
+
+    # Hard fail — heading not found at all
+    raise LLMOutputValidationError(
+        f"Output must contain '{_REQUIRED_PREFIX}'. "
+        "Got: {!r}".format(text[:120])
+    )
 
 
 def sanitize_human_content(raw: str) -> str:
