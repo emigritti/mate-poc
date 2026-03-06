@@ -111,14 +111,14 @@ function renderApis() {
                 <div class="card-title">PLM Mock API</div>
                 <div class="card-body">Source system for Product Lifecycle Management data, including core product attributes and technical specs.</div>
                 <div class="card-footer" style="margin-top:16px;">
-                    <a href="http://localhost:4001/docs" target="_blank" class="btn btn-sm btn-primary">📖 View Swagger</a>
+                    <a href="http://${location.hostname}:4001/docs" target="_blank" class="btn btn-sm btn-primary">📖 View Swagger</a>
                 </div>
             </div>
             <div class="card">
                 <div class="card-title">PIM Mock API</div>
                 <div class="card-body">Target system for Product Information Management. Receives enriched product data for marketing and sales channels.</div>
                 <div class="card-footer" style="margin-top:16px;">
-                    <a href="http://localhost:4002/docs" target="_blank" class="btn btn-sm btn-info" style="background:var(--info)">📖 View Swagger</a>
+                    <a href="http://${location.hostname}:4002/docs" target="_blank" class="btn btn-sm btn-info" style="background:var(--info)">📖 View Swagger</a>
                 </div>
             </div>
         </div>
