@@ -30,6 +30,7 @@ function loadPage(page) {
         catalog: 'Integration Catalog',
         documents: 'Generated Docs',
         approvals: 'HITL Approvals (RAG)',
+        reset: '🗑️ Reset Tools',
     };
     document.getElementById('pageTitle').textContent = titles[page] || page;
 
@@ -40,6 +41,7 @@ function loadPage(page) {
         catalog: renderCatalog,
         documents: renderDocuments,
         approvals: renderApprovals,
+        reset: renderReset,
     };
     (loaders[page] || renderRequirements)();
 }
@@ -362,6 +364,93 @@ async function checkServicesLoop() {
 
 function updateClock() {
     document.getElementById('statusTime').textContent = new Date().toLocaleTimeString();
+}
+
+// ── Reset Tools Page ────────────────────────────────
+
+function renderReset() {
+    const area = document.getElementById('contentArea');
+    area.innerHTML = `
+        <div style="max-width: 700px;">
+            <div class="card" style="border: 1px solid var(--warning); margin-bottom: 20px;">
+                <div class="card-title" style="color: var(--warning);">⚠️ Danger Zone — Test Reset Tools</div>
+                <div class="card-body" style="color: var(--text-muted); font-size: 0.9em;">
+                    These actions are irreversible. Use them to start a clean test run.
+                    The agent must not be running when resetting requirements or performing a full reset.
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">📋 Reset Requirements & Logs</div>
+                <div class="card-body">Clears the parsed CSV requirements from memory and empties the agent log history. Does not touch MongoDB or ChromaDB.</div>
+                <div class="card-footer" style="margin-top: 14px;">
+                    <button class="btn" style="background: var(--warning); color: #000;"
+                        onclick="executeReset('requirements', 'Clear requirements and agent logs?')">
+                        Reset Requirements
+                    </button>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">🗄️ Reset MongoDB</div>
+                <div class="card-body">Deletes all catalog entries, approvals and generated documents from MongoDB and clears the in-memory caches. ChromaDB RAG data is preserved.</div>
+                <div class="card-footer" style="margin-top: 14px;">
+                    <button class="btn" style="background: var(--warning); color: #000;"
+                        onclick="executeReset('mongodb', 'Delete ALL catalog, approvals and documents from MongoDB?')">
+                        Reset MongoDB
+                    </button>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 16px;">
+                <div class="card-title">🧠 Reset ChromaDB (RAG Store)</div>
+                <div class="card-body">Wipes the vector store by deleting and recreating the <code>approved_integrations</code> collection. All learned RAG examples will be lost.</div>
+                <div class="card-footer" style="margin-top: 14px;">
+                    <button class="btn" style="background: var(--warning); color: #000;"
+                        onclick="executeReset('chromadb', 'Wipe the ChromaDB RAG vector store?')">
+                        Reset ChromaDB
+                    </button>
+                </div>
+            </div>
+
+            <div class="card" style="border: 1px solid var(--error);">
+                <div class="card-title" style="color: var(--error);">💥 Full Reset — Start from Zero</div>
+                <div class="card-body">Runs all three resets above in sequence: requirements, MongoDB and ChromaDB. The system will be completely empty.</div>
+                <div class="card-footer" style="margin-top: 14px;">
+                    <button class="btn btn-error"
+                        onclick="executeReset('all', 'FULL RESET — this will wipe requirements, MongoDB AND ChromaDB. Are you sure?')">
+                        🔴 Full Reset
+                    </button>
+                </div>
+            </div>
+
+            <div id="resetResult" style="margin-top: 20px;"></div>
+        </div>
+    `;
+}
+
+async function executeReset(scope, confirmMessage) {
+    if (!confirm(confirmMessage)) return;
+
+    const result = document.getElementById('resetResult');
+    result.innerHTML = `<span style="color: var(--info);">⏳ Resetting ${scope}...</span>`;
+
+    try {
+        const resetFns = {
+            requirements: () => API.resetRequirements(),
+            mongodb:       () => API.resetMongoDB(),
+            chromadb:      () => API.resetChromaDB(),
+            all:           () => API.resetAll(),
+        };
+        const data = await resetFns[scope]();
+        if (data?.status === 'success') {
+            result.innerHTML = `<span style="color: var(--success);">✅ ${data.message}</span>`;
+        } else {
+            result.innerHTML = `<span style="color: var(--error);">❌ ${data?.detail || data?.message || 'Unknown error'}</span>`;
+        }
+    } catch (e) {
+        result.innerHTML = `<span style="color: var(--error);">❌ Network error: ${e.message}</span>`;
+    }
 }
 
 // ── Utilities ───────────────────────────────────────

@@ -80,6 +80,27 @@ const API = {
         return resp.json();
     },
 
+    // ── Admin Reset ──
+    async resetRequirements() {
+        const resp = await fetch(`${this.AGENT}/api/v1/admin/reset/requirements`, { method: 'DELETE', headers: this.headers() });
+        return resp.json();
+    },
+
+    async resetMongoDB() {
+        const resp = await fetch(`${this.AGENT}/api/v1/admin/reset/mongodb`, { method: 'DELETE', headers: this.headers() });
+        return resp.json();
+    },
+
+    async resetChromaDB() {
+        const resp = await fetch(`${this.AGENT}/api/v1/admin/reset/chromadb`, { method: 'DELETE', headers: this.headers() });
+        return resp.json();
+    },
+
+    async resetAll() {
+        const resp = await fetch(`${this.AGENT}/api/v1/admin/reset/all`, { method: 'DELETE', headers: this.headers() });
+        return resp.json();
+    },
+
     // ── System Health ──
     async checkServices() {
         const services = [

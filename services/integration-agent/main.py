@@ -533,6 +533,113 @@ async def approve_doc(
     return {"status": "success", "message": "Approved and saved to RAG."}
 
 
+# ── Admin / Reset ─────────────────────────────────────────────────────────────
+
+@app.delete("/api/v1/admin/reset/requirements", tags=["admin"])
+async def reset_requirements(
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Clear in-memory parsed requirements and agent logs.
+    Safe to call even while the agent is not running.
+    """
+    global parsed_requirements, agent_logs
+    if _agent_lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail="Agent is running — wait for it to finish before resetting.",
+        )
+    parsed_requirements = []
+    agent_logs = []
+    logger.info("[ADMIN] Requirements and agent logs cleared.")
+    return {"status": "success", "message": "Requirements and agent logs cleared."}
+
+
+@app.delete("/api/v1/admin/reset/mongodb", tags=["admin"])
+async def reset_mongodb(
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Drop all documents from MongoDB catalog / approvals / documents collections
+    and clear the corresponding in-memory caches atomically.
+    """
+    if db.catalog_col is not None:
+        await db.catalog_col.delete_many({})
+    if db.approvals_col is not None:
+        await db.approvals_col.delete_many({})
+    if db.documents_col is not None:
+        await db.documents_col.delete_many({})
+    catalog.clear()
+    approvals.clear()
+    documents.clear()
+    logger.info("[ADMIN] MongoDB collections and in-memory caches cleared.")
+    return {"status": "success", "message": "MongoDB collections cleared."}
+
+
+@app.delete("/api/v1/admin/reset/chromadb", tags=["admin"])
+async def reset_chromadb(
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Delete and recreate the ChromaDB 'approved_integrations' collection,
+    effectively wiping the RAG vector store.
+    """
+    global collection
+    if chroma_client is None:
+        raise HTTPException(status_code=503, detail="ChromaDB is unavailable.")
+    try:
+        chroma_client.delete_collection("approved_integrations")
+        collection = chroma_client.get_or_create_collection("approved_integrations")
+        logger.info("[ADMIN] ChromaDB collection cleared and recreated.")
+        return {"status": "success", "message": "ChromaDB collection cleared."}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"ChromaDB reset failed: {exc}")
+
+
+@app.delete("/api/v1/admin/reset/all", tags=["admin"])
+async def reset_all(
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Full system reset: requirements, agent logs, MongoDB collections,
+    ChromaDB vector store. Rejected if the agent is currently running.
+    """
+    global parsed_requirements, agent_logs, collection
+    if _agent_lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail="Agent is running — wait for it to finish before resetting.",
+        )
+
+    # 1. Requirements + logs
+    parsed_requirements = []
+    agent_logs = []
+
+    # 2. MongoDB + in-memory caches
+    if db.catalog_col is not None:
+        await db.catalog_col.delete_many({})
+    if db.approvals_col is not None:
+        await db.approvals_col.delete_many({})
+    if db.documents_col is not None:
+        await db.documents_col.delete_many({})
+    catalog.clear()
+    approvals.clear()
+    documents.clear()
+
+    # 3. ChromaDB (non-fatal if unavailable)
+    chroma_warning = ""
+    if chroma_client is not None:
+        try:
+            chroma_client.delete_collection("approved_integrations")
+            collection = chroma_client.get_or_create_collection("approved_integrations")
+        except Exception as exc:
+            chroma_warning = f" ChromaDB warning: {exc}"
+
+    msg = f"Full reset completed.{chroma_warning}"
+    logger.info("[ADMIN] %s", msg)
+    return {"status": "success", "message": msg}
+
+
 @app.post("/api/v1/approvals/{id}/reject", tags=["approvals"])
 async def reject_doc(
     id: str,
