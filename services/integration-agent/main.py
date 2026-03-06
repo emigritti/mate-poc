@@ -395,6 +395,30 @@ async def get_requirements() -> dict:
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
+@app.post("/api/v1/agent/cancel", tags=["agent"])
+async def cancel_agent(
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Cancel the currently running agent task.
+
+    Injects CancelledError into the asyncio task at its next await point
+    (typically mid-LLM call). The asyncio.Lock is released automatically
+    by the context manager. Partial catalog entries already written to
+    MongoDB are preserved — use Reset Tools to clean them up if needed.
+    """
+    if not _agent_lock.locked():
+        raise HTTPException(status_code=409, detail="No agent is currently running.")
+
+    cancelled = 0
+    for task in list(_running_tasks.values()):
+        task.cancel()
+        cancelled += 1
+
+    log_agent("⛔ Agent execution cancelled by user request.")
+    return {"status": "success", "message": f"Cancel signal sent to {cancelled} task(s)."}
+
+
 @app.get("/api/v1/agent/logs", tags=["agent"])
 async def get_logs() -> dict:
     return {"status": "success", "logs": agent_logs[-50:]}

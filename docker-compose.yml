@@ -248,6 +248,12 @@ services:
       - "4003:3003"
     environment:
       - OLLAMA_HOST=http://mate-ollama:11434
+      # OLLAMA_MODEL: use a smaller model on CPU-only instances for faster responses.
+      # llama3.2:1b  → fastest (~30s), basic quality
+      # llama3.2:3b  → good balance (~90s), recommended for PoC on t3.xlarge
+      # llama3.1:8b  → best quality (~5-7 min on CPU, needs timeout >= 600)
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+      - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-600}
       - CHROMA_HOST=mate-chromadb
       - MONGO_URI=mongodb://mate-mongodb:27017
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}

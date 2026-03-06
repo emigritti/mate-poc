@@ -140,7 +140,10 @@ function renderAgentWorkspace() {
                 <div style="font-size: 0.9em; color: var(--text-muted); margin-bottom: 12px;">
                     The agent will process all loaded requirements, query the ChromaDB vector store for similar past integrations to formulate few-shot examples, and invoke the Ollama LLM to generate functional and technical Markdown specifications.
                 </div>
-                <button class="btn btn-primary" onclick="triggerAgent()" id="agentBtn">Start Agent Processing</button>
+                <div style="display:flex; gap:12px; align-items:center;">
+                    <button class="btn btn-primary" onclick="triggerAgent()" id="agentBtn">Start Agent Processing</button>
+                    <button class="btn btn-error" onclick="stopAgent()" id="stopBtn" style="display:none;">⛔ Stop Agent</button>
+                </div>
             </div>
         </div>
         <div class="card" style="background: var(--bg-secondary);">
@@ -153,16 +156,36 @@ function renderAgentWorkspace() {
     startAgentPolling();
 }
 
+function _setAgentRunning(running) {
+    const agentBtn = document.getElementById('agentBtn');
+    const stopBtn  = document.getElementById('stopBtn');
+    if (!agentBtn || !stopBtn) return;
+    agentBtn.disabled  = running;
+    agentBtn.textContent = running ? 'Agent Running...' : 'Start Agent Processing';
+    stopBtn.style.display = running ? 'inline-block' : 'none';
+}
+
 async function triggerAgent() {
-    const btn = document.getElementById('agentBtn');
-    btn.disabled = true;
-    btn.textContent = 'Agent Running...';
+    _setAgentRunning(true);
     try {
         await API.triggerAgent();
     } catch (e) {
         document.getElementById('agentLogs').innerHTML += `\n<span style="color:var(--error)">Error triggering agent: ${e.message}</span>`;
-        btn.disabled = false;
-        btn.textContent = 'Start Agent Processing';
+        _setAgentRunning(false);
+    }
+}
+
+async function stopAgent() {
+    const stopBtn = document.getElementById('stopBtn');
+    stopBtn.disabled = true;
+    stopBtn.textContent = 'Stopping...';
+    try {
+        await API.cancelAgent();
+    } catch (e) {
+        const logsEl = document.getElementById('agentLogs');
+        if (logsEl) logsEl.innerHTML += `\n<span style="color:var(--error)">Error stopping agent: ${e.message}</span>`;
+    } finally {
+        stopBtn.disabled = false;
     }
 }
 
@@ -176,22 +199,23 @@ function startAgentPolling() {
                 const logsEl = document.getElementById('agentLogs');
                 if (logs.length > 0) {
                     logsEl.innerHTML = logs.map(l => {
-                        let color = '#00ff00'; // Default line color
+                        let color = '#00ff00';
                         if (l.includes('[RAG]') || l.includes('Vector')) color = '#00bcd4';
                         if (l.includes('[LLM]') || l.includes('Ollama')) color = '#ffeb3b';
-                        if (l.includes('ERROR')) color = '#f44336';
+                        if (l.includes('[ERROR]')) color = '#f44336';
+                        if (l.includes('cancelled') || l.includes('⛔')) color = '#ff9800';
                         return `<div style="color:${color}">${l}</div>`;
                     }).join('');
                     logsEl.scrollTop = logsEl.scrollHeight;
                 }
 
-                // If the last log indicates completion, reset button
-                if (logs.length > 0 && (logs[logs.length - 1].includes('Generation completed') || logs[logs.length - 1].includes('All tasks finished'))) {
-                    const btn = document.getElementById('agentBtn');
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.textContent = 'Start Agent Processing';
-                    }
+                // Re-enable Start button when agent finishes or is cancelled
+                const last = logs.at(-1) ?? '';
+                const isDone = last.includes('Generation completed')
+                    || last.includes('All tasks finished')
+                    || last.includes('cancelled');
+                if (logs.length > 0 && isDone) {
+                    _setAgentRunning(false);
                 }
             } catch (e) {
                 // Ignore poll errors

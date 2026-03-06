@@ -80,6 +80,12 @@ const API = {
         return resp.json();
     },
 
+    // ── Agent Control ──
+    async cancelAgent() {
+        const resp = await fetch(`${this.AGENT}/api/v1/agent/cancel`, { method: 'POST', headers: this.headers() });
+        return resp.json();
+    },
+
     // ── Admin Reset ──
     async resetRequirements() {
         const resp = await fetch(`${this.AGENT}/api/v1/admin/reset/requirements`, { method: 'DELETE', headers: this.headers() });
