@@ -202,7 +202,13 @@ async def generate_with_ollama(prompt: str) -> str:
 
     Uses httpx.AsyncClient — fully non-blocking (G-04 / ADR-012).
     Raises httpx.HTTPStatusError or httpx.RequestError on failure.
+    Logs token/timing metrics to agent_logs for dashboard visibility.
     """
+    log_agent(
+        f"[LLM] → model={settings.ollama_model} "
+        f"prompt_chars={len(prompt)} "
+        f"timeout={settings.ollama_timeout_seconds}s"
+    )
     async with httpx.AsyncClient(
         timeout=settings.ollama_timeout_seconds
     ) as client:
@@ -215,7 +221,29 @@ async def generate_with_ollama(prompt: str) -> str:
             },
         )
         res.raise_for_status()
-        return res.json().get("response", "")
+        body = res.json()
+
+        # Log Ollama performance metrics when available
+        eval_count        = body.get("eval_count", 0)
+        prompt_eval_count = body.get("prompt_eval_count", 0)
+        eval_duration_ns  = body.get("eval_duration", 0)
+        total_duration_ns = body.get("total_duration", 0)
+        load_duration_ns  = body.get("load_duration", 0)
+
+        total_s = total_duration_ns / 1e9
+        load_s  = load_duration_ns  / 1e9
+        tps     = eval_count / (eval_duration_ns / 1e9) if eval_duration_ns else 0
+
+        log_agent(
+            f"[LLM] ✓ done — "
+            f"prompt_tokens={prompt_eval_count} "
+            f"generated_tokens={eval_count} "
+            f"speed={tps:.1f} tok/s "
+            f"total={total_s:.1f}s "
+            f"(model_load={load_s:.1f}s)"
+        )
+
+        return body.get("response", "")
 
 
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
