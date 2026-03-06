@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose build:*)",
+      "Bash(\"/c/Program Files/Docker/Docker/resources/bin/docker.exe\" logs mate-integration-agent)",
+      "Bash(podman logs mate-integration-agent)",
+      "Bash(cmd.exe /c \"docker logs mate-integration-agent 2>&1\")",
+      "Bash(cmd.exe /c \"docker ps -a --filter name=mate-integration-agent\")",
+      "Bash(cmd.exe /c \"docker ps -a\")",
+      "Bash(powershell.exe -Command \"docker logs mate-integration-agent 2>&1\")",
+      "Bash(powershell.exe -Command \"Get-Command docker* | Select-Object Name,Source\")",
+      "Bash(powershell.exe -Command \"Get-Command *compose* | Select-Object Name,Source\")",
+      "Bash(powershell.exe -Command \"docker-compose logs integration-agent 2>&1 | Select-Object -Last 60\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\emiliano.gritti\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\docker.exe'' inspect aca71cbb12d7 --format ''{{.Name}} {{.Config.Image}}''\")",
+      "Bash(powershell -Command \"New-Item -ItemType Directory -Force -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docs\\\\adr''; New-Item -ItemType Directory -Force -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docs\\\\test-plan''\")",
+      "Bash(powershell -Command \"Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\dam-mock-api'' -Recurse | Select-Object FullName; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\security-middleware'' | Select-Object Name; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\catalog-generator'' | Select-Object Name; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docs'' -Recurse | Select-Object Name; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\integration-agent\\\\tests'' | Select-Object Name\")",
+      "Bash(powershell -Command \"docker compose -f ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docker-compose.yml'' down --rmi local --remove-orphans 2>&1\")"
+    ]
+  }
+}

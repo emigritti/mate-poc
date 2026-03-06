@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+.env
+.env.local
+.env.production
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Generated
+docs/generated/
+*.pyc

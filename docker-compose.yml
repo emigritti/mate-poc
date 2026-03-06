@@ -1,0 +1,302 @@
+# ═══════════════════════════════════════════════════════════
+# Functional Integration Mate PoC — Docker Compose (Agentic RAG)
+# Containers: MongoDB, ChromaDB, Ollama, MinIO,
+#             PLM Mock, PIM Mock, DAM Mock,
+#             Security Middleware, Catalog Generator,
+#             Integration Agent, Web Dashboard
+#
+# Secrets: all sensitive values read from environment variables.
+#   Copy .env.example → .env and fill in real values before first run.
+#   The :-default syntax provides PoC-only fallbacks so the stack
+#   starts without a .env file (insecure dev mode only).
+# ═══════════════════════════════════════════════════════════
+
+# Default log rotation applied to every service (override per-service if needed)
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ── Data & Vector Layer ─────────────────────────────────
+
+  mongodb:
+    image: mongo:7
+    container_name: mate-mongodb
+    # NOTE: --quiet removed temporarily for diagnostics; restore after confirming startup
+    command: ["mongod"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" --quiet
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+
+  chromadb:
+    image: chromadb/chroma:0.5.3
+    container_name: mate-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=FALSE
+      - CHROMA_SERVER_LOG_LEVEL=WARNING
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
+
+  # ── AI Layer ────────────────────────────────────────────
+
+  ollama:
+    image: ollama/ollama
+    container_name: mate-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - integration-mate-net
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+    healthcheck:
+      test: curl -f http://localhost:11434/api/tags || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
+
+  # ── Object Storage Layer ───────────────────────────────
+
+  minio:
+    image: minio/minio
+    container_name: mate-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      # ADR-016: read from env vars; PoC fallback to minioadmin if not set
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio-data:/data
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:9000/minio/health/live || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  # ── Mock Systems Layer ─────────────────────────────────
+
+  plm-mock:
+    build:
+      context: ./services/plm-mock-api
+      dockerfile: Dockerfile
+    container_name: mate-plm-mock
+    ports:
+      - "4001:3001"
+    environment:
+      - S3_ENDPOINT=http://mate-minio:9000
+      # ADR-016: read from env vars; PoC fallback only
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+    depends_on:
+      minio:
+        condition: service_started
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:3001/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  pim-mock:
+    build:
+      context: ./services/pim-mock-api
+      dockerfile: Dockerfile
+    container_name: mate-pim-mock
+    ports:
+      - "4002:3002"
+    environment:
+      - S3_ENDPOINT=http://mate-minio:9000
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+    depends_on:
+      minio:
+        condition: service_started
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:3002/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  dam-mock:
+    build:
+      context: ./services/dam-mock-api
+      dockerfile: Dockerfile
+    container_name: mate-dam-mock
+    ports:
+      - "4005:3005"
+    environment:
+      - S3_ENDPOINT=http://mate-minio:9000
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+    depends_on:
+      minio:
+        condition: service_started
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:3005/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  # ── Security Layer ─────────────────────────────────────
+
+  security-middleware:
+    build:
+      context: ./services/security-middleware
+      dockerfile: Dockerfile
+    container_name: mate-security-middleware
+    ports:
+      - "4000:3000"
+    environment:
+      # ADR-016: JWT_SECRET MUST be overridden in production via .env
+      - JWT_SECRET=${JWT_SECRET:-dev-only-change-in-production}
+      - JWT_EXPIRY_SECONDS=${JWT_EXPIRY_SECONDS:-3600}
+      # Per-service API keys (PoC dev fallbacks only)
+      - API_KEY_AGENT=${API_KEY:-agent-key-dev}
+      - API_KEY_CATALOG=${API_KEY_CATALOG:-catalog-key-dev}
+      - API_KEY_PLM=${API_KEY_PLM:-plm-key-dev}
+      - API_KEY_PIM=${API_KEY_PIM:-pim-key-dev}
+      - API_KEY_DAM=${API_KEY_DAM:-dam-key-dev}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:3000/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  # ── Catalog Composition Layer ──────────────────────────
+
+  catalog-generator:
+    build:
+      context: ./services/catalog-generator
+      dockerfile: Dockerfile
+    container_name: mate-catalog-generator
+    ports:
+      - "4004:3004"
+    environment:
+      - AGENT_BASE_URL=http://mate-integration-agent:3003
+      - AGENT_API_KEY=${API_KEY:-}
+      - AGENT_TIMEOUT_SECONDS=30
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+    depends_on:
+      integration-agent:
+        condition: service_started
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:3004/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  # ── Agent Layer ────────────────────────────────────────
+
+  integration-agent:
+    build:
+      context: ./services/integration-agent
+      dockerfile: Dockerfile
+    container_name: mate-integration-agent
+    ports:
+      - "4003:3003"
+    environment:
+      - OLLAMA_HOST=http://mate-ollama:11434
+      - CHROMA_HOST=mate-chromadb
+      - MONGO_URI=mongodb://mate-mongodb:27017
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      # API_KEY: set this env var to enable token auth; leave unset for open PoC mode
+    depends_on:
+      mongodb:
+        condition: service_started
+      chromadb:
+        condition: service_started
+      ollama:
+        condition: service_started
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:3003/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+
+  # ── Frontend Layer ─────────────────────────────────────
+
+  web-dashboard:
+    build:
+      context: ./services/web-dashboard
+      dockerfile: Dockerfile
+    container_name: mate-web-dashboard
+    ports:
+      - "8080:80"
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:80/ || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+# ── Volumes ────────────────────────────────────────────
+
+volumes:
+  mongo-data:
+  chroma-data:
+  ollama-data:
+  minio-data:
+
+# ── Networks ───────────────────────────────────────────
+
+networks:
+  integration-mate-net:
+    driver: bridge
