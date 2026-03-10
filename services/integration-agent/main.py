@@ -23,6 +23,7 @@ Phase 3 changes (Security):
 
 import asyncio
 import csv
+import hmac
 import io
 import logging
 import re
@@ -188,7 +189,8 @@ async def _require_token(
     if creds is None or creds.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Authentication required.")
 
-    if creds.credentials != settings.api_key:
+    # F-10 / OWASP A07: constant-time comparison prevents timing attacks
+    if not hmac.compare_digest(creds.credentials, settings.api_key):
         raise HTTPException(status_code=401, detail="Invalid token.")
 
     return creds.credentials

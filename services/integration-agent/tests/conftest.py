@@ -13,5 +13,7 @@ os.environ.setdefault("MONGO_URI",    "mongodb://localhost:27017")
 os.environ.setdefault("OLLAMA_HOST",  "http://localhost:11434")
 os.environ.setdefault("CHROMA_HOST",  "localhost")
 
-# Disable API key enforcement in unit tests
-os.environ.setdefault("API_KEY", "")
+# Ensure API_KEY is absent so settings.api_key = None and _require_token
+# bypasses auth enforcement (PoC dev mode).  setdefault("API_KEY", "") is
+# NOT sufficient because _require_token checks `is None`, not falsiness.
+os.environ.pop("API_KEY", None)

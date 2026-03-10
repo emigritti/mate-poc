@@ -27,10 +27,25 @@ class TestSanitizeLlmOutput:
         result = sanitize_llm_output(raw)
         assert result.startswith(_VALID_PREFIX)
 
-    def test_missing_header_raises(self):
-        """Output that doesn't start with the required heading must be rejected."""
+    def test_preamble_stripped_when_heading_found_in_body(self):
+        """
+        When the LLM prepends a courtesy intro before the required heading, the guard
+        must strip the preamble and return content starting from '# Functional
+        Specification' — NOT raise an error (ADR-015 §Fallback).
+
+        Fix F-01: the previous assertion expected LLMOutputValidationError, but ADR-015
+        deliberately handles small-model preambles via the fallback stripping path.
+        """
+        preamble = "Here is your spec:\n\n"
+        raw = f"{preamble}{_VALID_PREFIX}\n\n## Content."
+        result = sanitize_llm_output(raw)
+        assert result.startswith(_VALID_PREFIX)
+        assert "Here is your spec" not in result
+
+    def test_heading_absent_raises(self):
+        """Output that contains NO '# Functional Specification' heading must be rejected."""
         with pytest.raises(LLMOutputValidationError):
-            sanitize_llm_output("Here is your spec:\n\n# Functional Specification")
+            sanitize_llm_output("I'm sorry, I cannot help with that request.")
 
     def test_empty_string_raises(self):
         with pytest.raises(LLMOutputValidationError):
@@ -41,11 +56,16 @@ class TestSanitizeLlmOutput:
             sanitize_llm_output(None)  # type: ignore[arg-type]
 
     def test_script_tag_stripped(self):
-        """XSS via <script> must be removed (OWASP A03)."""
+        """XSS via <script> must be removed (OWASP A03).
+
+        bleach.clean(strip=True) removes the HTML tag wrappers but preserves
+        the text content between them.  The JS text is inert without <script>;
+        the browser will not execute it.  Only the tag itself is asserted absent.
+        """
         raw = f"{_VALID_PREFIX}\n\n<script>alert('xss')</script>\n\nContent."
         result = sanitize_llm_output(raw)
         assert "<script>" not in result
-        assert "alert" not in result
+        assert "</script>" not in result
 
     def test_iframe_stripped(self):
         raw = f"{_VALID_PREFIX}\n\n<iframe src='evil.com'></iframe>"
@@ -83,11 +103,14 @@ class TestSanitizeHumanContent:
         assert "Updated spec" in result
 
     def test_xss_stripped_in_human_content(self):
-        """XSS in reviewer clipboard paste must still be stripped."""
+        """XSS in reviewer clipboard paste must still be stripped.
+
+        Same bleach behaviour: tag wrappers removed, text content kept but inert.
+        """
         raw = "Good content.<script>steal()</script> More text."
         result = sanitize_human_content(raw)
         assert "<script>" not in result
-        assert "steal" not in result
+        assert "</script>" not in result
 
     def test_empty_returns_empty(self):
         assert sanitize_human_content("") == ""

@@ -1,5 +1,9 @@
 /**
  * App Controller — Dashboard SPA logic
+ *
+ * Security: all server-supplied values injected into innerHTML are HTML-escaped
+ * via escapeHtml() to prevent stored XSS (ADR-017 / OWASP A03 / F-04, F-05, F-06).
+ * Textarea content is set via the .value DOM property, not innerHTML interpolation.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -77,7 +81,7 @@ async function uploadCsv() {
         res.innerHTML = `<span style="color:var(--success)">✅ Successfully parsed ${data.total_parsed || 0} requirements.</span>`;
         loadRequirementsList();
     } catch (e) {
-        res.innerHTML = `<span style="color:var(--error)">❌ Error: ${e.message}</span>`;
+        res.innerHTML = `<span style="color:var(--error)">❌ Error: ${escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -90,17 +94,18 @@ async function loadRequirementsList() {
             list.innerHTML = `<div class="empty-state"><div class="icon">📤</div><h3>No pending requirements</h3><p>Upload a CSV file to begin.</p></div>`;
             return;
         }
+        // F-05: all CSV-sourced fields escaped to prevent stored XSS (ADR-017)
         list.innerHTML = `<table class="data-table">
             <thead><tr><th>ID</th><th>Source</th><th>Target</th><th>Category</th><th>Description</th></tr></thead>
             <tbody>${reqs.map(r => `<tr>
-                <td><code>${r.req_id}</code></td>
-                <td><span class="badge badge-primary">${r.source_system}</span></td>
-                <td><span class="badge badge-info" style="background:var(--info)">${r.target_system}</span></td>
-                <td>${r.category}</td>
-                <td>${truncate(r.description, 60)}</td>
+                <td><code>${escapeHtml(r.req_id)}</code></td>
+                <td><span class="badge badge-primary">${escapeHtml(r.source_system)}</span></td>
+                <td><span class="badge badge-info" style="background:var(--info)">${escapeHtml(r.target_system)}</span></td>
+                <td>${escapeHtml(r.category)}</td>
+                <td>${escapeHtml(truncate(r.description, 60))}</td>
             </tr>`).join('')}</tbody>
         </table>`;
-    } catch (e) { list.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`; }
+    } catch (e) { list.innerHTML = `<div class="empty-state"><p>${escapeHtml(e.message)}</p></div>`; }
 }
 
 // ── APIs Page ───────────────────────────────────────
@@ -170,7 +175,7 @@ async function triggerAgent() {
     try {
         await API.triggerAgent();
     } catch (e) {
-        document.getElementById('agentLogs').innerHTML += `\n<span style="color:var(--error)">Error triggering agent: ${e.message}</span>`;
+        document.getElementById('agentLogs').innerHTML += `\n<span style="color:var(--error)">Error triggering agent: ${escapeHtml(e.message)}</span>`;
         _setAgentRunning(false);
     }
 }
@@ -183,7 +188,7 @@ async function stopAgent() {
         await API.cancelAgent();
     } catch (e) {
         const logsEl = document.getElementById('agentLogs');
-        if (logsEl) logsEl.innerHTML += `\n<span style="color:var(--error)">Error stopping agent: ${e.message}</span>`;
+        if (logsEl) logsEl.innerHTML += `\n<span style="color:var(--error)">Error stopping agent: ${escapeHtml(e.message)}</span>`;
     } finally {
         stopBtn.disabled = false;
     }
@@ -198,13 +203,14 @@ function startAgentPolling() {
                 const logs = logsData?.logs || [];
                 const logsEl = document.getElementById('agentLogs');
                 if (logs.length > 0) {
+                    // F-04: log entries escaped to prevent stored XSS via requirement descriptions (ADR-017)
                     logsEl.innerHTML = logs.map(l => {
                         let color = '#00ff00';
                         if (l.includes('[RAG]') || l.includes('Vector')) color = '#00bcd4';
                         if (l.includes('[LLM]') || l.includes('Ollama')) color = '#ffeb3b';
                         if (l.includes('[ERROR]')) color = '#f44336';
                         if (l.includes('cancelled') || l.includes('⛔')) color = '#ff9800';
-                        return `<div style="color:${color}">${l}</div>`;
+                        return `<div style="color:${color}">${escapeHtml(l)}</div>`;
                     }).join('');
                     logsEl.scrollTop = logsEl.scrollHeight;
                 }
@@ -245,21 +251,21 @@ async function renderCatalog() {
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <div class="card-title">${i.name}</div>
-                        <div class="card-subtitle">${i.id} · ${i.type}</div>
+                        <div class="card-title">${escapeHtml(i.name)}</div>
+                        <div class="card-subtitle">${escapeHtml(i.id)} · ${escapeHtml(i.type)}</div>
                     </div>
-                    <span class="badge badge-${i.status === 'generated' ? 'success' : 'info'}">${i.status}</span>
+                    <span class="badge badge-${i.status === 'generated' ? 'success' : 'info'}">${escapeHtml(i.status)}</span>
                 </div>
                 <div class="card-body">
-                    ${i.source?.system || '?'} → ${i.target?.system || '?'}
+                    ${escapeHtml(i.source?.system || '?')} → ${escapeHtml(i.target?.system || '?')}
                 </div>
                 <div class="card-footer">
-                    ${(i.requirements || []).map(r => `<span class="badge badge-primary">${r}</span>`).join('')}
+                    ${(i.requirements || []).map(r => `<span class="badge badge-primary">${escapeHtml(r)}</span>`).join('')}
                 </div>
             </div>
         `).join('')}</div>`;
     } catch (e) {
-        area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Connection Error</h3><p>${e.message}</p></div>`;
+        area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Connection Error</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
 }
 
@@ -277,14 +283,14 @@ async function renderDocuments() {
         }
         area.innerHTML = `<div class="card-grid">${items.map(i => `
             <div class="card">
-                <div class="card-title">${i.name || i.id}</div>
-                <div class="card-subtitle">${i.id}</div>
+                <div class="card-title">${escapeHtml(i.name || i.id)}</div>
+                <div class="card-subtitle">${escapeHtml(i.id)}</div>
                 <div class="card-footer" style="margin-top:12px">
-                    <button class="btn btn-sm btn-primary" onclick="viewDoc('${i.id}', 'functional')">📋 Functional Spec</button>
-                    <button class="btn btn-sm btn-info" style="background:var(--info)" onclick="viewDoc('${i.id}', 'technical')">🔧 Technical Spec</button>
+                    <button class="btn btn-sm btn-primary" onclick="viewDoc('${escapeHtml(i.id)}', 'functional')">📋 Functional Spec</button>
+                    <button class="btn btn-sm btn-info" style="background:var(--info)" onclick="viewDoc('${escapeHtml(i.id)}', 'technical')">🔧 Technical Spec</button>
                 </div>
             </div>`).join('')}</div><div id="docViewer" style="margin-top:20px; background:var(--bg-secondary); padding:20px; border-radius:8px; display:none;"></div>`;
-    } catch (e) { area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`; }
+    } catch (e) { area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${escapeHtml(e.message)}</p></div>`; }
 }
 
 async function viewDoc(id, type) {
@@ -295,7 +301,7 @@ async function viewDoc(id, type) {
         const data = type === 'functional' ? await API.getFunctionalSpec(id) : await API.getTechnicalSpec(id);
         const mdContent = data?.data?.content || '*No content available.*';
         viewer.innerHTML = `<div class="markdown-body">${marked.parse(mdContent)}</div>`;
-    } catch (e) { viewer.innerHTML = `<p style="color:var(--error)">Failed to load document: ${e.message}</p>`; }
+    } catch (e) { viewer.innerHTML = `<p style="color:var(--error)">Failed to load document: ${escapeHtml(e.message)}</p>`; }
 }
 
 
@@ -316,10 +322,10 @@ async function renderApprovals() {
                 <div style="flex:1; overflow-y:auto; border-right: 1px solid var(--border-color); padding-right: 20px;">
                     <h3 style="margin-bottom:16px;">Pending Reviews</h3>
                     ${items.map(a => `
-                        <div class="card" style="margin-bottom:12px; cursor:pointer;" onclick="loadApprovalReview('${a.id}')">
-                            <div class="card-title">${a.integration_id}</div>
-                            <div class="card-subtitle">Type: ${a.doc_type}</div>
-                            <div class="card-body" style="font-size:12px; margin-top:8px;">Generated: ${new Date(a.generated_at).toLocaleString()}</div>
+                        <div class="card" style="margin-bottom:12px; cursor:pointer;" onclick="loadApprovalReview('${escapeHtml(a.id)}')">
+                            <div class="card-title">${escapeHtml(a.integration_id)}</div>
+                            <div class="card-subtitle">Type: ${escapeHtml(a.doc_type)}</div>
+                            <div class="card-body" style="font-size:12px; margin-top:8px;">Generated: ${escapeHtml(new Date(a.generated_at).toLocaleString())}</div>
                         </div>
                     `).join('')}
                 </div>
@@ -328,29 +334,32 @@ async function renderApprovals() {
                 </div>
             </div>
         `;
-    } catch (e) { area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`; }
+    } catch (e) { area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${escapeHtml(e.message)}</p></div>`; }
 }
 
 async function loadApprovalReview(id) {
     const editor = document.getElementById('approvalEditor');
     editor.innerHTML = '<div class="loading">Loading document...</div>';
     try {
-        // Fetch approval item details from API to populate textarea
         const data = await API.getPendingApprovals();
         const item = (data?.data || []).find(a => a.id === id);
         if (!item) throw new Error("Approval not found");
 
+        // F-06: textarea content set via .value (not innerHTML interpolation) to
+        // prevent </textarea> injection breaking out of the element (ADR-017).
         editor.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3>Review: ${item.integration_id} (${item.doc_type})</h3>
+                <h3>Review: ${escapeHtml(item.integration_id)} (${escapeHtml(item.doc_type)})</h3>
                 <div>
-                    <button class="btn btn-sm btn-error" onclick="rejectHitl('${id}')">Reject (Retry)</button>
-                    <button class="btn btn-sm btn-success" onclick="approveHitl('${id}')">Approve & Save to RAG</button>
+                    <button class="btn btn-sm btn-error" onclick="rejectHitl('${escapeHtml(id)}')">Reject (Retry)</button>
+                    <button class="btn btn-sm btn-success" onclick="approveHitl('${escapeHtml(id)}')">Approve &amp; Save to RAG</button>
                 </div>
             </div>
-            <textarea id="hitlMarkdown" style="flex:1; width:100%; padding:12px; font-family:monospace; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:4px; resize:none;">${item.content}</textarea>
+            <textarea id="hitlMarkdown" style="flex:1; width:100%; padding:12px; font-family:monospace; background:var(--bg-main); color:var(--text-main); border:1px solid var(--border-color); border-radius:4px; resize:none;"></textarea>
         `;
-    } catch (e) { editor.innerHTML = `<p style="color:var(--error)">Failed to load: ${e.message}</p>`; }
+        // Set textarea content via DOM .value — immune to </textarea> injection
+        document.getElementById('hitlMarkdown').value = item.content;
+    } catch (e) { editor.innerHTML = `<p style="color:var(--error)">Failed to load: ${escapeHtml(e.message)}</p>`; }
 }
 
 async function approveHitl(id) {
@@ -405,7 +414,7 @@ function renderReset() {
             </div>
 
             <div class="card" style="margin-bottom: 16px;">
-                <div class="card-title">📋 Reset Requirements & Logs</div>
+                <div class="card-title">📋 Reset Requirements &amp; Logs</div>
                 <div class="card-body">Clears the parsed CSV requirements from memory and empties the agent log history. Does not touch MongoDB or ChromaDB.</div>
                 <div class="card-footer" style="margin-top: 14px;">
                     <button class="btn" style="background: var(--warning); color: #000;"
@@ -457,7 +466,7 @@ async function executeReset(scope, confirmMessage) {
     if (!confirm(confirmMessage)) return;
 
     const result = document.getElementById('resetResult');
-    result.innerHTML = `<span style="color: var(--info);">⏳ Resetting ${scope}...</span>`;
+    result.innerHTML = `<span style="color: var(--info);">⏳ Resetting ${escapeHtml(scope)}...</span>`;
 
     try {
         const resetFns = {
@@ -468,14 +477,29 @@ async function executeReset(scope, confirmMessage) {
         };
         const data = await resetFns[scope]();
         if (data?.status === 'success') {
-            result.innerHTML = `<span style="color: var(--success);">✅ ${data.message}</span>`;
+            result.innerHTML = `<span style="color: var(--success);">✅ ${escapeHtml(data.message)}</span>`;
         } else {
-            result.innerHTML = `<span style="color: var(--error);">❌ ${data?.detail || data?.message || 'Unknown error'}</span>`;
+            result.innerHTML = `<span style="color: var(--error);">❌ ${escapeHtml(data?.detail || data?.message || 'Unknown error')}</span>`;
         }
     } catch (e) {
-        result.innerHTML = `<span style="color: var(--error);">❌ Network error: ${e.message}</span>`;
+        result.innerHTML = `<span style="color: var(--error);">❌ Network error: ${escapeHtml(e.message)}</span>`;
     }
 }
 
 // ── Utilities ───────────────────────────────────────
+
+/**
+ * Escape HTML special characters to prevent stored XSS when injecting
+ * server-supplied data into innerHTML (ADR-017 / OWASP A03).
+ */
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function truncate(str, len) { return (str || '').length > len ? str.substring(0, len) + '...' : str || ''; }

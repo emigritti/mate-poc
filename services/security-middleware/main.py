@@ -95,12 +95,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# ADR-018: restrict methods/headers to what auth endpoints actually need
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 

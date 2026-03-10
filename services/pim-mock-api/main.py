@@ -1,11 +1,17 @@
 """
 PIM Mock API — FastAPI Application
 Simulates an Akeneo-compatible PIM system (port 3002).
+
+ADR-018: CORS uses an explicit origin allowlist from CORS_ORIGINS env var
+(not wildcard) so that allow_credentials=True is valid per the Fetch spec.
 """
+
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
 
 from routes.products import (
     router as products_router, pim_products, families, attributes,
@@ -16,15 +22,37 @@ from models import (
     Channel, Locale, ProductValue,
 )
 
+# ADR-018: origin allowlist from env var; never wildcard + credentials
+_CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "http://localhost:8080,http://localhost:3000").split(",")
+    if o.strip()
+]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Seed sample data on startup (replaces deprecated @app.on_event)."""
+    await _load_sample_data()
+    yield
+
+
 app = FastAPI(
     title="PIM Mock API",
     description="Product Information Management — Akeneo-style Mock API for Integration Mate PoC",
     version="1.0.0",
+    lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 app.include_router(products_router)
 
 
@@ -33,7 +61,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "pim-mock-api",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "1.0.0",
         "counters": {
             "products": len(pim_products),
@@ -49,8 +77,7 @@ async def get_openapi():
     return app.openapi()
 
 
-@app.on_event("startup")
-async def load_sample_data():
+async def _load_sample_data():
     """Populate with Akeneo-style sample data."""
 
     # Attribute Groups

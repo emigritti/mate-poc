@@ -78,9 +78,12 @@ def build_prompt(
         if rag_context.strip()
         else ""
     )
-    return _TEMPLATE.format(
-        source_system=source_system,
-        target_system=target_system,
-        formatted_requirements=formatted_requirements,
-        rag_context=rag_block,
-    )
+    # F-09 / CLAUDE.md §10: sequential str.replace() instead of str.format()
+    # prevents KeyError/ValueError if the template file contains unknown
+    # placeholders or if user-supplied values contain '{...}' patterns.
+    result = _TEMPLATE
+    result = result.replace("{source_system}", source_system)
+    result = result.replace("{target_system}", target_system)
+    result = result.replace("{formatted_requirements}", formatted_requirements)
+    result = result.replace("{rag_context}", rag_block)
+    return result

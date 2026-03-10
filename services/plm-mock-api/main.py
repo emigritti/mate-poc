@@ -1,12 +1,17 @@
 """
 PLM Mock API — FastAPI Application
 Simulates a Product Lifecycle Management system (port 3001).
+
+ADR-018: CORS uses an explicit origin allowlist from CORS_ORIGINS env var
+(not wildcard) so that allow_credentials=True is valid per the Fetch spec.
 """
+
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
-import os
 
 from routes.products import router as products_router, products, bom_items, images, materials, engineering_changes
 from models import (
@@ -14,20 +19,36 @@ from models import (
     EngineeringChange, ChangeSeverity, ChangeStatus
 )
 
+# ADR-018: origin allowlist from env var; never wildcard + credentials
+_CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "http://localhost:8080,http://localhost:3000").split(",")
+    if o.strip()
+]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Seed sample data on startup (replaces deprecated @app.on_event)."""
+    await _load_sample_data()
+    yield
+
+
 app = FastAPI(
     title="PLM Mock API",
     description="Product Lifecycle Management — Mock API for Integration Mate PoC",
     version="1.0.0",
+    lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(products_router)
@@ -38,7 +59,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "plm-mock-api",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "1.0.0",
         "counters": {
             "products": len(products),
@@ -54,8 +75,7 @@ async def get_openapi():
     return app.openapi()
 
 
-@app.on_event("startup")
-async def load_sample_data():
+async def _load_sample_data():
     """Populate in-memory store with realistic sample data."""
 
     # ── Materials ──

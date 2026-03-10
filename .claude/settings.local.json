@@ -14,7 +14,19 @@
       "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\emiliano.gritti\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\docker.exe'' inspect aca71cbb12d7 --format ''{{.Name}} {{.Config.Image}}''\")",
       "Bash(powershell -Command \"New-Item -ItemType Directory -Force -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docs\\\\adr''; New-Item -ItemType Directory -Force -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docs\\\\test-plan''\")",
       "Bash(powershell -Command \"Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\dam-mock-api'' -Recurse | Select-Object FullName; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\security-middleware'' | Select-Object Name; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\catalog-generator'' | Select-Object Name; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docs'' -Recurse | Select-Object Name; Get-ChildItem -Path ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\services\\\\integration-agent\\\\tests'' | Select-Object Name\")",
-      "Bash(powershell -Command \"docker compose -f ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docker-compose.yml'' down --rmi local --remove-orphans 2>&1\")"
+      "Bash(powershell -Command \"docker compose -f ''C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docker-compose.yml'' down --rmi local --remove-orphans 2>&1\")",
+      "Bash(xargs wc -l)",
+      "Bash(python -c \":*)",
+      "Bash(pip install -r requirements.txt -q)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(pip install bleach -q)",
+      "Bash(pip install motor==3.5.0 pymongo==4.8.0 chromadb==0.5.3 -q)",
+      "Bash(python -m pytest tests/test_output_guard.py::TestSanitizeLlmOutput::test_script_tag_stripped tests/test_output_guard.py::TestSanitizeHumanContent::test_xss_stripped_in_human_content tests/test_config.py::TestSettings::test_fails_without_ollama_host tests/test_prompt_builder.py::TestBuildPrompt::test_rag_context_section_absent_when_empty -v --tb=long)",
+      "Bash(python -c \"import os; print\\(''OLLAMA_HOST:'', os.environ.get\\(''OLLAMA_HOST'', ''NOT SET''\\)\\); print\\(''MONGO_URI:'', os.environ.get\\(''MONGO_URI'', ''NOT SET''\\)\\)\")",
+      "Bash(python -m pytest tests/test_config.py -v --tb=long)",
+      "Bash(python -m pytest tests/test_output_guard.py tests/test_prompt_builder.py tests/test_config.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_config.py -v --tb=short)",
+      "Bash(python -m pytest tests/ -v)"
     ]
   }
 }
