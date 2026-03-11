@@ -246,6 +246,12 @@ services:
     container_name: mate-integration-agent
     ports:
       - "4003:3003"
+    # Mount project-root files that are outside the Docker build context so that
+    # prompt_builder.py can load them at runtime via Path(__file__).parent.parent.parent.
+    # The paths resolve to /reusable-meta-prompt.md and /template/... inside the container.
+    volumes:
+      - ./reusable-meta-prompt.md:/reusable-meta-prompt.md:ro
+      - ./template:/template:ro
     environment:
       - OLLAMA_HOST=http://mate-ollama:11434
       # OLLAMA_MODEL: use a smaller model on CPU-only instances for faster responses.
