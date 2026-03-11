@@ -3,7 +3,7 @@ Unit tests — output_guard module
 ADR-015 / CLAUDE.md §7: Security guard tests are highest priority.
 
 Coverage:
-  - Structural guard (LLM output must start with '# Functional Specification')
+  - Structural guard (LLM output must start with '# Integration Functional Design')
   - XSS prevention via bleach allowlist
   - Truncation at max chars
   - Empty / None input handling
@@ -18,7 +18,7 @@ from output_guard import (
     sanitize_llm_output,
 )
 
-_VALID_PREFIX = "# Functional Specification"
+_VALID_PREFIX = "# Integration Functional Design"
 
 
 class TestSanitizeLlmOutput:
@@ -30,8 +30,8 @@ class TestSanitizeLlmOutput:
     def test_preamble_stripped_when_heading_found_in_body(self):
         """
         When the LLM prepends a courtesy intro before the required heading, the guard
-        must strip the preamble and return content starting from '# Functional
-        Specification' — NOT raise an error (ADR-015 §Fallback).
+        must strip the preamble and return content starting from '# Integration
+        Functional Design' — NOT raise an error (ADR-015 §Fallback).
 
         Fix F-01: the previous assertion expected LLMOutputValidationError, but ADR-015
         deliberately handles small-model preambles via the fallback stripping path.

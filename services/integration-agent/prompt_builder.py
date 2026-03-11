@@ -7,8 +7,10 @@ exposes a single build_prompt() function.  If the file is missing, a
 safe inline fallback is used — the agent never crashes due to a missing
 prompt file.
 
-This decouples prompt evolution (documentation edit) from code changes,
-while keeping the prompt under version control.
+The functional design template (template/functional/integration-functional-design.md)
+is loaded separately and injected into the prompt via the {document_template} slot.
+This decouples template structure from prompt behaviour — both files are versioned
+independently under docs control.
 """
 
 import pathlib
@@ -17,19 +19,28 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Path relative to this file: ../../reusable-meta-prompt.md
+# ── File paths ──────────────────────────────────────────────────────────────────
+# Both paths are relative to this file: ../../<target>
 _PROMPT_FILE = pathlib.Path(__file__).parent.parent.parent / "reusable-meta-prompt.md"
+_FUNCTIONAL_TEMPLATE_PATH = (
+    pathlib.Path(__file__).parent.parent.parent
+    / "template"
+    / "functional"
+    / "integration-functional-design.md"
+)
 
-# Inline fallback — used when the meta-prompt file cannot be loaded.
-# Mirrors the same slot names so callers need no changes.
+# ── Fallback templates ──────────────────────────────────────────────────────────
+# Used when the respective files cannot be loaded.
 _FALLBACK_TEMPLATE = (
     "You are an elite Enterprise Integration Architect.\n"
-    "Write a Functional Specification in strictly formatted Markdown for an "
-    "integration between {source_system} (Source) and {target_system} (Target).\n\n"
+    "Fill in EVERY section of the following template for an integration between "
+    "{source_system} (Source) and {target_system} (Target).\n"
+    "For any section with no information write exactly `n/a`.\n\n"
     "Requirements:\n{formatted_requirements}\n\n"
     "{rag_context}\n\n"
+    "TEMPLATE:\n{document_template}\n\n"
     "Output ONLY valid Markdown. Begin immediately with "
-    "`# Functional Specification`."
+    "`# Integration Functional Design`."
 )
 
 
@@ -39,7 +50,7 @@ def _load_template() -> str:
         raw = _PROMPT_FILE.read_text(encoding="utf-8")
         match = re.search(r"```text\n(.*?)```", raw, re.DOTALL)
         if match:
-            logger.info("[PromptBuilder] Loaded template from %s", _PROMPT_FILE)
+            logger.info("[PromptBuilder] Loaded meta-prompt from %s", _PROMPT_FILE)
             return match.group(1).strip()
         logger.warning(
             "[PromptBuilder] No ```text``` block in %s — using fallback.", _PROMPT_FILE
@@ -51,8 +62,26 @@ def _load_template() -> str:
     return _FALLBACK_TEMPLATE
 
 
-# Load once at import time; the template is immutable during a run.
+def _load_functional_template() -> str:
+    """Load the functional design template from the template directory."""
+    try:
+        content = _FUNCTIONAL_TEMPLATE_PATH.read_text(encoding="utf-8")
+        logger.info(
+            "[PromptBuilder] Loaded functional template from %s",
+            _FUNCTIONAL_TEMPLATE_PATH,
+        )
+        return content
+    except FileNotFoundError:
+        logger.warning(
+            "[PromptBuilder] %s not found — {document_template} slot will be empty.",
+            _FUNCTIONAL_TEMPLATE_PATH,
+        )
+        return ""
+
+
+# Load once at import time; both files are immutable during a run.
 _TEMPLATE: str = _load_template()
+_FUNCTIONAL_TEMPLATE: str = _load_functional_template()
 
 
 def build_prompt(
@@ -86,4 +115,5 @@ def build_prompt(
     result = result.replace("{target_system}", target_system)
     result = result.replace("{formatted_requirements}", formatted_requirements)
     result = result.replace("{rag_context}", rag_block)
+    result = result.replace("{document_template}", _FUNCTIONAL_TEMPLATE)
     return result

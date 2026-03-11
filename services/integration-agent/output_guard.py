@@ -32,7 +32,7 @@ _ALLOWED_ATTRS: dict[str, list[str]] = {"a": ["href", "title"]}
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 _MAX_CHARS: int = 50_000
-_REQUIRED_PREFIX: str = "# Functional Specification"
+_REQUIRED_PREFIX: str = "# Integration Functional Design"
 
 
 # ── Exceptions ─────────────────────────────────────────────────────────────────

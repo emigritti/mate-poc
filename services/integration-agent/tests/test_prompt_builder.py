@@ -5,6 +5,7 @@ ADR-014: Prompt construction from reusable-meta-prompt.md.
 Coverage:
   - Source and target appear in the built prompt
   - Requirements text is injected
+  - Functional design template injected via {document_template} slot
   - RAG context block present/absent based on input
   - Fallback template used gracefully when file is missing
   - Prompt has minimum useful length
@@ -29,6 +30,17 @@ class TestBuildPrompt:
         prompt = build_prompt("PLM", "PIM", reqs, "")
         assert reqs in prompt
 
+    def test_document_template_slot_substituted(self):
+        """{document_template} slot must be replaced — never appear literally in the final prompt."""
+        prompt = build_prompt("PLM", "PIM", "Sync product data", "")
+        assert "{document_template}" not in prompt
+
+    def test_functional_template_sections_in_prompt(self):
+        """Section headings from the functional design template must appear in the built prompt."""
+        prompt = build_prompt("PLM", "PIM", "Sync product data", "")
+        assert "## 1. Overview" in prompt
+        assert "## 2. Scope & Context" in prompt
+
     def test_rag_context_section_present_when_provided(self):
         """The RAG block header 'PAST APPROVED EXAMPLES:\n' must appear when context is given."""
         prompt = build_prompt("PLM", "PIM", "req text", "PAST EXAMPLE: something")
@@ -38,7 +50,7 @@ class TestBuildPrompt:
         """Empty RAG context must not inject the 'PAST APPROVED EXAMPLES:' block.
 
         Note: the meta-prompt template contains 'PAST APPROVED EXAMPLES' in its
-        static instruction text (step 4).  We therefore check for the *dynamic*
+        static instruction text (step 5).  We therefore check for the *dynamic*
         block header ('PAST APPROVED EXAMPLES:\\n' with colon+newline, as produced
         by rag_block = f'PAST APPROVED EXAMPLES:\\n{rag_context}'), which is only
         present when rag_context is non-empty.
@@ -57,8 +69,14 @@ class TestBuildPrompt:
         assert len(prompt) > 100
 
     def test_fallback_template_has_required_slots(self):
-        """Fallback template must define all four expected slots."""
-        for slot in ("{source_system}", "{target_system}", "{formatted_requirements}", "{rag_context}"):
+        """Fallback template must define all five expected slots."""
+        for slot in (
+            "{source_system}",
+            "{target_system}",
+            "{formatted_requirements}",
+            "{rag_context}",
+            "{document_template}",
+        ):
             assert slot in _FALLBACK_TEMPLATE
 
     def test_system_names_with_hyphens(self):
