@@ -26,7 +26,9 @@
       "Bash(python -m pytest tests/test_config.py -v --tb=long)",
       "Bash(python -m pytest tests/test_output_guard.py tests/test_prompt_builder.py tests/test_config.py -v --tb=short)",
       "Bash(python -m pytest tests/test_config.py -v --tb=short)",
-      "Bash(python -m pytest tests/ -v)"
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(where gh)",
+      "Bash(winget list --name \"GitHub CLI\")"
     ]
   }
 }
