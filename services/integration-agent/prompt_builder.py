@@ -32,7 +32,9 @@ _FUNCTIONAL_TEMPLATE_PATH = (
 # ── Fallback templates ──────────────────────────────────────────────────────────
 # Used when the respective files cannot be loaded.
 _FALLBACK_TEMPLATE = (
-    "You are an elite Enterprise Integration Architect.\n"
+    "You are an elite Subject Matter Expert in the Product Management Domain.\n"
+    "You are supporting companies to address their requirements regarding the integration between PLM, PIM, DAM, Merchandising Tools.\n"
+    "extract best practices and patterns for integration design, and produce a functional design document for the integration.\n\n"
     "Fill in EVERY section of the following template for an integration between "
     "{source_system} (Source) and {target_system} (Target).\n"
     "For any section with no information write exactly `n/a`.\n\n"
