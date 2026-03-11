@@ -135,6 +135,9 @@ function renderApis() {
 // ── Agent Workspace Page ────────────────────────────
 
 let agentPollInterval = null;
+let _cachedLogs     = [];    // log lines from last successful poll — survives navigation
+let _logsOffset     = 0;     // first visible index in _cachedLogs (set by clearAgentLogs)
+let _isAgentRunning = false; // agent running state — survives navigation
 
 function renderAgentWorkspace() {
     const area = document.getElementById('contentArea');
@@ -152,22 +155,64 @@ function renderAgentWorkspace() {
             </div>
         </div>
         <div class="card" style="background: var(--bg-secondary);">
-            <div class="card-title">Agent Logs terminal</div>
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Agent Logs terminal</span>
+                <button onclick="clearAgentLogs()"
+                        style="font-size:0.78em; padding:3px 10px; background:var(--bg-main);
+                               color:var(--text-muted); border:1px solid var(--border-color);
+                               border-radius:4px; cursor:pointer;">
+                    🗑️ Clear Logs
+                </button>
+            </div>
             <div class="card-body">
                 <pre id="agentLogs" style="background: #1e1e1e; color: #00ff00; padding: 16px; border-radius: 4px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px;">Waiting for agent to start...</pre>
             </div>
         </div>
     `;
+    // Restore button state immediately — no flicker when navigating back to this page
+    _setAgentRunning(_isAgentRunning);
+    // Restore visible log lines immediately — no blank flash before the first poll
+    _renderLogLines(_cachedLogs.slice(_logsOffset));
     startAgentPolling();
 }
 
 function _setAgentRunning(running) {
+    _isAgentRunning = running;              // persist across navigation
     const agentBtn = document.getElementById('agentBtn');
     const stopBtn  = document.getElementById('stopBtn');
     if (!agentBtn || !stopBtn) return;
-    agentBtn.disabled  = running;
+    agentBtn.disabled    = running;
     agentBtn.textContent = running ? 'Agent Running...' : 'Start Agent Processing';
     stopBtn.style.display = running ? 'inline-block' : 'none';
+}
+
+/**
+ * Render the visible slice of log lines into #agentLogs.
+ * Only logs from _logsOffset onward are shown (respects user-initiated clear).
+ * F-04: all values HTML-escaped (ADR-017 / OWASP A03).
+ */
+function _renderLogLines(logs) {
+    const logsEl = document.getElementById('agentLogs');
+    if (!logsEl || !logs || logs.length === 0) return;
+    logsEl.innerHTML = logs.map(l => {
+        let color = '#00ff00';
+        if (l.includes('[RAG]') || l.includes('Vector')) color = '#00bcd4';
+        if (l.includes('[LLM]') || l.includes('Ollama')) color = '#ffeb3b';
+        if (l.includes('[ERROR]'))                       color = '#f44336';
+        if (l.includes('cancelled') || l.includes('⛔')) color = '#ff9800';
+        return `<div style="color:${color}">${escapeHtml(l)}</div>`;
+    }).join('');
+    logsEl.scrollTop = logsEl.scrollHeight;
+}
+
+/**
+ * Clear the log display without touching the backend.
+ * Sets _logsOffset so future polls show only NEW lines arriving after this point.
+ */
+function clearAgentLogs() {
+    _logsOffset = _cachedLogs.length;
+    const logsEl = document.getElementById('agentLogs');
+    if (logsEl) logsEl.innerHTML = '<span style="color:var(--text-muted)">Logs cleared.</span>';
 }
 
 async function triggerAgent() {
@@ -201,19 +246,8 @@ function startAgentPolling() {
             try {
                 const logsData = await API.getAgentLogs();
                 const logs = logsData?.logs || [];
-                const logsEl = document.getElementById('agentLogs');
-                if (logs.length > 0) {
-                    // F-04: log entries escaped to prevent stored XSS via requirement descriptions (ADR-017)
-                    logsEl.innerHTML = logs.map(l => {
-                        let color = '#00ff00';
-                        if (l.includes('[RAG]') || l.includes('Vector')) color = '#00bcd4';
-                        if (l.includes('[LLM]') || l.includes('Ollama')) color = '#ffeb3b';
-                        if (l.includes('[ERROR]')) color = '#f44336';
-                        if (l.includes('cancelled') || l.includes('⛔')) color = '#ff9800';
-                        return `<div style="color:${color}">${escapeHtml(l)}</div>`;
-                    }).join('');
-                    logsEl.scrollTop = logsEl.scrollHeight;
-                }
+                _cachedLogs = logs;                          // keep cache in sync with backend
+                _renderLogLines(logs.slice(_logsOffset));    // honour user-initiated clear
 
                 // Re-enable Start button when agent finishes or is cancelled
                 const last = logs.at(-1) ?? '';
