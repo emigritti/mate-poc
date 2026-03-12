@@ -187,20 +187,29 @@ function _setAgentRunning(running) {
 }
 
 /**
- * Render the visible slice of log lines into #agentLogs.
- * Only logs from _logsOffset onward are shown (respects user-initiated clear).
+ * Render the visible slice of LogEntry objects into #agentLogs.
+ * Colors are driven by the `level` field from the backend — no keyword scanning.
  * F-04: all values HTML-escaped (ADR-017 / OWASP A03).
  */
 function _renderLogLines(logs) {
     const logsEl = document.getElementById('agentLogs');
     if (!logsEl || !logs || logs.length === 0) return;
-    logsEl.innerHTML = logs.map(l => {
-        let color = '#00ff00';
-        if (l.includes('[RAG]') || l.includes('Vector')) color = '#00bcd4';
-        if (l.includes('[LLM]') || l.includes('Ollama')) color = '#ffeb3b';
-        if (l.includes('[ERROR]'))                       color = '#f44336';
-        if (l.includes('cancelled') || l.includes('⛔')) color = '#ff9800';
-        return `<div style="color:${color}">${escapeHtml(l)}</div>`;
+    const COLORS = {
+        INFO:    '#00ff00',
+        LLM:     '#ffeb3b',
+        RAG:     '#00bcd4',
+        SUCCESS: '#69f0ae',
+        WARN:    '#ff9800',
+        ERROR:   '#f44336',
+        CANCEL:  '#e65100',
+    };
+    logsEl.innerHTML = logs.map(e => {
+        const color = COLORS[e.level] ?? '#00ff00';
+        const ts    = new Date(e.ts).toLocaleTimeString();
+        return `<div style="color:${color}">` +
+            `<span style="opacity:0.5">[${escapeHtml(ts)}]</span> ` +
+            `<span style="opacity:0.6;font-size:0.85em">[${escapeHtml(e.level)}]</span> ` +
+            `${escapeHtml(e.message)}</div>`;
     }).join('');
     logsEl.scrollTop = logsEl.scrollHeight;
 }
@@ -250,11 +259,11 @@ function startAgentPolling() {
                 _renderLogLines(logs.slice(_logsOffset));    // honour user-initiated clear
 
                 // Re-enable Start button when agent finishes or is cancelled
-                const last = logs.at(-1) ?? '';
-                const isDone = last.includes('Generation completed')
-                    || last.includes('All tasks finished')
-                    || last.includes('cancelled');
-                if (logs.length > 0 && isDone) {
+                const isDone = logs.length > 0 && logs.some(e =>
+                    (e.level === 'SUCCESS' && e.message.includes('completed'))
+                    || e.level === 'CANCEL'
+                );
+                if (isDone) {
                     _setAgentRunning(false);
                 }
             } catch (e) {
