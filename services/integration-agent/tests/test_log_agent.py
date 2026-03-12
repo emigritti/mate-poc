@@ -74,10 +74,10 @@ def test_prune_removes_old_entries():
     new_entry = LogEntry(ts=new_ts, level=LogLevel.INFO, message="new")
 
     agent_main.agent_logs[:] = [old_entry, new_entry]
-
-    with patch.object(agent_main.settings, "log_ttl_hours", 4):
-        agent_main._prune_logs()
-
-    assert len(agent_main.agent_logs) == 1
-    assert agent_main.agent_logs[0].message == "new"
-    agent_main.agent_logs.clear()
+    try:
+        with patch.object(agent_main.settings, "log_ttl_hours", 4):
+            agent_main._prune_logs()
+        assert len(agent_main.agent_logs) == 1
+        assert agent_main.agent_logs[0].message == "new"
+    finally:
+        agent_main.agent_logs.clear()
