@@ -1,5 +1,24 @@
+from datetime import datetime
+from enum import Enum
+
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
+
+
+class LogLevel(str, Enum):
+    INFO    = "INFO"
+    LLM     = "LLM"
+    RAG     = "RAG"
+    SUCCESS = "SUCCESS"
+    WARN    = "WARN"
+    ERROR   = "ERROR"
+    CANCEL  = "CANCEL"
+
+
+class LogEntry(BaseModel):
+    ts:      datetime
+    level:   LogLevel
+    message: str
 
 
 class Requirement(BaseModel):
