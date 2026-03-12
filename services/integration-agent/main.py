@@ -50,6 +50,8 @@ from schemas import (
     ApproveRequest,
     CatalogEntry,
     Document,
+    LogEntry,
+    LogLevel,
     Requirement,
     RejectRequest,
 )
@@ -61,7 +63,7 @@ parsed_requirements: list[Requirement] = []
 catalog:   dict[str, CatalogEntry] = {}
 documents: dict[str, Document]     = {}
 approvals: dict[str, Approval]     = {}
-agent_logs: list[str]              = []
+agent_logs: list[LogEntry]         = []
 
 # Task registry — prevents concurrent agent runs (F-09)
 _agent_lock = asyncio.Lock()
@@ -85,12 +87,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _detect_level(msg: str) -> LogLevel:
+    """Infer LogLevel from message prefix/content (single responsibility)."""
+    if "[LLM]"   in msg: return LogLevel.LLM
+    if "[RAG]"   in msg: return LogLevel.RAG
+    if "[ERROR]" in msg: return LogLevel.ERROR
+    if "[GUARD]" in msg: return LogLevel.WARN
+    if "⛔"      in msg or "cancelled" in msg: return LogLevel.CANCEL
+    if "completed" in msg or "Approved" in msg or "✓" in msg: return LogLevel.SUCCESS
+    return LogLevel.INFO
+
+
 def log_agent(msg: str) -> None:
-    """Append a timestamped entry to agent_logs and emit as INFO log."""
-    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-    entry = f"[{ts}] {msg}"
+    """Append a structured LogEntry and emit as INFO log."""
+    entry = LogEntry(
+        ts=datetime.now(timezone.utc),
+        level=_detect_level(msg),
+        message=msg,
+    )
     agent_logs.append(entry)
-    logger.info(entry)
+    logger.info("[%s] %s", entry.level, msg)
 
 
 # ── ChromaDB init with retry ──────────────────────────────────────────────────
