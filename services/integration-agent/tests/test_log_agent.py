@@ -6,8 +6,9 @@ os.environ.setdefault("CHROMA_HOST",  "fake-chroma")
 
 from datetime import datetime, timezone
 import pytest
+import main as agent_main
 from main import _detect_level
-from schemas import LogLevel
+from schemas import LogEntry, LogLevel
 
 
 class TestDetectLevel:
@@ -38,6 +39,24 @@ class TestDetectLevel:
     def test_default_info(self):
         assert _detect_level("Started Agent Processing Task") == LogLevel.INFO
 
+    def test_success_checkmark(self):
+        assert _detect_level("✓ Integration spec saved") == LogLevel.SUCCESS
+
     def test_case_sensitivity(self):
         # [llm] lowercase should NOT match — prefixes are uppercase in log_agent calls
         assert _detect_level("[llm] something") == LogLevel.INFO
+
+
+class TestLogAgent:
+    def test_log_agent_appends_log_entry(self):
+        """log_agent() must append a LogEntry with correct level and message."""
+        original_len = len(agent_main.agent_logs)
+        agent_main.log_agent("[LLM] Test call")
+        assert len(agent_main.agent_logs) == original_len + 1
+        entry = agent_main.agent_logs[-1]
+        assert isinstance(entry, LogEntry)
+        assert entry.level == LogLevel.LLM
+        assert entry.message == "[LLM] Test call"
+        assert entry.ts.tzinfo is not None
+        # cleanup
+        agent_main.agent_logs.pop()
