@@ -81,3 +81,39 @@ def test_prune_removes_old_entries():
         assert agent_main.agent_logs[0].message == "new"
     finally:
         agent_main.agent_logs.clear()
+
+
+@pytest.fixture(scope="module")
+def logs_client():
+    from unittest.mock import AsyncMock, patch
+    with (
+        patch("db.init_db",            new_callable=AsyncMock),
+        patch("db.close_db",           new_callable=AsyncMock),
+        patch("main._init_chromadb",   new_callable=AsyncMock),
+        patch("main._prune_logs_loop", new_callable=AsyncMock),
+    ):
+        from main import app
+        from fastapi.testclient import TestClient
+        with TestClient(app) as c:
+            yield c
+
+
+def test_logs_endpoint_returns_structured_entries(logs_client):
+    """GET /api/v1/agent/logs must return list of {ts, level, message} dicts."""
+    agent_main.agent_logs[:] = [
+        LogEntry(ts=datetime.now(timezone.utc), level=LogLevel.LLM, message="LLM call"),
+        LogEntry(ts=datetime.now(timezone.utc), level=LogLevel.ERROR, message="Oops"),
+    ]
+    try:
+        response = logs_client.get("/api/v1/agent/logs")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        logs = data["logs"]
+        assert len(logs) == 2
+        assert logs[0]["level"] == "LLM"
+        assert logs[1]["level"] == "ERROR"
+        assert "ts" in logs[0]
+        assert "message" in logs[0]
+    finally:
+        agent_main.agent_logs.clear()

@@ -485,7 +485,10 @@ async def cancel_agent(
 
 @app.get("/api/v1/agent/logs", tags=["agent"])
 async def get_logs() -> dict:
-    return {"status": "success", "logs": agent_logs[-50:]}
+    return {
+        "status": "success",
+        "logs": [e.model_dump(mode="json") for e in agent_logs[-100:]],
+    }
 
 
 @app.post("/api/v1/agent/trigger", tags=["agent"])
