@@ -69,3 +69,18 @@ class TestSettings:
             mongo_uri="mongodb://localhost:27017",
         )
         assert s.ollama_model == "llama3.1:8b"
+
+
+def test_log_ttl_hours_default():
+    """LOG_TTL_HOURS defaults to 4 when not set."""
+    from config import Settings
+    s = Settings()
+    assert s.log_ttl_hours == 4
+
+
+def test_log_ttl_hours_env_override(monkeypatch):
+    """LOG_TTL_HOURS can be overridden via environment variable."""
+    monkeypatch.setenv("LOG_TTL_HOURS", "8")
+    from config import Settings
+    s = Settings()
+    assert s.log_ttl_hours == 8

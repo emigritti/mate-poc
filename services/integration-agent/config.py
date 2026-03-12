@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # ── CORS (comma-separated origin list) ────────────────────────────
     cors_origins: str = "http://localhost:8080,http://localhost:3000"
 
+    # ── Log TTL ──────────────────────────────────────────────────────
+    log_ttl_hours: int = 4   # env: LOG_TTL_HOURS — prune entries older than N hours
+
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.
     # If absent, endpoints log a warning and allow through (dev mode).
