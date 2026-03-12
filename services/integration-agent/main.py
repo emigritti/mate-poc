@@ -29,7 +29,7 @@ import logging
 import re
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import chromadb
 import httpx
@@ -109,6 +109,20 @@ def log_agent(msg: str) -> None:
     logger.info("[%s] %s", entry.level, msg)
 
 
+def _prune_logs() -> None:
+    """Remove LogEntry objects older than settings.log_ttl_hours."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.log_ttl_hours)
+    agent_logs[:] = [e for e in agent_logs if e.ts > cutoff]
+
+
+async def _prune_logs_loop() -> None:
+    """Background task: prune agent_logs every 30 minutes."""
+    while True:
+        await asyncio.sleep(1800)
+        _prune_logs()
+        logger.debug("[Logs] TTL prune complete. Entries remaining: %d", len(agent_logs))
+
+
 # ── ChromaDB init with retry ──────────────────────────────────────────────────
 
 async def _init_chromadb(retries: int = 20, delay: float = 5.0) -> None:
@@ -153,9 +167,11 @@ async def lifespan(app: FastAPI):
             len(catalog), len(approvals), len(documents),
         )
 
+    prune_task = asyncio.create_task(_prune_logs_loop(), name="log-pruner")
+
     yield
 
-    # Shutdown
+    prune_task.cancel()
     await db.close_db()
 
 

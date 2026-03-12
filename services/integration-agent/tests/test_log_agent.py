@@ -60,3 +60,24 @@ class TestLogAgent:
         assert entry.ts.tzinfo is not None
         # cleanup
         agent_main.agent_logs.pop()
+
+
+def test_prune_removes_old_entries():
+    """_prune_logs() must remove LogEntry objects older than settings.log_ttl_hours."""
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    old_ts = datetime.now(timezone.utc) - timedelta(hours=5)
+    new_ts = datetime.now(timezone.utc)
+
+    old_entry = LogEntry(ts=old_ts, level=LogLevel.INFO, message="old")
+    new_entry = LogEntry(ts=new_ts, level=LogLevel.INFO, message="new")
+
+    agent_main.agent_logs[:] = [old_entry, new_entry]
+
+    with patch.object(agent_main.settings, "log_ttl_hours", 4):
+        agent_main._prune_logs()
+
+    assert len(agent_main.agent_logs) == 1
+    assert agent_main.agent_logs[0].message == "new"
+    agent_main.agent_logs.clear()
