@@ -28,7 +28,32 @@
       "Bash(python -m pytest tests/test_config.py -v --tb=short)",
       "Bash(python -m pytest tests/ -v)",
       "Bash(where gh)",
-      "Bash(winget list --name \"GitHub CLI\")"
+      "Bash(winget list --name \"GitHub CLI\")",
+      "Bash(docker ps:*)",
+      "Bash(docker.exe ps:*)",
+      "Bash(cmd.exe /c \"docker ps --format \"\"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Ports}}\"\"\")",
+      "Bash(cmd.exe /c \"docker ps\")",
+      "Bash(cmd.exe /c \"docker compose ps\")",
+      "Bash(cmd.exe /c \"docker ps 2>&1\")",
+      "Bash(cmd.exe /c \"docker info && echo DOCKER_OK\")",
+      "Bash(cmd.exe /c \"netstat -an | findstr :4003\")",
+      "Bash(cmd.exe /c \"netstat -an | findstr :8080\")",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -LocalPort 4003,8080 -ErrorAction SilentlyContinue | Select-Object LocalPort,State\")",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -State Listen | Select-Object LocalPort | Sort-Object LocalPort\")",
+      "Bash(powershell.exe -Command \"docker ps --format ''{{.Names}}\\\\t{{.Status}}\\\\t{{.Ports}}''\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Program Files\\\\Docker\\\\Docker\\\\resources\\\\bin\\\\docker.exe'' ps\")",
+      "Bash(powershell.exe -Command \"Get-Process -Name ''*docker*'',''*nginx*'',''*python*'' -ErrorAction SilentlyContinue | Select-Object Name,Id,Path\")",
+      "Bash(powershell.exe -Command \"where.exe docker 2>&1; where.exe docker-compose 2>&1\")",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\emiliano.gritti\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\docker-compose.exe'' ps 2>&1\")",
+      "Bash(powershell.exe -Command \"Get-Process -Name ''com.docker*'',''dockerd'',''Docker Desktop'' -ErrorAction SilentlyContinue | Select-Object Name,Id\")",
+      "Bash(python -m pytest tests/test_log_schemas.py -v)",
+      "Bash(python -m pytest tests/test_config.py::test_log_ttl_hours_default -v)",
+      "Bash(python -m pytest tests/test_config.py -v)",
+      "Bash(python -m pytest tests/test_log_agent.py -v)",
+      "Bash(python -m pytest tests/test_log_agent.py::test_prune_removes_old_entries -v)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python -m pytest tests/test_log_agent.py::test_logs_endpoint_returns_structured_entries -v)"
     ]
   }
 }

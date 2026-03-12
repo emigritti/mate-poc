@@ -1,0 +1,601 @@
+ReqID,Source,Target,Category,Description
+REQ-001,PLM,PIM,Inbound Product Master,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PLM pubblica/aggiorna un prodotto con stato 'Ready for PIM'.
+Allora: Allora PIM crea/aggiorna 1 record corrispondente in modo idempotente, popolando i campi obbligatori e salvando CorrelationId + timestamp sorgente.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Create PIM shell product when PLM item is Ready for PIM, with mandatory technical attributes"
+REQ-002,PLM,PIM,Inbound Product Master,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PLM pubblica/aggiorna un prodotto con stato 'Ready for PIM'.
+Allora: Allora PIM crea/aggiorna 1 record corrispondente in modo idempotente, popolando i campi obbligatori e salvando CorrelationId + timestamp sorgente.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Sync incremental updates for PLM-owned locked technical attributes with PLM-wins conflict rule"
+REQ-003,PLM,PIM,Inbound Product Master,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PLM pubblica/aggiorna un prodotto con stato 'Ready for PIM'.
+Allora: Allora PIM crea/aggiorna 1 record corrispondente in modo idempotente, popolando i campi obbligatori e salvando CorrelationId + timestamp sorgente.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Replicate product relationships (parent/child, variants, sets) from PLM to PIM"
+REQ-004,PLM,PIM,Inbound Product Master,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PLM pubblica/aggiorna un prodotto con stato 'Ready for PIM'.
+Allora: Allora PIM crea/aggiorna 1 record corrispondente in modo idempotente, popolando i campi obbligatori e salvando CorrelationId + timestamp sorgente.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Map PLM taxonomies (collections/lines/categories) into PIM master taxonomy and channel views"
+REQ-005,PLM,PIM,Inbound Product Master,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PLM pubblica/aggiorna un prodotto con stato 'Ready for PIM'.
+Allora: Allora PIM crea/aggiorna 1 record corrispondente in modo idempotente, popolando i campi obbligatori e salvando CorrelationId + timestamp sorgente.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support initial bulk load of historical products from PLM to PIM with reconciliation report"
+REQ-006,PLM,PIM,Data Quality Gate,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PLM invia un payload con campi obbligatori mancanti o formati non validi.
+Allora: Allora il payload è rifiutato con un error code deterministico, il payload fallito è salvato per reprocess e viene generata una notifica/report.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Reject PLM payloads missing mandatory identifiers (SKU, season, brand, variant keys)"
+REQ-007,PLM,PIM,Data Quality Gate,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PLM invia un payload con campi obbligatori mancanti o formati non validi.
+Allora: Allora il payload è rifiutato con un error code deterministico, il payload fallito è salvato per reprocess e viene generata una notifica/report.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Validate technical attributes (composition totals, color codes, size ranges, UoM formats) before persisting"
+REQ-008,PLM,PIM,Error Handling,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica un errore di trasporto/validazione durante l'elaborazione PLM→PIM.
+Allora: Allora l'errore è tracciato (CorrelationId, severity, categoria), si applica retry dove previsto e la re‑esecuzione è possibile da coda/console.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Capture integration errors with correlation id, store payload, and provide reprocess instructions"
+REQ-009,PLM,PIM,Audit & Traceability,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PIM persiste dati provenienti da PLM.
+Allora: Allora viene scritto un audit entry con provenienza (source, timestamp, runId) e l'audit è consultabile via query/log export.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Maintain field-level provenance for PLM-sourced values in PIM"
+REQ-010,PLM,PIM,Lifecycle,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Archive products in PIM when PLM flags them as discontinued and prevent publication"
+REQ-011,PLM,PIM,Localization Seed,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Seed PIM with at least source language placeholders to start enrichment"
+REQ-012,PLM,PIM,Reference Data,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Sync PLM reference dictionaries (care symbols, materials, size charts ids) into PIM"
+REQ-013,PLM,PIM,Attachments,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Link PLM technical documents/certifications to PIM product record (as references)"
+REQ-014,PLM,PIM,Scheduling,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support near-real-time for status changes and daily batch for mass updates"
+REQ-015,PLM,PIM,Security,"Dato che l'integrazione PLM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Use dedicated service identity and least privilege for PLM→PIM integration"
+REQ-016,PIM,PIM,Workflow - Marketing,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Allow Marketing to enrich commercial description, storytelling, USP per product/variant"
+REQ-017,PIM,PIM,Workflow - Marketing,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support master content with channel-specific overrides (Amazon bullets, Magento long desc)"
+REQ-018,PIM,PIM,Workflow - SEO,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Allow SEO to manage meta title/description, slug, keywords, canonical rules"
+REQ-019,PIM,PIM,Workflow - GEO,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Allow GEO content: verifiable claims, product FAQs, structured entities for AI discovery"
+REQ-020,PIM,PIM,Workflow - GEO,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Require GEO claims to carry internal source/approval and allow market-level disable"
+REQ-021,PIM,PIM,Workflow - Legal,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando è richiesta la review Legal e manca la sign-off.
+Allora: Allora la pubblicazione/export è bloccata per i mercati/canali impattati e la motivazione di blocco è visibile agli utenti.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Require Legal approval for composition/claims/restrictions before publish"
+REQ-022,PIM,PIM,Workflow - Legal,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando è richiesta la review Legal e manca la sign-off.
+Allora: Allora la pubblicazione/export è bloccata per i mercati/canali impattati e la motivazione di blocco è visibile agli utenti.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Block publication per market based on configurable regulatory constraints"
+REQ-023,PIM,PIM,Workflow - Translations,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando viene creata una Translation Request per una lingua/mercato.
+Allora: Allora viene creato un task assegnato, gli stati (requested/in-progress/done/reviewed/approved) sono tracciati e la publish readiness resta bloccata finché la review non è completata.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Provide translation request→assignment→completion→review→approval for multiple languages"
+REQ-024,PIM,PIM,Workflow - Translations,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando viene creata una Translation Request per una lingua/mercato.
+Allora: Allora viene creato un task assegnato, gli stati (requested/in-progress/done/reviewed/approved) sono tracciati e la publish readiness resta bloccata finché la review non è completata.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support channel-specific translation tone while keeping glossary consistency"
+REQ-025,PIM,PIM,Workflow - Roles,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Implement roles/permissions with segregation of duties across departments"
+REQ-026,PIM,PIM,Workflow - MakerChecker,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando lo stesso utente tenta di modificare e approvare lo stesso item.
+Allora: Allora l'approvazione è impedita e viene registrato un evento di violazione SoD (segregation of duties).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Prevent same user from editing and approving the same item"
+REQ-027,PIM,PIM,Workflow - Status Model,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Implement product states Draft→Enrichment→Ready for Merch→Ready for Publish→Published→Archived"
+REQ-028,PIM,PIM,Workflow - SLA,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Track SLA per enrichment step with alerts and dashboards"
+REQ-029,PIM,PIM,Content Quality,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Validate marketing copy against guidelines (length, tone, forbidden terms)"
+REQ-030,PIM,PIM,SEO Quality,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Validate SEO fields uniqueness and length constraints per locale/channel"
+REQ-031,PIM,PIM,Localization,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support market-specific content variants (legal names, units, disclaimers)"
+REQ-032,PIM,PIM,Taxonomy Enrichment,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Allow assignment of navigational attributes (fit, silhouette, occasion) owned by business"
+REQ-033,PIM,PIM,Attributes Governance,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Enforce field ownership (PLM-owned vs PIM-owned vs dept-owned) with edit locks"
+REQ-034,PIM,PIM,Change Management,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Manage change requests on published attributes with impact analysis and approvals"
+REQ-035,PIM,PIM,Versioning,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Version product content with diff and rollback"
+REQ-036,PIM,PIM,Media Linking,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Link content to assets by language/market/channel"
+REQ-037,PIM,PIM,Compliance,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Tag regulated claims/data and enforce extra controls"
+REQ-038,PIM,PIM,Bulk Operations,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Allow bulk edits for collection/season with audit"
+REQ-039,PIM,PIM,Notifications,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Notify owners on workflow transitions and blocking issues"
+REQ-040,PIM,PIM,Task Management,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Create assignable enrichment tasks with priority and due date"
+REQ-041,PIM,PIM,KPIs,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Compute completeness per channel and show progress"
+REQ-042,PIM,PIM,Market Restrictions,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Maintain market/channel allow/deny lists per SKU"
+REQ-043,PIM,PIM,Pricing Preview,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PIM pubblica un aggiornamento prezzo per SKU con valuta e validità.
+Allora: Allora PIM aggiorna il price book preservando le date di efficacia, applica rounding e rende visibile il prezzo calcolato per mercato/valuta (preview).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Show computed price per market/currency and rounding rules"
+REQ-044,PIM,PIM,Stock Preview,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PIM pubblica uno snapshot/delta di stock per SKU.
+Allora: Allora PIM aggiorna disponibilità (available/low/out/preorder) secondo regole e l'ultimo stato è disponibile per merchandising ed export.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Show availability indicators to support merchandising decisions"
+REQ-045,PIM,PIM,Data Stewardship,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Provide data steward role for exceptions, taxonomy mapping, cross-data quality"
+REQ-046,PIM,PIM,Attachments,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Manage legal/product sheets as linked documents for audit"
+REQ-047,PIM,PIM,Localization QA,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Add linguistic QA step for critical markets before publish"
+REQ-048,PIM,PIM,Content Reuse,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support controlled reuse of content across variants with overrides"
+REQ-049,PIM,PIM,Channel Readiness,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Compute readiness (Amazon/Magento/Google) from completeness + approvals"
+REQ-050,PIM,PIM,Governance Reporting,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Produce weekly reports on backlog, approval times, bottlenecks"
+REQ-051,DAM,PIM,Inbound Assets,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un asset in DAM cambia stato a 'Approved for Commerce'.
+Allora: Allora PIM associa l'asset allo SKU/variante tramite matching metadata-first (fallback naming), evita duplicati per assetId/versione e rende disponibile la preview per canale.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Ingest approved DAM assets and link to SKU/variant via metadata-first matching, fallback to naming"
+REQ-052,DAM,PIM,Inbound Assets,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un asset in DAM cambia stato a 'Approved for Commerce'.
+Allora: Allora PIM associa l'asset allo SKU/variante tramite matching metadata-first (fallback naming), evita duplicati per assetId/versione e rende disponibile la preview per canale.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support multiple renditions per image (thumb/web/zoom/hires) with stable rendition references"
+REQ-053,DAM,PIM,Inbound Assets,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un asset in DAM cambia stato a 'Approved for Commerce'.
+Allora: Allora PIM associa l'asset allo SKU/variante tramite matching metadata-first (fallback naming), evita duplicati per assetId/versione e rende disponibile la preview per canale.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Assign assets by market/language/channel (e.g., image with text) using configurable rules"
+REQ-054,DAM,PIM,Inbound Assets,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un asset in DAM cambia stato a 'Approved for Commerce'.
+Allora: Allora PIM associa l'asset allo SKU/variante tramite matching metadata-first (fallback naming), evita duplicati per assetId/versione e rende disponibile la preview per canale.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Import DAM rights metadata (copyright, usage rights, expiry) and block usage if invalid"
+REQ-055,DAM,PIM,Workflow Sync,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Trigger DAM→PIM ingest on DAM status 'Approved for Commerce' in near-real-time"
+REQ-056,DAM,PIM,Error Handling,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica un errore di trasporto/validazione durante l'elaborazione DAM→PIM.
+Allora: Allora l'errore è tracciato (CorrelationId, severity, categoria), si applica retry dove previsto e la re‑esecuzione è possibile da coda/console.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Route unmatched assets to a queue with remediation report"
+REQ-057,DAM,PIM,Deduplication,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un asset in DAM cambia stato a 'Approved for Commerce'.
+Allora: Allora PIM associa l'asset allo SKU/variante tramite matching metadata-first (fallback naming), evita duplicati per assetId/versione e rende disponibile la preview per canale.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Prevent duplicate associations by asset id/version; update metadata only"
+REQ-058,DAM,PIM,Quality Gate,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Block channel publish if minimum image set per channel is missing"
+REQ-059,DAM,PIM,Performance,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support high-volume ingest (campaign) with throttling and controlled retries"
+REQ-060,DAM,PIM,Audit & Traceability,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando PIM persiste dati provenienti da DAM.
+Allora: Allora viene scritto un audit entry con provenienza (source, timestamp, runId) e l'audit è consultabile via query/log export.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Record DAM source, asset id, version, ingest timestamp in PIM"
+REQ-061,DAM,PIM,Security,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Use secure API access to DAM; redact tokens from logs"
+REQ-062,DAM,PIM,Content Lifecycle,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: On rights expiry/withdrawal in DAM, disassociate asset in PIM and update channels"
+REQ-063,DAM,PIM,Preview,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un asset in DAM cambia stato a 'Approved for Commerce'.
+Allora: Allora PIM associa l'asset allo SKU/variante tramite matching metadata-first (fallback naming), evita duplicati per assetId/versione e rende disponibile la preview per canale.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Allow selecting primary image per channel with preview"
+REQ-064,DAM,PIM,Video Assets,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un asset in DAM cambia stato a 'Approved for Commerce'.
+Allora: Allora PIM associa l'asset allo SKU/variante tramite matching metadata-first (fallback naming), evita duplicati per assetId/versione e rende disponibile la preview per canale.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support video ingest with duration/codec metadata and channel rules"
+REQ-065,DAM,PIM,Integration Monitoring,"Dato che l'integrazione DAM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando si verifica la condizione di trigger del requisito.
+Allora: Allora il comportamento atteso è osservabile e verificabile.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Expose metrics: success rate, unmatched rate, latency, backlog"
+REQ-066,ERP,PIM,Pricing,"Dato che l'integrazione ERP→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando ERP pubblica un aggiornamento prezzo per SKU con valuta e validità.
+Allora: Allora PIM aggiorna il price book preservando le date di efficacia, applica rounding e rende visibile il prezzo calcolato per mercato/valuta (preview).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Import multi-currency price lists and rounding rules into PIM"
+REQ-067,ERP,PIM,Pricing,"Dato che l'integrazione ERP→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando ERP pubblica un aggiornamento prezzo per SKU con valuta e validità.
+Allora: Allora PIM aggiorna il price book preservando le date di efficacia, applica rounding e rende visibile il prezzo calcolato per mercato/valuta (preview).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support market and B2B customer-group tier pricing with validity windows"
+REQ-068,ERP,PIM,Pricing,"Dato che l'integrazione ERP→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando ERP pubblica un aggiornamento prezzo per SKU con valuta e validità.
+Allora: Allora PIM aggiorna il price book preservando le date di efficacia, applica rounding e rende visibile il prezzo calcolato per mercato/valuta (preview).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Track FX rate reference data used for conversions"
+REQ-069,WMS,PIM,Stock,"Dato che l'integrazione WMS→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando WMS pubblica uno snapshot/delta di stock per SKU.
+Allora: Allora PIM aggiorna disponibilità (available/low/out/preorder) secondo regole e l'ultimo stato è disponibile per merchandising ed export.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Import stock by SKU and warehouse and aggregate by market/channel"
+REQ-070,WMS,PIM,Stock,"Dato che l'integrazione WMS→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando WMS pubblica uno snapshot/delta di stock per SKU.
+Allora: Allora PIM aggiorna disponibilità (available/low/out/preorder) secondo regole e l'ultimo stato è disponibile per merchandising ed export.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Derive availability states (available/low/out/preorder) with ETA"
+REQ-071,ERP,Visual Merch Tool,Merch Inputs,"Dato che l'integrazione ERP→Visual Merch Tool è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando avviene uno scambio dati merchandising.
+Allora: Allora i due sistemi restano consistenti e le discrepanze sono rilevate e riportate.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Provide price+stock to Visual Merch tool for sorting/boosting rules"
+REQ-072,PIM,Visual Merch Tool,Merch Catalog,"Dato che l'integrazione PIM→Visual Merch Tool è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un prodotto entra in stato 'Ready for Merchandising'.
+Allora: Allora il tool riceve un payload delta-capable con attributi di navigazione + indicatori prezzo/stock e PIM registra acknowledgement e outcome.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Publish catalog to Visual Merch tool when products are Ready for Merchandising"
+REQ-073,Visual Merch Tool,PIM,Merch Outputs,"Dato che l'integrazione Visual Merch Tool→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il merchandiser pubblica regole di sorting/pinning/boosting.
+Allora: Allora PIM salva le regole con versione e scope (mercato/canale), e solo le versioni approvate diventano eleggibili per export.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Import merchandising decisions (sorting/pinning/boosting rules) back to PIM"
+REQ-074,Visual Merch Tool,PIM,Merch Outputs,"Dato che l'integrazione Visual Merch Tool→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il merchandiser pubblica regole di sorting/pinning/boosting.
+Allora: Allora PIM salva le regole con versione e scope (mercato/canale), e solo le versioni approvate diventano eleggibili per export.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Version merch rules per market/channel with rollback"
+REQ-075,Visual Merch Tool,PIM,Merch Workflow,"Dato che un prodotto esiste in PIM e il workflow dipartimentale è attivo.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando il ruolo owner completa lo step e invia in approvazione.
+Allora: Allora lo stato avanza, vengono inviate notifiche al prossimo owner e le KPI di completeness si aggiornano.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Require approval workflow for merch rules before downstream export"
+REQ-076,PIM,PIM,Merch Feedback,"Dato che l'integrazione PIM→PIM è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando avviene uno scambio dati merchandising.
+Allora: Allora i due sistemi restano consistenti e le discrepanze sono rilevate e riportate.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Send product publishability status back to merch tool to avoid invalid items"
+REQ-077,PIM,Visual Merch Tool,Merch NFR,"Dato che l'integrazione PIM→Visual Merch Tool è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un prodotto entra in stato 'Ready for Merchandising'.
+Allora: Allora il tool riceve un payload delta-capable con attributi di navigazione + indicatori prezzo/stock e PIM registra acknowledgement e outcome.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support delta updates to merch tool without full catalog resend"
+REQ-078,PIM,Visual Merch Tool,Merch NFR,"Dato che l'integrazione PIM→Visual Merch Tool è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un prodotto entra in stato 'Ready for Merchandising'.
+Allora: Allora il tool riceve un payload delta-capable con attributi di navigazione + indicatori prezzo/stock e PIM registra acknowledgement e outcome.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support configurable max latency for critical stock updates (e.g., flash sale)"
+REQ-079,PIM,Visual Merch Tool,Merch Monitoring,"Dato che l'integrazione PIM→Visual Merch Tool è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un prodotto entra in stato 'Ready for Merchandising'.
+Allora: Allora il tool riceve un payload delta-capable con attributi di navigazione + indicatori prezzo/stock e PIM registra acknowledgement e outcome.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Monitor import/export outcomes and consistency checks between PIM and merch tool"
+REQ-080,PIM,Visual Merch Tool,Merch Security,"Dato che l'integrazione PIM→Visual Merch Tool è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando un prodotto entra in stato 'Ready for Merchandising'.
+Allora: Allora il tool riceve un payload delta-capable con attributi di navigazione + indicatori prezzo/stock e PIM registra acknowledgement e outcome.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Secure PIM↔merch APIs with authN/authZ and environment segregation"
+REQ-081,PIM,Google Shopping,Syndication,"Dato che l'integrazione PIM→Google Shopping è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job giornaliero del feed per un mercato.
+Allora: Allora il feed generato valida i campi richiesti, usa currency/availability corrette e produce un report di inclusi/esclusi con motivazione.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Generate daily Google Shopping feed from Published products keeping existing compatibility"
+REQ-082,PIM,Google Shopping,Syndication,"Dato che l'integrazione PIM→Google Shopping è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job giornaliero del feed per un mercato.
+Allora: Allora il feed generato valida i campi richiesti, usa currency/availability corrette e produce un report di inclusi/esclusi con motivazione.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Validate Google required fields (GTIN/MPN, category, price, image_link) and compliance checks"
+REQ-083,PIM,Google Shopping,Syndication,"Dato che l'integrazione PIM→Google Shopping è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job giornaliero del feed per un mercato.
+Allora: Allora il feed generato valida i campi richiesti, usa currency/availability corrette e produce un report di inclusi/esclusi con motivazione.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Produce per-country Google feeds with correct currency and availability"
+REQ-084,PIM,Google Shopping,Syndication,"Dato che l'integrazione PIM→Google Shopping è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job giornaliero del feed per un mercato.
+Allora: Allora il feed generato valida i campi richiesti, usa currency/availability corrette e produce un report di inclusi/esclusi con motivazione.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Allow Google title/description overrides per channel compared to master content"
+REQ-085,PIM,Amazon Marketplace,Syndication,"Dato che l'integrazione PIM→Amazon Marketplace è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando uno SKU è 'Amazon ready' e nel relativo assortment.
+Allora: Allora sono eseguite chiamate create/update, il throttling è gestito, gli errori sono categorizzati e ASIN/listingId sono persistiti in PIM.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Create/update Amazon listings for Amazon-ready assortment"
+REQ-086,PIM,Amazon Marketplace,Syndication,"Dato che l'integrazione PIM→Amazon Marketplace è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando uno SKU è 'Amazon ready' e nel relativo assortment.
+Allora: Allora sono eseguite chiamate create/update, il throttling è gestito, gli errori sono categorizzati e ASIN/listingId sono persistiti in PIM.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Near-real-time stock and price updates to Amazon for active SKUs"
+REQ-087,PIM,Amazon Marketplace,Syndication,"Dato che l'integrazione PIM→Amazon Marketplace è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando uno SKU è 'Amazon ready' e nel relativo assortment.
+Allora: Allora sono eseguite chiamate create/update, il throttling è gestito, gli errori sono categorizzati e ASIN/listingId sono persistiti in PIM.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Map Amazon categories and attributes including variant relationships"
+REQ-088,PIM,Amazon Marketplace,Syndication,"Dato che l'integrazione PIM→Amazon Marketplace è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando uno SKU è 'Amazon ready' e nel relativo assortment.
+Allora: Allora sono eseguite chiamate create/update, il throttling è gestito, gli errori sono categorizzati e ASIN/listingId sono persistiti in PIM.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Handle Amazon throttling/validation errors with retry and reprocess queue"
+REQ-089,PIM,Amazon Marketplace,Syndication,"Dato che l'integrazione PIM→Amazon Marketplace è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando uno SKU è 'Amazon ready' e nel relativo assortment.
+Allora: Allora sono eseguite chiamate create/update, il throttling è gestito, gli errori sono categorizzati e ASIN/listingId sono persistiti in PIM.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Support separate Amazon marketplaces (EU/US) with different rules"
+REQ-090,PIM,Amazon Marketplace,Syndication,"Dato che l'integrazione PIM→Amazon Marketplace è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando uno SKU è 'Amazon ready' e nel relativo assortment.
+Allora: Allora sono eseguite chiamate create/update, il throttling è gestito, gli errori sono categorizzati e ASIN/listingId sono persistiti in PIM.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Publish primary/secondary images to Amazon based on DAM assets"
+REQ-091,PIM,Magento B2B,Syndication,"Dato che l'integrazione PIM→Magento B2B è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job di export Magento B2B.
+Allora: Allora Magento riceve struttura prodotto + tier pricing + availability per store view e viene prodotto un report di riconciliazione (created/updated/failed).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Nightly Magento B2B catalog sync with configurable/simple structures"
+REQ-092,PIM,Magento B2B,Syndication,"Dato che l'integrazione PIM→Magento B2B è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job di export Magento B2B.
+Allora: Allora Magento riceve struttura prodotto + tier pricing + availability per store view e viene prodotto un report di riconciliazione (created/updated/failed).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Sync Magento B2B tier pricing per customer group and validity"
+REQ-093,PIM,Magento B2B,Syndication,"Dato che l'integrazione PIM→Magento B2B è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job di export Magento B2B.
+Allora: Allora Magento riceve struttura prodotto + tier pricing + availability per store view e viene prodotto un report di riconciliazione (created/updated/failed).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Sync Magento B2B availability with B2B allocation rules (MOQ, dedicated stock)"
+REQ-094,PIM,Magento B2B,Syndication,"Dato che l'integrazione PIM→Magento B2B è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job di export Magento B2B.
+Allora: Allora Magento riceve struttura prodotto + tier pricing + availability per store view e viene prodotto un report di riconciliazione (created/updated/failed).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Sync Magento categories/taxonomies and multi-store views mapping"
+REQ-095,PIM,Magento B2B,Syndication,"Dato che l'integrazione PIM→Magento B2B è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job di export Magento B2B.
+Allora: Allora Magento riceve struttura prodotto + tier pricing + availability per store view e viene prodotto un report di riconciliazione (created/updated/failed).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: New: Sync Magento localizations per store view with fallback"
+REQ-096,PIM,Magento B2B,Syndication,"Dato che l'integrazione PIM→Magento B2B è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job di export Magento B2B.
+Allora: Allora Magento riceve struttura prodotto + tier pricing + availability per store view e viene prodotto un report di riconciliazione (created/updated/failed).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Apply merchandising rules in Magento export where supported"
+REQ-097,PIM,Marketplace Hub,Syndication,"Dato che l'integrazione PIM→Marketplace Hub è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando viene attivato un export canale.
+Allora: Allora solo SKU publishable vengono esportati e gli esiti sono riconciliati.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Optional: Publish to a Marketplace Hub for multi-channel orchestration"
+REQ-098,PIM,Amazon Marketplace,Syndication,"Dato che l'integrazione PIM→Amazon Marketplace è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando uno SKU è 'Amazon ready' e nel relativo assortment.
+Allora: Allora sono eseguite chiamate create/update, il throttling è gestito, gli errori sono categorizzati e ASIN/listingId sono persistiti in PIM.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Persist Amazon ASIN/listing identifiers back into PIM for reconciliation"
+REQ-099,PIM,Magento B2B,Syndication,"Dato che l'integrazione PIM→Magento B2B è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando gira il job di export Magento B2B.
+Allora: Allora Magento riceve struttura prodotto + tier pricing + availability per store view e viene prodotto un report di riconciliazione (created/updated/failed).
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Support incremental delta updates in addition to full sync for Magento"
+REQ-100,PIM,All Channels,Publishing Governance,"Dato che l'integrazione PIM→All Channels è configurata e operativa in ambiente PoC.
+E dato un dataset Fashion con: 5 collezioni, 200 style, varianti taglia/colore, 6 mercati, 4 valute (EUR/USD/GBP/JPY).
+Quando: Quando viene attivato un export canale.
+Allora: Allora solo SKU publishable vengono esportati e gli esiti sono riconciliati.
+Criteri di accettazione: (1) Esito deterministico; (2) Idempotenza dimostrata con replay; (3) Audit/metriche disponibili; (4) Percorsi errore testabili (reject/retry/reprocess).
+Intento originale: Block exports if legal approvals/completeness/assets minima are not satisfied"

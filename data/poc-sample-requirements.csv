@@ -1,0 +1,101 @@
+ReqID,Source,Target,Category,Description
+REQ-001,PLM,PIM,Inbound Product Master,"Creare automaticamente in PIM una scheda prodotto (shell), quando in PLM lo stile/SKU passa in stato 'Ready for PIM', portando attributi tecnici minimi (SKU, style, stagione, materiali base, BOM, varianti taglia/colore)."
+REQ-002,PLM,PIM,Inbound Product Master,"Sincronizzare aggiornamenti incrementali da PLM a PIM per attributi tecnici 'locked' (es. composizione, care instructions, dimensioni), mantenendo un meccanismo di conflitto 'PLM wins' per questi campi."
+REQ-003,PLM,PIM,Inbound Product Master,"Gestire relazioni di prodotto (parent/child, varianti, pack, set) provenienti da PLM e crearle in PIM mantenendo consistenza dell'alberatura."
+REQ-004,PLM,PIM,Inbound Product Master,"Importare codifiche e tassonomie PLM (categorie interne, linee, collezioni) e mapparle alle tassonomie PIM (master taxonomy + viste canale)."
+REQ-005,PLM,PIM,Inbound Product Master,"Supportare il caricamento iniziale massivo (initial load) di prodotti storici da PLM verso PIM con tracciamento batch, reconciliation e report di scarti."
+REQ-006,PLM,PIM,Data Quality Gate,"Bloccare la creazione/aggiornamento in PIM se PLM non fornisce SKU, stagione, brand, famiglia prodotto, e identificativi varianti obbligatori."
+REQ-007,PLM,PIM,Data Quality Gate,"Applicare controlli di qualità su attributi tecnici: materiali con percentuali che sommano a 100, codici colore validi, taglie in range, e formati unità di misura."
+REQ-008,PLM,PIM,Error Handling,"In caso di errore di integrazione PLM→PIM, generare un evento/record di errore con correlazione (CorrelationId), payload salvato e istruzioni di reprocess."
+REQ-009,PLM,PIM,Audit & Traceability,"Registrare audit trail in PIM per ogni campo popolato da PLM (origine, timestamp, run id) per supportare troubleshooting e compliance."
+REQ-010,PLM,PIM,Lifecycle,"Gestire il ritiro prodotto: quando PLM marca uno SKU come 'Discontinued', PIM deve passare lo SKU in stato 'Archived' e impedire nuove pubblicazioni."
+REQ-011,PLM,PIM,Localization Seed,"Popolare in PIM almeno la lingua sorgente (IT/EN) con naming tecnico/placeholder, in modo che l'arricchimento possa partire."
+REQ-012,PLM,PIM,Reference Data,"Sincronizzare reference data da PLM (care symbols, material dictionary, size charts id) verso PIM per abilitare validazioni."
+REQ-013,PLM,PIM,Attachments,"Gestire eventuali documenti tecnici PLM (schede materiali, certificazioni) come referenze collegate allo SKU in PIM (link, non necessariamente file)."
+REQ-014,PLM,PIM,Scheduling,Schedulare l'inbound PLM→PIM con due modalità: near-real-time per cambi stato e batch giornaliero per aggiornamenti di massa.
+REQ-015,PLM,PIM,Security,Autenticare e autorizzare l'integrazione PLM→PIM con service account dedicato e principio del minimo privilegio.
+REQ-016,PIM,PIM,Workflow - Marketing,"Consentire al team Marketing di arricchire descrizioni commerciali, storytelling, USP, e contenuti per campagna per ogni prodotto/variante."
+REQ-017,PIM,PIM,Workflow - Marketing,"Gestire campi 'channel-specific' (es. Amazon bullet points, Magento long description) mantenendo un master content e override per canale."
+REQ-018,PIM,PIM,Workflow - SEO,"Consentire al team SEO di mantenere meta title, meta description, slug, keyword primarie/secondarie, e regole di canonical."
+REQ-019,PIM,PIM,Workflow - GEO,"Gestire contenuti GEO (Generative Engine Optimization): claim verificabili, FAQ prodotto, entità/attributi strutturati e segnali di autorevolezza per assistenti/ricerca AI."
+REQ-020,PIM,PIM,Workflow - GEO,Imporre che i claim GEO siano associati a fonti/approvazioni interne e possano essere disabilitati per specifici mercati.
+REQ-021,PIM,PIM,Workflow - Legal,"Consentire al team Legal di approvare composizione, claim, e restrizioni (es. materiali regolamentati) prima della pubblicazione."
+REQ-022,PIM,PIM,Workflow - Legal,"Gestire blocchi di pubblicazione per mercati dove esistono vincoli normativi (es. etichettatura, privacy, sostenibilità) con regole configurabili."
+REQ-023,PIM,PIM,Workflow - Translations,"Integrare un processo di traduzione: richiesta traduzione, assegnazione, completamento, revisione e approvazione per lingue multiple."
+REQ-024,PIM,PIM,Workflow - Translations,Permettere traduzioni differenziate per canale (es. tono Amazon vs tono brand site) mantenendo consistenza lessicale.
+REQ-025,PIM,PIM,Workflow - Roles,"Implementare ruoli e permessi (MarketingEditor, SEOEditor, GEOEditor, LegalApprover, TranslationVendor, TranslationReviewer) con segregazione dei compiti."
+REQ-026,PIM,PIM,Workflow - MakerChecker,Applicare Maker-Checker: chi modifica non può approvare lo stesso contenuto per lo stesso stato di workflow.
+REQ-027,PIM,PIM,Workflow - Status Model,Definire stati prodotto: Draft → Enrichment In Progress → Ready for Merchandising → Ready for Publish → Published → Archived.
+REQ-028,PIM,PIM,Workflow - SLA,"Tracciare SLA per step di arricchimento (es. Marketing 48h, Legal 24h, Traduzioni 72h) con alert e dashboard."
+REQ-029,PIM,PIM,Content Quality,"Validare che descrizioni marketing rispettino linee guida: lunghezza min/max, tono, assenza di parole vietate per legal."
+REQ-030,PIM,PIM,SEO Quality,Validare che i meta tag SEO siano unici per canale/lingua e non superino i limiti di caratteri.
+REQ-031,PIM,PIM,Localization,"Gestire locale/mercato: varianti di contenuto per paese, inclusi nomi legali, unità di misura, e disclaimer."
+REQ-032,PIM,PIM,Taxonomy Enrichment,"Consentire al merchandising/marketing di assegnare categorie e attributi navigazionali (fit, silhouette, occasion) separati dagli attributi tecnici."
+REQ-033,PIM,PIM,Attributes Governance,"Definire ownership campo-per-campo (PLM owned, PIM owned, Department owned) e bloccare edit dove non autorizzato."
+REQ-034,PIM,PIM,Change Management,Gestire change request su attributi già pubblicati con impact analysis sui canali e approvazione.
+REQ-035,PIM,PIM,Versioning,Versionare i contenuti di prodotto (revisioni) con confronto diff e possibilità di rollback a versione precedente.
+REQ-036,PIM,PIM,Media Linking,"Consentire associazione logica fra contenuti e asset (immagini, video) per lingua/mercato/canale."
+REQ-037,PIM,PIM,Compliance,Etichettare dati sensibili o regolamentati (es. sustainable claims) e imporre controlli aggiuntivi.
+REQ-038,PIM,PIM,Bulk Operations,Consentire aggiornamenti massivi (bulk edit) su attributi marketing/SEO per collezioni/stagioni con audit.
+REQ-039,PIM,PIM,Notifications,Notificare gli owner quando un prodotto entra in uno step di workflow o quando è bloccato per errori/approvazioni.
+REQ-040,PIM,PIM,Task Management,Creare task assegnabili per arricchimento per dipartimento con priorità e data di scadenza.
+REQ-041,PIM,PIM,KPIs,Misurare completeness per set attributi (minimo per canale) e mostrare percentuale completamento.
+REQ-042,PIM,PIM,Market Restrictions,"Gestire blacklist/whitelist di mercati e canali per SKU (es. non vendibile in US, solo B2B EU)."
+REQ-043,PIM,PIM,Pricing Preview,Mostrare in PIM il prezzo previsto per mercato/valuta e regole di rounding per supportare merchandising.
+REQ-044,PIM,PIM,Stock Preview,"Mostrare in PIM indicatori stock (disponibile, preorder, out of stock) per supportare decisioni di esposizione."
+REQ-045,PIM,PIM,Data Stewardship,"Prevedere un ruolo Data Steward che gestisce eccezioni, mapping tassonomie e qualità dati trasversale."
+REQ-046,PIM,PIM,Attachments,"Gestire allegati legali e schede prodotto come documenti collegati (es. certificazioni, compliance) per audit."
+REQ-047,PIM,PIM,Localization QA,Introdurre step di QA linguistico prima della pubblicazione per mercati critici.
+REQ-048,PIM,PIM,Content Reuse,Consentire riuso controllato di contenuti tra varianti (taglia/colore) mantenendo eccezioni locali.
+REQ-049,PIM,PIM,Channel Readiness,"Calcolare e mostrare 'channel readiness' (Amazon ready, Magento ready, Google ready) in base a completeness + approvazioni."
+REQ-050,PIM,PIM,Governance Reporting,"Produrre report settimanali su backlog di arricchimento, tempi di approvazione e colli di bottiglia."
+REQ-051,DAM,PIM,Inbound Assets,"Importare automaticamente in PIM gli asset approvati in DAM (foto packshot principalmente) associandoli a SKU/variante tramite mapping (SKU in metadata DAM, fallback su naming convention)."
+REQ-052,DAM,PIM,Inbound Assets,"Gestire più rendizioni per immagine (thumbnail, web, zoom, hi-res) mantenendo riferimenti a rendition id e URL."
+REQ-053,DAM,PIM,Inbound Assets,Supportare asset per mercato/lingua (es. immagini con testo) con regole di assegnazione a canali specifici.
+REQ-054,DAM,PIM,Inbound Assets,"Importare anche metadata DAM rilevanti (copyright, usage rights, scadenza licenza, fotografo) e bloccare uso se rights non validi."
+REQ-055,DAM,PIM,Workflow Sync,"Quando un asset passa in DAM a stato 'Approved for Commerce', generare evento di ingest verso PIM in near-real-time."
+REQ-056,DAM,PIM,Error Handling,"In caso di asset senza SKU/metadata necessari, instradare in una coda 'Unmatched assets' con report per remediation."
+REQ-057,DAM,PIM,Deduplication,"Evitare duplicati: se stesso asset id già associato allo SKU, aggiornare solo rendition/metadata."
+REQ-058,DAM,PIM,Quality Gate,Bloccare pubblicazione canali se mancano immagini minime richieste (es. 1 packshot + 2 lifestyle) per quel canale.
+REQ-059,DAM,PIM,Performance,Supportare ingest massivo per campagne (es. 50k immagini) con throttling e retry controllati.
+REQ-060,DAM,PIM,Audit & Traceability,"Registrare in PIM fonte DAM, asset id, versione, e timestamp ingest per audit."
+REQ-061,DAM,PIM,Security,Accedere a DAM tramite API protette e service account; evitare esposizione di token in log.
+REQ-062,DAM,PIM,Content Lifecycle,"Gestire revoca asset: quando in DAM rights scadono o asset viene ritirato, PIM deve disassociare e aggiornare canali."
+REQ-063,DAM,PIM,Preview,Consentire preview in PIM delle immagini e selezione della 'primary image' per canale.
+REQ-064,DAM,PIM,Video Assets,Supportare ingest di video (se presenti) con metadata durata/codec e regole di canale.
+REQ-065,DAM,PIM,Integration Monitoring,"Esporre metriche: ingest success rate, unmatched rate, average latency, backlog size."
+REQ-066,ERP,PIM,Pricing,"Importare listini prezzo multi-valuta (EUR, USD, GBP, JPY) e regole di rounding in PIM per supportare esposizione e calcoli canale."
+REQ-067,ERP,PIM,Pricing,Supportare prezzi per mercato e customer group (B2B tier pricing) inclusi sconti e validità temporale.
+REQ-068,ERP,PIM,Pricing,Gestire currency conversion rate come reference data e tracciare tasso usato per ogni calcolo.
+REQ-069,WMS,PIM,Stock,Importare stock disponibile per SKU e per magazzino con aggregazione per mercato/canale.
+REQ-070,WMS,PIM,Stock,"Gestire stati stock: available, low stock, out-of-stock, preorder con date ETA."
+REQ-071,ERP,Visual Merch Tool,Merch Inputs,Rendere disponibili a Visual Merchandising prezzi e stock (multivaluta + availability) per regole di sorting e boosting.
+REQ-072,PIM,Visual Merch Tool,Merch Catalog,Pubblicare verso il tool di Visual Merchandising il catalogo prodotti 'Ready for Merchandising' con attributi di navigazione e contenuti.
+REQ-073,Visual Merch Tool,PIM,Merch Outputs,"Ricevere dal tool di Visual Merchandising le decisioni di sorting, pinning, boosting e regole per categoria/collezione e salvarle in PIM come 'merch rules'."
+REQ-074,Visual Merch Tool,PIM,Merch Outputs,Gestire versioni di regole merchandising per canale/mercato e capacità di rollback.
+REQ-075,Visual Merch Tool,PIM,Merch Workflow,Consentire workflow di approvazione delle regole merchandising (Merchandiser → Approver) prima dell'export ai canali.
+REQ-076,PIM,Visual Merch Tool,Merch Feedback,Inviare feedback al tool su status prodotto (published/archived) e su disponibilità asset per evitare sorting su item non pubblicabili.
+REQ-077,PIM,Visual Merch Tool,Merch NFR,Supportare update frequenti di prezzo/stock senza dover reinviare interamente il catalogo (delta update).
+REQ-078,ERP,Visual Merch Tool,Merch NFR,Assicurare latenza massima configurabile per aggiornamenti stock critici (es. flash sale) verso il tool.
+REQ-079,PIM,Visual Merch Tool,Merch Monitoring,Tracciare e monitorare esiti di import/export regole merchandising e consistenza tra PIM e tool.
+REQ-080,PIM,Visual Merch Tool,Merch Security,Gestire autenticazione e autorizzazione API fra PIM e tool merchandising; segregare ambienti (dev/test/prod).
+REQ-081,PIM,Google Shopping,Syndication,"Continuare a produrre il feed Google Shopping giornaliero (XML/CSV) dai prodotti 'Published', mantenendo compatibilità con integrazione esistente."
+REQ-082,PIM,Google Shopping,Syndication,"Includere nel feed Google i campi obbligatori (GTIN/MPN, brand, google_product_category, price, image_link) e controlli di conformità."
+REQ-083,PIM,Google Shopping,Syndication,Gestire feed per paese (es. IT/FR/DE/US) con currency e availability corrette.
+REQ-084,PIM,Google Shopping,Syndication,Supportare override canale per titolo/descrizione Google rispetto al master content.
+REQ-085,PIM,Amazon Marketplace,Syndication,Implementare integrazione nuova verso Amazon per creazione/aggiornamento listing basata su assortment selezionati e readiness 'Amazon ready'.
+REQ-086,PIM,Amazon Marketplace,Syndication,Inviare aggiornamenti near-real-time di stock e prezzo verso Amazon per SKU attivi tramite API.
+REQ-087,PIM,Amazon Marketplace,Syndication,"Gestire mapping categorie Amazon, attributi specifici (bullet points, search terms) e varianti (parent/child)."
+REQ-088,PIM,Amazon Marketplace,Syndication,"Gestire errori Amazon (validation, throttling, schema) con retry e coda di reprocess."
+REQ-089,PIM,Amazon Marketplace,Syndication,Supportare separazione per marketplace (EU/US) con cataloghi e regole differenti.
+REQ-090,PIM,Amazon Marketplace,Syndication,Supportare pubblicazione immagini principali e secondarie da asset DAM (via PIM) rispettando requisiti Amazon.
+REQ-091,PIM,Magento B2B,Syndication,"Implementare integrazione nuova verso Magento B2B: sync notturno di catalogo prodotti, strutture configurabili (configurable/simple) e attributi."
+REQ-092,PIM,Magento B2B,Syndication,Sincronizzare prezzi B2B: listino base + tier prices per customer group + validità temporale.
+REQ-093,PIM,Magento B2B,Syndication,"Sincronizzare disponibilità stock per Magento B2B con regole di allocazione B2B (es. stock dedicato, MOQ)."
+REQ-094,PIM,Magento B2B,Syndication,Gestire tassonomie e categorie Magento con mapping da PIM e supporto multi-store view.
+REQ-095,PIM,Magento B2B,Syndication,Gestire localizzazioni e traduzioni per Magento (store views) con fallback a lingua default.
+REQ-096,PIM,Magento B2B,Syndication,"Applicare regole merchandising (sorting/pinning) in export verso Magento dove supportato (categorie, search)."
+REQ-097,PIM,Marketplace Hub,Syndication,"Opzionale: se esiste un hub, supportare pubblicazione verso hub per orchestrare canali multipli, mantenendo PIM come source."
+REQ-098,PIM,Amazon Marketplace,Syndication,Tracciare ID listing e asin associati allo SKU in PIM per riconciliazione e supporto AMS.
+REQ-099,PIM,Magento B2B,Syndication,Supportare delta update (incrementale) oltre al full sync per ridurre finestre batch e migliorare reattività.
+REQ-100,PIM,All Channels,Publishing Governance,"Bloccare export se non soddisfatti: approvazioni Legal, completezza minima contenuti, e asset minimi per canale."
