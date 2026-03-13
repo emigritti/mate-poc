@@ -174,6 +174,8 @@ class TestChromaDBGracefulDegradation:
             assert response.json()["total_parsed"] == 1
         finally:
             agent_main.collection = original_collection
+            agent_main.catalog.clear()
+            agent_main.parsed_requirements.clear()
 
     def test_chromadb_none_does_not_crash_approve(self, client):
         """

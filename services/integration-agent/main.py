@@ -25,6 +25,7 @@ import asyncio
 import csv
 import hmac
 import io
+import json
 import logging
 import re
 import uuid
@@ -49,11 +50,13 @@ from schemas import (
     Approval,
     ApproveRequest,
     CatalogEntry,
+    ConfirmTagsRequest,
     Document,
     LogEntry,
     LogLevel,
     Requirement,
     RejectRequest,
+    SuggestTagsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -284,82 +287,132 @@ async def generate_with_ollama(prompt: str) -> str:
         return body.get("response", "")
 
 
+# ── Tag helpers ───────────────────────────────────────────────────────────────
+
+def _extract_category_tags(reqs: list[Requirement]) -> list[str]:
+    """Return unique, whitespace-stripped category values from requirements (max 5)."""
+    seen: list[str] = []
+    for r in reqs:
+        tag = r.category.strip()
+        if tag and tag not in seen:
+            seen.append(tag)
+        if len(seen) >= 5:
+            break
+    return seen
+
+
+async def _suggest_tags_via_llm(source: str, target: str, req_text: str) -> list[str]:
+    """Call LLM with a lightweight prompt to suggest up to 2 integration tags.
+
+    Returns empty list on any failure (timeout, parse error, etc.) so the
+    caller can safely ignore LLM tags and fall back to category-only tags.
+    """
+    short_req = req_text[:500]
+    prompt = (
+        f"Given this integration between {source} and {target} "
+        f"with these requirements:\n{short_req}\n"
+        "Suggest up to 2 short tags (1-3 words each) that best categorize "
+        "this integration.\n"
+        'Reply with a JSON array only. Example: ["Data Sync", "Real-time"]'
+    )
+    try:
+        raw = await generate_with_ollama(prompt)
+        # Extract JSON array from response (LLM may wrap it in prose)
+        match = re.search(r"\[.*?\]", raw, re.DOTALL)
+        if not match:
+            return []
+        tags = json.loads(match.group())
+        if not isinstance(tags, list):
+            return []
+        return [str(t).strip() for t in tags if str(t).strip()][:2]
+    except Exception as exc:
+        logger.warning("[Tags] LLM tag suggestion failed: %s", exc)
+        return []
+
+
+def _build_rag_context(docs: list[str]) -> str:
+    """Join docs and truncate to prevent prompt overflow on CPU instances."""
+    raw = "\n---\n".join(docs)
+    max_chars = settings.ollama_rag_max_chars
+    if len(raw) > max_chars:
+        log_agent(f"[RAG] Context truncated to {max_chars} chars (was {len(raw)}).")
+        return raw[:max_chars]
+    return raw
+
+
+async def _query_rag_with_tags(
+    query_text: str, tags: list[str]
+) -> tuple[str, str]:
+    """Query ChromaDB with tag filter, falling back to similarity search.
+
+    Returns:
+        (rag_context, source_label)
+        source_label: "tag_filtered" | "similarity_fallback" | "none"
+    """
+    if not collection:
+        return "", "none"
+
+    # Step 1: tag-filtered query using primary tag
+    if tags:
+        try:
+            results = collection.query(
+                query_texts=[query_text],
+                n_results=2,
+                where={"tags_csv": {"$contains": tags[0]}},
+            )
+            docs = (results or {}).get("documents", [[]])[0]
+            if docs:
+                return _build_rag_context(docs), "tag_filtered"
+        except Exception as exc:
+            log_agent(f"[RAG] Tag-filtered query failed: {exc}")
+
+        log_agent(f"[RAG] No tagged examples for {tags} — fallback to similarity search.")
+
+    # Step 2: similarity fallback (no metadata filter)
+    try:
+        results = collection.query(query_texts=[query_text], n_results=2)
+        docs = (results or {}).get("documents", [[]])[0]
+        if docs:
+            return _build_rag_context(docs), "similarity_fallback"
+    except Exception as exc:
+        log_agent(f"[ERROR] ChromaDB similarity query failed: {exc}")
+
+    return "", "none"
+
+
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
 
 async def run_agentic_rag_flow() -> None:
     """
-    Core agentic loop: group requirements → RAG → LLM → guard → HITL queue.
+    Core agentic loop: read TAG_CONFIRMED catalog entries -> RAG -> LLM -> guard -> HITL queue.
 
-    Key fixes vs. original:
-      - async def + await everywhere (G-04)
-      - real LLM call via generate_with_ollama (G-01)
-      - structured prompt from prompt_builder (G-09)
-      - LLM output sanitized via output_guard (G-08)
-      - MongoDB upsert after every dict write (G-02)
-      - source/target read directly from reqs (fixes split-on-hyphen bug)
+    CatalogEntries are created at upload time (PENDING_TAG_REVIEW).
+    This function only processes entries with confirmed tags (TAG_CONFIRMED).
     """
-    log_agent(f"Analyzing {len(parsed_requirements)} requirements to build catalog...")
+    confirmed = [e for e in catalog.values() if e.status == "TAG_CONFIRMED"]
+    log_agent(f"Processing {len(confirmed)} TAG_CONFIRMED integration(s)...")
 
-    # 1. Group requirements by source → target pair
-    # Use '|||' as separator to avoid the key.split('-') hyphen bug (F-16).
-    groups: dict[str, list[Requirement]] = {}
-    for r in parsed_requirements:
-        key = f"{r.source_system}|||{r.target_system}"
-        groups.setdefault(key, []).append(r)
+    for entry in confirmed:
+        source = entry.source.get("system", "Unknown")
+        target = entry.target.get("system", "Unknown")
+        reqs = [r for r in parsed_requirements if r.req_id in entry.requirements]
 
-    for _key, reqs in groups.items():
-        # Read source/target directly — never split the key
-        source = reqs[0].source_system
-        target = reqs[0].target_system
-
-        entry_id = f"INT-{uuid.uuid4().hex[:6].upper()}"
-        entry = CatalogEntry(
-            id=entry_id,
-            name=f"{source} to {target} Integration",
-            type="Auto-discovered",
-            source={"system": source},
-            target={"system": target},
-            requirements=[r.req_id for r in reqs],
-            status="generated",
-            created_at=_now_iso(),
-        )
-        catalog[entry_id] = entry
+        # Update status to PROCESSING
+        entry.status = "PROCESSING"
         if db.catalog_col is not None:
             await db.catalog_col.replace_one(
-                {"id": entry_id}, entry.model_dump(), upsert=True
+                {"id": entry.id}, entry.model_dump(), upsert=True
             )
-        log_agent(f"Created catalog entry: {entry_id} ({entry.name}) — {len(reqs)} reqs.")
+        log_agent(f"Processing entry: {entry.id} ({entry.name}) -- {len(reqs)} reqs.")
 
-        # 2. Agentic RAG: query ChromaDB for past approved examples
-        log_agent(f"[RAG] Evaluating requirements for {entry_id}...")
+        # 1. Agentic RAG: query ChromaDB filtered by confirmed tags
         query_text = " ".join(r.description for r in reqs)
-        rag_context = ""
+        log_agent(f"[RAG] Querying for {entry.id} with tags={entry.tags}...")
+        rag_context, rag_source = await _query_rag_with_tags(query_text, entry.tags)
+        log_agent(f"[RAG] Source: {rag_source} | chars: {len(rag_context)}")
 
-        if collection:
-            try:
-                log_agent("[RAG] Querying ChromaDB for similar past integrations...")
-                results = collection.query(query_texts=[query_text], n_results=2)
-                docs = (results or {}).get("documents", [[]])[0]
-                if docs:
-                    log_agent(f"[RAG] Found {len(docs)} relevant past examples.")
-                    raw_rag = "\n---\n".join(docs)
-                    max_chars = settings.ollama_rag_max_chars
-                    if len(raw_rag) > max_chars:
-                        rag_context = raw_rag[:max_chars]
-                        log_agent(
-                            f"[RAG] Context truncated to {max_chars} chars "
-                            f"(was {len(raw_rag)}) to prevent prompt overflow."
-                        )
-                    else:
-                        rag_context = raw_rag
-                    log_agent("[RAG] Context injected into prompt.")
-                else:
-                    log_agent("[RAG] No strongly relevant past examples found.")
-            except Exception as exc:
-                log_agent(f"[ERROR] ChromaDB query failed: {exc}")
-
-        # 3. Build prompt from meta-prompt template (G-09)
-        log_agent(f"[LLM] Prompting for Functional Spec for {entry_id}...")
+        # 2. Build prompt from meta-prompt template (G-09)
+        log_agent(f"[LLM] Prompting for Functional Spec for {entry.id}...")
         prompt = build_prompt(
             source_system=source,
             target_system=target,
@@ -367,25 +420,25 @@ async def run_agentic_rag_flow() -> None:
             rag_context=rag_context,
         )
 
-        # 4. Call real LLM, apply output guard (G-01, G-08)
+        # 3. Call real LLM, apply output guard (G-01, G-08)
         try:
             raw = await generate_with_ollama(prompt)
             func_content = sanitize_llm_output(raw)
-            log_agent(f"[LLM] Spec generated and sanitized for {entry_id}.")
+            log_agent(f"[LLM] Spec generated and sanitized for {entry.id}.")
         except LLMOutputValidationError as exc:
             preview = (raw or "")[:120].replace("\n", " ")
-            log_agent(f"[GUARD] Output rejected for {entry_id}: {exc}")
+            log_agent(f"[GUARD] Output rejected for {entry.id}: {exc}")
             log_agent(f"[GUARD] Raw preview: {preview!r}")
-            func_content = f"[LLM_OUTPUT_REJECTED: structural guard failed — see agent logs for raw preview]"
+            func_content = "[LLM_OUTPUT_REJECTED: structural guard failed -- see agent logs]"
         except Exception as exc:
-            log_agent(f"[ERROR] LLM generation failed for {entry_id}: {exc}")
-            func_content = "[LLM_UNAVAILABLE: generation failed — retry after Ollama is ready]"
+            log_agent(f"[ERROR] LLM generation failed for {entry.id}: {exc}")
+            func_content = "[LLM_UNAVAILABLE: generation failed -- retry after Ollama is ready]"
 
-        # 5. Create HITL Approval entry
+        # 4. Create HITL Approval entry
         app_id = f"APP-{uuid.uuid4().hex[:6].upper()}"
         approval = Approval(
             id=app_id,
-            integration_id=entry_id,
+            integration_id=entry.id,
             doc_type="functional",
             content=func_content,
             status="PENDING",
@@ -397,6 +450,13 @@ async def run_agentic_rag_flow() -> None:
                 {"id": app_id}, approval.model_dump(), upsert=True
             )
         log_agent(f"Approval {app_id} queued for HITL review.")
+
+        # Update CatalogEntry status to DONE
+        entry.status = "DONE"
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one(
+                {"id": entry.id}, entry.model_dump(), upsert=True
+            )
 
     log_agent("Generation completed. Pending documents are waiting for HITL approval.")
 
@@ -462,7 +522,38 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
         )
         parsed_requirements.append(req)
 
-    return {"status": "success", "total_parsed": len(parsed_requirements)}
+    # Group requirements by source→target and create CatalogEntries
+    groups: dict[str, list[Requirement]] = {}
+    for r in parsed_requirements:
+        key = f"{r.source_system}|||{r.target_system}"
+        groups.setdefault(key, []).append(r)
+
+    for _key, reqs in groups.items():
+        source = reqs[0].source_system
+        target = reqs[0].target_system
+        entry_id = f"INT-{uuid.uuid4().hex[:6].upper()}"
+        entry = CatalogEntry(
+            id=entry_id,
+            name=f"{source} to {target} Integration",
+            type="Auto-discovered",
+            source={"system": source},
+            target={"system": target},
+            requirements=[r.req_id for r in reqs],
+            status="PENDING_TAG_REVIEW",
+            tags=[],
+            created_at=_now_iso(),
+        )
+        catalog[entry_id] = entry
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one(
+                {"id": entry_id}, entry.model_dump(), upsert=True
+            )
+
+    return {
+        "status": "success",
+        "total_parsed": len(parsed_requirements),
+        "integrations_created": len(groups),
+    }
 
 
 @app.get("/api/v1/requirements", tags=["requirements"])
@@ -525,6 +616,19 @@ async def trigger_agent(
             status_code=409, detail="Agent is already running. Wait for it to finish."
         )
 
+    # Gate: all catalog entries must have confirmed tags before generation
+    pending_tag_review = [
+        e.id for e in catalog.values() if e.status == "PENDING_TAG_REVIEW"
+    ]
+    if pending_tag_review:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{len(pending_tag_review)} integration(s) are awaiting tag confirmation. "
+                f"Confirm tags before triggering generation."
+            ),
+        )
+
     global agent_logs
     agent_logs = []
     log_agent("Started Agent Processing Task")
@@ -562,6 +666,77 @@ async def get_func_spec(id: str) -> dict:
 @app.get("/api/v1/catalog/integrations/{id}/technical-spec", tags=["catalog"])
 async def get_tech_spec(id: str) -> dict:
     return {"status": "error", "message": "Technical specs generation is not yet implemented."}
+
+
+@app.get("/api/v1/catalog/integrations/{id}/suggest-tags", tags=["catalog"])
+async def suggest_tags(id: str) -> dict:
+    """Propose tags for an integration from requirement categories + LLM."""
+    if id not in catalog:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+
+    entry = catalog[id]
+    reqs = [r for r in parsed_requirements if r.req_id in entry.requirements]
+
+    # Source 1: category extraction (deterministic)
+    category_tags = _extract_category_tags(reqs)
+
+    # Source 2: LLM suggestion (may return empty list on failure)
+    req_text = " ".join(r.description for r in reqs)
+    llm_tags = await _suggest_tags_via_llm(
+        entry.source.get("system", ""), entry.target.get("system", ""), req_text
+    )
+
+    # Merge, deduplicate, cap at 5
+    merged: list[str] = list(category_tags)
+    for t in llm_tags:
+        if t not in merged:
+            merged.append(t)
+    suggested = merged[:5]
+
+    return SuggestTagsResponse(
+        integration_id=id,
+        suggested_tags=suggested,
+        source={
+            "from_categories": category_tags,
+            "from_llm": [t for t in llm_tags if t not in category_tags],
+        },
+    ).model_dump()
+
+
+@app.post("/api/v1/catalog/integrations/{id}/confirm-tags", tags=["catalog"])
+async def confirm_tags(
+    id: str,
+    body: ConfirmTagsRequest,
+    _token: str = Depends(_require_token),
+) -> dict:
+    """Confirm integration tags and transition status to TAG_CONFIRMED."""
+    if id not in catalog:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+
+    entry = catalog[id]
+    if entry.status != "PENDING_TAG_REVIEW":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tags already confirmed or entry is in status '{entry.status}'.",
+        )
+
+    # Strip whitespace, discard blank tags, enforce max 50 chars each
+    clean_tags = [t.strip()[:50] for t in body.tags if t.strip()]
+    if not clean_tags:
+        raise HTTPException(status_code=422, detail="No valid tags after stripping whitespace.")
+
+    entry.tags = clean_tags
+    entry.status = "TAG_CONFIRMED"
+    if db.catalog_col is not None:
+        await db.catalog_col.replace_one(
+            {"id": id}, entry.model_dump(), upsert=True
+        )
+
+    return {
+        "status": "success",
+        "integration_id": id,
+        "confirmed_tags": clean_tags,
+    }
 
 
 # ── Approvals (HITL) ──────────────────────────────────────────────────────────
@@ -622,15 +797,19 @@ async def approve_doc(
     # Persist to ChromaDB RAG store (learning loop)
     if collection is not None:
         try:
+            # Include confirmed tags as searchable metadata
+            cat_entry = catalog.get(app_entry.integration_id)
+            tags_csv = ",".join(cat_entry.tags) if cat_entry else ""
             collection.upsert(
                 documents=[safe_md],
                 metadatas=[{
                     "integration_id": app_entry.integration_id,
                     "type": app_entry.doc_type,
+                    "tags_csv": tags_csv,
                 }],
                 ids=[doc_id],
             )
-            logger.info("[RAG] Saved %s to ChromaDB.", doc_id)
+            logger.info("[RAG] Saved %s to ChromaDB (tags: %s).", doc_id, tags_csv)
         except Exception as exc:
             logger.warning("[RAG] ChromaDB save failed for %s: %s", doc_id, exc)
 
