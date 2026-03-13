@@ -116,14 +116,14 @@ async function fetchAndShowTagConfirmation() {
     const container = document.getElementById('tag-confirmation-container');
     if (!container) return;
     try {
-        const response = await fetch('/api/v1/catalog/integrations');
+        const response = await fetch(`${API.AGENT}/api/v1/catalog/integrations`);
         const data = await response.json();
         const pendingEntries = (data.data || []).filter(e => e.status === 'PENDING_TAG_REVIEW');
         if (pendingEntries.length === 0) { container.innerHTML = ''; return; }
 
         container.innerHTML = '<h3 style="margin: 16px 0 8px; color: var(--warning, #f0ad4e);">⚠️ Confirm Integration Tags Before Generating</h3>';
         for (const entry of pendingEntries) {
-            const suggestResp = await fetch(`/api/v1/catalog/integrations/${encodeURIComponent(entry.id)}/suggest-tags`);
+            const suggestResp = await fetch(`${API.AGENT}/api/v1/catalog/integrations/${encodeURIComponent(entry.id)}/suggest-tags`);
             const suggestData = await suggestResp.json();
             const panel = buildTagPanel(entry, suggestData.suggested_tags || []);
             container.appendChild(panel);
@@ -200,7 +200,7 @@ async function confirmTagsForEntry(panel, entryId) {
     const selected = [...panel.querySelectorAll('.tag-chip.selected')].map(c => c.dataset.tag);
     if (selected.length === 0) { alert('Select at least one tag.'); return; }
     try {
-        const resp = await fetch(`/api/v1/catalog/integrations/${encodeURIComponent(entryId)}/confirm-tags`, {
+        const resp = await fetch(`${API.AGENT}/api/v1/catalog/integrations/${encodeURIComponent(entryId)}/confirm-tags`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tags: selected }),
