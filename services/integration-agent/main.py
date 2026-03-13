@@ -676,6 +676,42 @@ async def suggest_tags(id: str) -> dict:
     ).model_dump()
 
 
+@app.post("/api/v1/catalog/integrations/{id}/confirm-tags", tags=["catalog"])
+async def confirm_tags(
+    id: str,
+    body: ConfirmTagsRequest,
+    _token: str = Depends(_require_token),
+) -> dict:
+    """Confirm integration tags and transition status to TAG_CONFIRMED."""
+    if id not in catalog:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+
+    entry = catalog[id]
+    if entry.status != "PENDING_TAG_REVIEW":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tags already confirmed or entry is in status '{entry.status}'.",
+        )
+
+    # Strip whitespace, discard blank tags, enforce max 50 chars each
+    clean_tags = [t.strip()[:50] for t in body.tags if t.strip()]
+    if not clean_tags:
+        raise HTTPException(status_code=422, detail="No valid tags after stripping whitespace.")
+
+    entry.tags = clean_tags
+    entry.status = "TAG_CONFIRMED"
+    if db.catalog_col is not None:
+        await db.catalog_col.replace_one(
+            {"id": id}, entry.model_dump(), upsert=True
+        )
+
+    return {
+        "status": "success",
+        "integration_id": id,
+        "confirmed_tags": clean_tags,
+    }
+
+
 # ── Approvals (HITL) ──────────────────────────────────────────────────────────
 
 @app.get("/api/v1/approvals/pending", tags=["approvals"])
