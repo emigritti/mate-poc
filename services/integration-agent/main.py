@@ -284,6 +284,20 @@ async def generate_with_ollama(prompt: str) -> str:
         return body.get("response", "")
 
 
+# ── Tag helpers ───────────────────────────────────────────────────────────────
+
+def _extract_category_tags(reqs: list[Requirement]) -> list[str]:
+    """Return unique, whitespace-stripped category values from requirements (max 5)."""
+    seen: list[str] = []
+    for r in reqs:
+        tag = r.category.strip()
+        if tag and tag not in seen:
+            seen.append(tag)
+        if len(seen) >= 5:
+            break
+    return seen
+
+
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
 
 async def run_agentic_rag_flow() -> None:
