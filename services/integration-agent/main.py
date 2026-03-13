@@ -50,11 +50,13 @@ from schemas import (
     Approval,
     ApproveRequest,
     CatalogEntry,
+    ConfirmTagsRequest,
     Document,
     LogEntry,
     LogLevel,
     Requirement,
     RejectRequest,
+    SuggestTagsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -637,6 +639,41 @@ async def get_func_spec(id: str) -> dict:
 @app.get("/api/v1/catalog/integrations/{id}/technical-spec", tags=["catalog"])
 async def get_tech_spec(id: str) -> dict:
     return {"status": "error", "message": "Technical specs generation is not yet implemented."}
+
+
+@app.get("/api/v1/catalog/integrations/{id}/suggest-tags", tags=["catalog"])
+async def suggest_tags(id: str) -> dict:
+    """Propose tags for an integration from requirement categories + LLM."""
+    if id not in catalog:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+
+    entry = catalog[id]
+    reqs = [r for r in parsed_requirements if r.req_id in entry.requirements]
+
+    # Source 1: category extraction (deterministic)
+    category_tags = _extract_category_tags(reqs)
+
+    # Source 2: LLM suggestion (may return empty list on failure)
+    req_text = " ".join(r.description for r in reqs)
+    llm_tags = await _suggest_tags_via_llm(
+        entry.source.get("system", ""), entry.target.get("system", ""), req_text
+    )
+
+    # Merge, deduplicate, cap at 5
+    merged: list[str] = list(category_tags)
+    for t in llm_tags:
+        if t not in merged:
+            merged.append(t)
+    suggested = merged[:5]
+
+    return SuggestTagsResponse(
+        integration_id=id,
+        suggested_tags=suggested,
+        source={
+            "from_categories": category_tags,
+            "from_llm": [t for t in llm_tags if t not in category_tags],
+        },
+    ).model_dump()
 
 
 # ── Approvals (HITL) ──────────────────────────────────────────────────────────
