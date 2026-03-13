@@ -384,78 +384,35 @@ async def _query_rag_with_tags(
 
 async def run_agentic_rag_flow() -> None:
     """
-    Core agentic loop: group requirements → RAG → LLM → guard → HITL queue.
+    Core agentic loop: read TAG_CONFIRMED catalog entries -> RAG -> LLM -> guard -> HITL queue.
 
-    Key fixes vs. original:
-      - async def + await everywhere (G-04)
-      - real LLM call via generate_with_ollama (G-01)
-      - structured prompt from prompt_builder (G-09)
-      - LLM output sanitized via output_guard (G-08)
-      - MongoDB upsert after every dict write (G-02)
-      - source/target read directly from reqs (fixes split-on-hyphen bug)
+    CatalogEntries are created at upload time (PENDING_TAG_REVIEW).
+    This function only processes entries with confirmed tags (TAG_CONFIRMED).
     """
-    log_agent(f"Analyzing {len(parsed_requirements)} requirements to build catalog...")
+    confirmed = [e for e in catalog.values() if e.status == "TAG_CONFIRMED"]
+    log_agent(f"Processing {len(confirmed)} TAG_CONFIRMED integration(s)...")
 
-    # 1. Group requirements by source → target pair
-    # Use '|||' as separator to avoid the key.split('-') hyphen bug (F-16).
-    groups: dict[str, list[Requirement]] = {}
-    for r in parsed_requirements:
-        key = f"{r.source_system}|||{r.target_system}"
-        groups.setdefault(key, []).append(r)
+    for entry in confirmed:
+        source = entry.source.get("system", "Unknown")
+        target = entry.target.get("system", "Unknown")
+        reqs = [r for r in parsed_requirements if r.req_id in entry.requirements]
 
-    for _key, reqs in groups.items():
-        # Read source/target directly — never split the key
-        source = reqs[0].source_system
-        target = reqs[0].target_system
-
-        entry_id = f"INT-{uuid.uuid4().hex[:6].upper()}"
-        entry = CatalogEntry(
-            id=entry_id,
-            name=f"{source} to {target} Integration",
-            type="Auto-discovered",
-            source={"system": source},
-            target={"system": target},
-            requirements=[r.req_id for r in reqs],
-            status="generated",
-            created_at=_now_iso(),
-        )
-        catalog[entry_id] = entry
+        # Update status to PROCESSING
+        entry.status = "PROCESSING"
         if db.catalog_col is not None:
             await db.catalog_col.replace_one(
-                {"id": entry_id}, entry.model_dump(), upsert=True
+                {"id": entry.id}, entry.model_dump(), upsert=True
             )
-        log_agent(f"Created catalog entry: {entry_id} ({entry.name}) — {len(reqs)} reqs.")
+        log_agent(f"Processing entry: {entry.id} ({entry.name}) -- {len(reqs)} reqs.")
 
-        # 2. Agentic RAG: query ChromaDB for past approved examples
-        log_agent(f"[RAG] Evaluating requirements for {entry_id}...")
+        # 1. Agentic RAG: query ChromaDB filtered by confirmed tags
         query_text = " ".join(r.description for r in reqs)
-        rag_context = ""
+        log_agent(f"[RAG] Querying for {entry.id} with tags={entry.tags}...")
+        rag_context, rag_source = await _query_rag_with_tags(query_text, entry.tags)
+        log_agent(f"[RAG] Source: {rag_source} | chars: {len(rag_context)}")
 
-        if collection:
-            try:
-                log_agent("[RAG] Querying ChromaDB for similar past integrations...")
-                results = collection.query(query_texts=[query_text], n_results=2)
-                docs = (results or {}).get("documents", [[]])[0]
-                if docs:
-                    log_agent(f"[RAG] Found {len(docs)} relevant past examples.")
-                    raw_rag = "\n---\n".join(docs)
-                    max_chars = settings.ollama_rag_max_chars
-                    if len(raw_rag) > max_chars:
-                        rag_context = raw_rag[:max_chars]
-                        log_agent(
-                            f"[RAG] Context truncated to {max_chars} chars "
-                            f"(was {len(raw_rag)}) to prevent prompt overflow."
-                        )
-                    else:
-                        rag_context = raw_rag
-                    log_agent("[RAG] Context injected into prompt.")
-                else:
-                    log_agent("[RAG] No strongly relevant past examples found.")
-            except Exception as exc:
-                log_agent(f"[ERROR] ChromaDB query failed: {exc}")
-
-        # 3. Build prompt from meta-prompt template (G-09)
-        log_agent(f"[LLM] Prompting for Functional Spec for {entry_id}...")
+        # 2. Build prompt from meta-prompt template (G-09)
+        log_agent(f"[LLM] Prompting for Functional Spec for {entry.id}...")
         prompt = build_prompt(
             source_system=source,
             target_system=target,
@@ -463,25 +420,25 @@ async def run_agentic_rag_flow() -> None:
             rag_context=rag_context,
         )
 
-        # 4. Call real LLM, apply output guard (G-01, G-08)
+        # 3. Call real LLM, apply output guard (G-01, G-08)
         try:
             raw = await generate_with_ollama(prompt)
             func_content = sanitize_llm_output(raw)
-            log_agent(f"[LLM] Spec generated and sanitized for {entry_id}.")
+            log_agent(f"[LLM] Spec generated and sanitized for {entry.id}.")
         except LLMOutputValidationError as exc:
             preview = (raw or "")[:120].replace("\n", " ")
-            log_agent(f"[GUARD] Output rejected for {entry_id}: {exc}")
+            log_agent(f"[GUARD] Output rejected for {entry.id}: {exc}")
             log_agent(f"[GUARD] Raw preview: {preview!r}")
-            func_content = f"[LLM_OUTPUT_REJECTED: structural guard failed — see agent logs for raw preview]"
+            func_content = "[LLM_OUTPUT_REJECTED: structural guard failed -- see agent logs]"
         except Exception as exc:
-            log_agent(f"[ERROR] LLM generation failed for {entry_id}: {exc}")
-            func_content = "[LLM_UNAVAILABLE: generation failed — retry after Ollama is ready]"
+            log_agent(f"[ERROR] LLM generation failed for {entry.id}: {exc}")
+            func_content = "[LLM_UNAVAILABLE: generation failed -- retry after Ollama is ready]"
 
-        # 5. Create HITL Approval entry
+        # 4. Create HITL Approval entry
         app_id = f"APP-{uuid.uuid4().hex[:6].upper()}"
         approval = Approval(
             id=app_id,
-            integration_id=entry_id,
+            integration_id=entry.id,
             doc_type="functional",
             content=func_content,
             status="PENDING",
@@ -493,6 +450,13 @@ async def run_agentic_rag_flow() -> None:
                 {"id": app_id}, approval.model_dump(), upsert=True
             )
         log_agent(f"Approval {app_id} queued for HITL review.")
+
+        # Update CatalogEntry status to DONE
+        entry.status = "DONE"
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one(
+                {"id": entry.id}, entry.model_dump(), upsert=True
+            )
 
     log_agent("Generation completed. Pending documents are waiting for HITL approval.")
 
