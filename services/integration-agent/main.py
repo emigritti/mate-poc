@@ -330,6 +330,56 @@ async def _suggest_tags_via_llm(source: str, target: str, req_text: str) -> list
         return []
 
 
+def _build_rag_context(docs: list[str]) -> str:
+    """Join docs and truncate to prevent prompt overflow on CPU instances."""
+    raw = "\n---\n".join(docs)
+    max_chars = settings.ollama_rag_max_chars
+    if len(raw) > max_chars:
+        log_agent(f"[RAG] Context truncated to {max_chars} chars (was {len(raw)}).")
+        return raw[:max_chars]
+    return raw
+
+
+async def _query_rag_with_tags(
+    query_text: str, tags: list[str]
+) -> tuple[str, str]:
+    """Query ChromaDB with tag filter, falling back to similarity search.
+
+    Returns:
+        (rag_context, source_label)
+        source_label: "tag_filtered" | "similarity_fallback" | "none"
+    """
+    if not collection:
+        return "", "none"
+
+    # Step 1: tag-filtered query using primary tag
+    if tags:
+        try:
+            results = collection.query(
+                query_texts=[query_text],
+                n_results=2,
+                where={"tags_csv": {"$contains": tags[0]}},
+            )
+            docs = (results or {}).get("documents", [[]])[0]
+            if docs:
+                return _build_rag_context(docs), "tag_filtered"
+        except Exception as exc:
+            log_agent(f"[RAG] Tag-filtered query failed: {exc}")
+
+        log_agent(f"[RAG] No tagged examples for {tags} — fallback to similarity search.")
+
+    # Step 2: similarity fallback (no metadata filter)
+    try:
+        results = collection.query(query_texts=[query_text], n_results=2)
+        docs = (results or {}).get("documents", [[]])[0]
+        if docs:
+            return _build_rag_context(docs), "similarity_fallback"
+    except Exception as exc:
+        log_agent(f"[ERROR] ChromaDB similarity query failed: {exc}")
+
+    return "", "none"
+
+
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
 
 async def run_agentic_rag_flow() -> None:
