@@ -63,6 +63,7 @@ async function renderRequirements() {
             </div>
             <div id="uploadResult" style="margin-top:12px;"></div>
         </div>
+        <div id="tag-confirmation-container"></div>
         <div id="requirementsList"><div class="loading">Loading current requirements...</div></div>
     `;
     loadRequirementsList();
@@ -80,6 +81,7 @@ async function uploadCsv() {
         const data = await API.uploadRequirements(fileInput.files[0]);
         res.innerHTML = `<span style="color:var(--success)">✅ Successfully parsed ${data.total_parsed || 0} requirements.</span>`;
         loadRequirementsList();
+        fetchAndShowTagConfirmation();
     } catch (e) {
         res.innerHTML = `<span style="color:var(--error)">❌ Error: ${escapeHtml(e.message)}</span>`;
     }
@@ -106,6 +108,112 @@ async function loadRequirementsList() {
             </tr>`).join('')}</tbody>
         </table>`;
     } catch (e) { list.innerHTML = `<div class="empty-state"><p>${escapeHtml(e.message)}</p></div>`; }
+}
+
+// ── Tag Confirmation ─────────────────────────────────
+
+async function fetchAndShowTagConfirmation() {
+    const container = document.getElementById('tag-confirmation-container');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/v1/catalog/integrations');
+        const data = await response.json();
+        const pendingEntries = (data.data || []).filter(e => e.status === 'PENDING_TAG_REVIEW');
+        if (pendingEntries.length === 0) { container.innerHTML = ''; return; }
+
+        container.innerHTML = '<h3 style="margin: 16px 0 8px; color: var(--warning, #f0ad4e);">⚠️ Confirm Integration Tags Before Generating</h3>';
+        for (const entry of pendingEntries) {
+            const suggestResp = await fetch(`/api/v1/catalog/integrations/${encodeURIComponent(entry.id)}/suggest-tags`);
+            const suggestData = await suggestResp.json();
+            const panel = buildTagPanel(entry, suggestData.suggested_tags || []);
+            container.appendChild(panel);
+        }
+    } catch (e) {
+        if (container) container.innerHTML = `<p style="color:var(--error)">Could not load tag suggestions: ${escapeHtml(e.message)}</p>`;
+    }
+}
+
+function buildTagPanel(entry, suggestedTags) {
+    const div = document.createElement('div');
+    div.className = 'tag-panel';
+    div.dataset.entryId = entry.id;
+
+    const title = document.createElement('h4');
+    title.textContent = escapeHtml(entry.name);
+    title.style.marginBottom = '8px';
+    div.appendChild(title);
+
+    const chipContainer = document.createElement('div');
+    chipContainer.className = 'tag-chips';
+    suggestedTags.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip selected';
+        chip.textContent = escapeHtml(tag);
+        chip.dataset.tag = tag;
+        chip.addEventListener('click', () => chip.classList.toggle('selected'));
+        chipContainer.appendChild(chip);
+    });
+    div.appendChild(chipContainer);
+
+    const customContainer = document.createElement('div');
+    customContainer.className = 'custom-tags';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Add custom tag (max 3 custom)';
+    input.maxLength = 50;
+    input.className = 'tag-custom-input';
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+ Add';
+    addBtn.className = 'btn btn-sm';
+    addBtn.addEventListener('click', () => {
+        const customChips = div.querySelectorAll('.tag-chip.custom');
+        if (customChips.length >= 3) return;
+        const val = input.value.trim();
+        if (!val) return;
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip selected custom';
+        chip.textContent = escapeHtml(val);
+        chip.dataset.tag = val;
+        chip.addEventListener('click', () => chip.classList.toggle('selected'));
+        chipContainer.appendChild(chip);
+        input.value = '';
+        if (div.querySelectorAll('.tag-chip.custom').length >= 3) {
+            input.disabled = true;
+            addBtn.disabled = true;
+        }
+    });
+    customContainer.appendChild(input);
+    customContainer.appendChild(addBtn);
+    div.appendChild(customContainer);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-primary confirm-tags-btn';
+    confirmBtn.textContent = 'Confirm Tags \u2192';
+    confirmBtn.style.marginTop = '10px';
+    confirmBtn.addEventListener('click', () => confirmTagsForEntry(div, entry.id));
+    div.appendChild(confirmBtn);
+
+    return div;
+}
+
+async function confirmTagsForEntry(panel, entryId) {
+    const selected = [...panel.querySelectorAll('.tag-chip.selected')].map(c => c.dataset.tag);
+    if (selected.length === 0) { alert('Select at least one tag.'); return; }
+    try {
+        const resp = await fetch(`/api/v1/catalog/integrations/${encodeURIComponent(entryId)}/confirm-tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tags: selected }),
+        });
+        if (resp.ok) {
+            panel.innerHTML = `<p class="tags-confirmed">&#10003; Tags confirmed: ${selected.map(escapeHtml).join(', ')}</p>`;
+        } else {
+            const err = await resp.json();
+            alert(`Error: ${escapeHtml(err.detail || 'Unknown error')}`);
+        }
+    } catch (e) {
+        alert(`Network error: ${escapeHtml(e.message)}`);
+    }
 }
 
 // ── APIs Page ───────────────────────────────────────
