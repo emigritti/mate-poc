@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     ollama_host: str                             # required — no default
     ollama_model: str = "llama3.1:8b"
     ollama_timeout_seconds: int = 120
+    # num_predict caps generated tokens — prevents timeout on slow CPU instances.
+    # llama3.1:8b on CPU (~3 tok/s): 1000 tokens ≈ 333s, well within 600s timeout.
+    # Override via OLLAMA_NUM_PREDICT env var for faster hardware.
+    ollama_num_predict: int = 1000
+    # temperature controls randomness; lower = more deterministic and slightly faster.
+    ollama_temperature: float = 0.3
 
     # ── Vector DB ─────────────────────────────────────────────────────
     chroma_host: str = "mate-chromadb"

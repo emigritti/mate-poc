@@ -85,6 +85,24 @@ services:
       start_period: 60s
     logging: *default-logging
 
+  ollama-init:
+    image: ollama/ollama
+    container_name: mate-ollama-init
+    # Pull the configured model into the shared ollama-data volume.
+    # Idempotent: if the model is already present, exits in seconds.
+    # integration-agent depends on service_completed_successfully so it
+    # never starts a generation job against a missing model.
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-llama3.2:3b}"]
+    environment:
+      - OLLAMA_HOST=http://mate-ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - integration-mate-net
+    restart: "no"
+    logging: *default-logging
+
   # ── Object Storage Layer ───────────────────────────────
 
   minio:
@@ -271,6 +289,8 @@ services:
         condition: service_started
       ollama:
         condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
     networks:
       - integration-mate-net
     healthcheck:

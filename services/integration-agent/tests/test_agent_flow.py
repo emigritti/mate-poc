@@ -253,11 +253,10 @@ class TestLLMErrorHandling:
 
 
 class TestGenerateWithOllamaOptions:
-    def test_ollama_payload_includes_num_predict_and_temperature(self):
+    def _call_generate_with_ollama(self) -> dict:
         """
-        generate_with_ollama must pass an 'options' dict with num_predict and
-        temperature to the Ollama API call.  This caps token generation (speed)
-        and reduces randomness (quality consistency) without changing the model.
+        Helper: call generate_with_ollama with a mocked httpx client and
+        return the captured JSON payload sent to the Ollama API.
         """
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -287,12 +286,36 @@ class TestGenerateWithOllamaOptions:
             from main import generate_with_ollama
             asyncio.run(generate_with_ollama("test prompt"))
 
-        options = captured.get("payload", {}).get("options", {})
-        assert options.get("num_predict") == 1800, (
-            f"Expected num_predict=1800, got {options.get('num_predict')!r}"
+        return captured.get("payload", {})
+
+    def test_ollama_payload_num_predict_matches_settings(self):
+        """
+        generate_with_ollama must read num_predict from settings.ollama_num_predict
+        so the token cap is tunable via OLLAMA_NUM_PREDICT env var without
+        redeploying code.  On CPU-only instances (llama3.1:8b ~3 tok/s),
+        1800 tokens × (1/3 tok/s) = 600s = timeout; a lower default prevents that.
+        """
+        from config import settings
+
+        payload = self._call_generate_with_ollama()
+        options = payload.get("options", {})
+        assert options.get("num_predict") == settings.ollama_num_predict, (
+            f"Expected num_predict={settings.ollama_num_predict}, "
+            f"got {options.get('num_predict')!r}"
         )
-        assert options.get("temperature") == 0.3, (
-            f"Expected temperature=0.3, got {options.get('temperature')!r}"
+
+    def test_ollama_payload_temperature_matches_settings(self):
+        """
+        generate_with_ollama must read temperature from settings.ollama_temperature
+        so the value is tunable via OLLAMA_TEMPERATURE env var.
+        """
+        from config import settings
+
+        payload = self._call_generate_with_ollama()
+        options = payload.get("options", {})
+        assert options.get("temperature") == settings.ollama_temperature, (
+            f"Expected temperature={settings.ollama_temperature}, "
+            f"got {options.get('temperature')!r}"
         )
 
 

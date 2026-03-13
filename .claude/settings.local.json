@@ -53,7 +53,9 @@
       "Bash(python -m pytest tests/test_log_agent.py::test_prune_removes_old_entries -v)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(python -m pytest tests/test_log_agent.py::test_logs_endpoint_returns_structured_entries -v)"
+      "Bash(python -m pytest tests/test_log_agent.py::test_logs_endpoint_returns_structured_entries -v)",
+      "Bash(python -m pytest tests/test_agent_flow.py::TestGenerateWithOllamaOptions -v)",
+      "Bash(docker compose:*)"
     ]
   }
 }
