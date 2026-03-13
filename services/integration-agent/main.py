@@ -25,6 +25,7 @@ import asyncio
 import csv
 import hmac
 import io
+import json
 import logging
 import re
 import uuid
@@ -296,6 +297,35 @@ def _extract_category_tags(reqs: list[Requirement]) -> list[str]:
         if len(seen) >= 5:
             break
     return seen
+
+
+async def _suggest_tags_via_llm(source: str, target: str, req_text: str) -> list[str]:
+    """Call LLM with a lightweight prompt to suggest up to 2 integration tags.
+
+    Returns empty list on any failure (timeout, parse error, etc.) so the
+    caller can safely ignore LLM tags and fall back to category-only tags.
+    """
+    short_req = req_text[:500]
+    prompt = (
+        f"Given this integration between {source} and {target} "
+        f"with these requirements:\n{short_req}\n"
+        "Suggest up to 2 short tags (1-3 words each) that best categorize "
+        "this integration.\n"
+        'Reply with a JSON array only. Example: ["Data Sync", "Real-time"]'
+    )
+    try:
+        raw = await generate_with_ollama(prompt)
+        # Extract JSON array from response (LLM may wrap it in prose)
+        match = re.search(r"\[.*?\]", raw, re.DOTALL)
+        if not match:
+            return []
+        tags = json.loads(match.group())
+        if not isinstance(tags, list):
+            return []
+        return [str(t).strip() for t in tags if str(t).strip()][:2]
+    except Exception as exc:
+        logger.warning("[Tags] LLM tag suggestion failed: %s", exc)
+        return []
 
 
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
