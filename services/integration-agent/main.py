@@ -342,7 +342,16 @@ async def run_agentic_rag_flow() -> None:
                 docs = (results or {}).get("documents", [[]])[0]
                 if docs:
                     log_agent(f"[RAG] Found {len(docs)} relevant past examples.")
-                    rag_context = "\n---\n".join(docs)
+                    raw_rag = "\n---\n".join(docs)
+                    max_chars = settings.ollama_rag_max_chars
+                    if len(raw_rag) > max_chars:
+                        rag_context = raw_rag[:max_chars]
+                        log_agent(
+                            f"[RAG] Context truncated to {max_chars} chars "
+                            f"(was {len(raw_rag)}) to prevent prompt overflow."
+                        )
+                    else:
+                        rag_context = raw_rag
                     log_agent("[RAG] Context injected into prompt.")
                 else:
                     log_agent("[RAG] No strongly relevant past examples found.")

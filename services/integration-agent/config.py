@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     ollama_num_predict: int = 1000
     # temperature controls randomness; lower = more deterministic and slightly faster.
     ollama_temperature: float = 0.3
+    # RAG context injected into the prompt is truncated to this many chars.
+    # Full approved documents (~4800 chars) double the prompt and slow CPU inference.
+    # 1500 chars captures the key patterns without exploding the KV cache.
+    ollama_rag_max_chars: int = 1500
 
     # ── Vector DB ─────────────────────────────────────────────────────
     chroma_host: str = "mate-chromadb"
