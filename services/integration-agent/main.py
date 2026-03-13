@@ -602,6 +602,19 @@ async def trigger_agent(
             status_code=409, detail="Agent is already running. Wait for it to finish."
         )
 
+    # Gate: all catalog entries must have confirmed tags before generation
+    pending_tag_review = [
+        e.id for e in catalog.values() if e.status == "PENDING_TAG_REVIEW"
+    ]
+    if pending_tag_review:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{len(pending_tag_review)} integration(s) are awaiting tag confirmation. "
+                f"Confirm tags before triggering generation."
+            ),
+        )
+
     global agent_logs
     agent_logs = []
     log_agent("Started Agent Processing Task")
