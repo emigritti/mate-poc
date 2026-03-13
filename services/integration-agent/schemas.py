@@ -37,6 +37,7 @@ class CatalogEntry(BaseModel):
     target: Dict[str, str]
     requirements: List[str]
     status: str
+    tags: List[str] = []          # confirmed tags (max 5)
     created_at: str
 
 
@@ -80,3 +81,19 @@ class RejectRequest(BaseModel):
         max_length=2_000,
         description="Reason for rejection — used as context for agent retry.",
     )
+
+
+class ConfirmTagsRequest(BaseModel):
+    """Body for POST /api/v1/catalog/integrations/{id}/confirm-tags."""
+    tags: List[str] = Field(
+        min_length=1,
+        max_length=5,
+        description="Confirmed tags (1–5 items). Each tag max 50 chars.",
+    )
+
+
+class SuggestTagsResponse(BaseModel):
+    """Response for GET /api/v1/catalog/integrations/{id}/suggest-tags."""
+    integration_id: str
+    suggested_tags: List[str]
+    source: Dict[str, List[str]]
