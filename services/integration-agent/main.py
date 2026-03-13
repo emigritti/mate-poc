@@ -506,7 +506,38 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
         )
         parsed_requirements.append(req)
 
-    return {"status": "success", "total_parsed": len(parsed_requirements)}
+    # Group requirements by source→target and create CatalogEntries
+    groups: dict[str, list[Requirement]] = {}
+    for r in parsed_requirements:
+        key = f"{r.source_system}|||{r.target_system}"
+        groups.setdefault(key, []).append(r)
+
+    for _key, reqs in groups.items():
+        source = reqs[0].source_system
+        target = reqs[0].target_system
+        entry_id = f"INT-{uuid.uuid4().hex[:6].upper()}"
+        entry = CatalogEntry(
+            id=entry_id,
+            name=f"{source} to {target} Integration",
+            type="Auto-discovered",
+            source={"system": source},
+            target={"system": target},
+            requirements=[r.req_id for r in reqs],
+            status="PENDING_TAG_REVIEW",
+            tags=[],
+            created_at=_now_iso(),
+        )
+        catalog[entry_id] = entry
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one(
+                {"id": entry_id}, entry.model_dump(), upsert=True
+            )
+
+    return {
+        "status": "success",
+        "total_parsed": len(parsed_requirements),
+        "integrations_created": len(groups),
+    }
 
 
 @app.get("/api/v1/requirements", tags=["requirements"])
