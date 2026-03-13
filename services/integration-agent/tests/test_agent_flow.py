@@ -249,6 +249,53 @@ class TestLLMErrorHandling:
         assert not agent_main._agent_lock.locked()
 
 
+# ── Ollama payload options ─────────────────────────────────────────────
+
+
+class TestGenerateWithOllamaOptions:
+    def test_ollama_payload_includes_num_predict_and_temperature(self):
+        """
+        generate_with_ollama must pass an 'options' dict with num_predict and
+        temperature to the Ollama API call.  This caps token generation (speed)
+        and reduces randomness (quality consistency) without changing the model.
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        captured = {}
+
+        async def fake_post(url, json=None, **kwargs):
+            captured["payload"] = json
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_resp.json.return_value = {
+                "response": "# Integration Functional Design\n\nContent.",
+                "eval_count": 10,
+                "prompt_eval_count": 5,
+                "eval_duration": 1_000_000_000,
+                "total_duration": 2_000_000_000,
+                "load_duration": 100_000_000,
+            }
+            return mock_resp
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = fake_post
+
+        with patch("main.httpx.AsyncClient", return_value=mock_client):
+            from main import generate_with_ollama
+            asyncio.run(generate_with_ollama("test prompt"))
+
+        options = captured.get("payload", {}).get("options", {})
+        assert options.get("num_predict") == 1800, (
+            f"Expected num_predict=1800, got {options.get('num_predict')!r}"
+        )
+        assert options.get("temperature") == 0.3, (
+            f"Expected temperature=0.3, got {options.get('temperature')!r}"
+        )
+
+
 # ── Health endpoint ────────────────────────────────────────────────────
 
 

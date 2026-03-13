@@ -65,9 +65,22 @@ def _load_template() -> str:
 
 
 def _load_functional_template() -> str:
-    """Load the functional design template from the template directory."""
+    """Load the functional design template from the template directory.
+
+    The template file uses backslash-escaped markdown (\\#, \\##, \\-) to
+    prevent editor rendering.  Those escapes are stripped here at load time
+    so the LLM receives clean Markdown syntax, reducing prompt token count
+    and avoiding model confusion.
+    """
     try:
         content = _FUNCTIONAL_TEMPLATE_PATH.read_text(encoding="utf-8")
+        # Strip backslash escapes from Markdown heading/list markers.
+        # Process longest prefix first (###, ##, #) to avoid double-stripping.
+        content = content.replace(r"\### ", "### ")
+        content = content.replace(r"\## ", "## ")
+        content = content.replace(r"\# ", "# ")
+        content = content.replace(r"\- ", "- ")
+        content = content.replace(r"\| ", "| ")
         logger.info(
             "[PromptBuilder] Loaded functional template from %s",
             _FUNCTIONAL_TEMPLATE_PATH,

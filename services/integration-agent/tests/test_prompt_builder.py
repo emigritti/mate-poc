@@ -97,3 +97,16 @@ class TestBuildPrompt:
         prompt = build_prompt("{source_system}", "{target_system}", "req", "")
         assert isinstance(prompt, str)
         assert len(prompt) > 10
+
+    def test_template_headings_have_no_backslash_before_hash(self):
+        """
+        The functional design template is stored with backslash-escaped markdown
+        (\\#, \\##, \\-) to avoid rendering side-effects in editors.  The prompt
+        builder must strip those backslashes before injecting the template so the
+        LLM receives clean '## Heading' syntax — not the noisy '\\## Heading' form
+        that inflates the token count and confuses the model.
+        """
+        prompt = build_prompt("PLM", "PIM", "Sync product data", "")
+        assert r"\# " not in prompt
+        assert r"\## " not in prompt
+        assert r"\### " not in prompt

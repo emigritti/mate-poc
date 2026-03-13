@@ -252,6 +252,10 @@ async def generate_with_ollama(prompt: str) -> str:
                 "model": settings.ollama_model,
                 "prompt": prompt,
                 "stream": False,
+                "options": {
+                    "num_predict": 1800,  # cap output tokens — full doc fits in ~1500
+                    "temperature": 0.3,   # less randomness → faster, more deterministic
+                },
             },
         )
         res.raise_for_status()
