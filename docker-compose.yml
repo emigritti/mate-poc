@@ -187,7 +187,7 @@ services:
       - S3_ENDPOINT=http://mate-minio:9000
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
     depends_on:
       minio:
         condition: service_started
@@ -219,7 +219,7 @@ services:
       - API_KEY_PLM=${API_KEY_PLM:-plm-key-dev}
       - API_KEY_PIM=${API_KEY_PIM:-pim-key-dev}
       - API_KEY_DAM=${API_KEY_DAM:-dam-key-dev}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
     networks:
       - integration-mate-net
     healthcheck:
@@ -242,7 +242,7 @@ services:
       - AGENT_BASE_URL=http://mate-integration-agent:3003
       - AGENT_API_KEY=${API_KEY:-}
       - AGENT_TIMEOUT_SECONDS=30
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
     depends_on:
       integration-agent:
         condition: service_started
@@ -280,7 +280,7 @@ services:
       - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-600}
       - CHROMA_HOST=mate-chromadb
       - MONGO_URI=mongodb://mate-mongodb:27017
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
       # API_KEY: set this env var to enable token auth; leave unset for open PoC mode
     depends_on:
       mongodb:

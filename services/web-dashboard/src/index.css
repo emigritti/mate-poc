@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #f8fafc;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
+  }
+}
+
+@layer components {
+  /* Terminal log line colors */
+  .log-info    { @apply text-blue-400; }
+  .log-llm     { @apply text-purple-400; }
+  .log-rag     { @apply text-cyan-400; }
+  .log-success { @apply text-emerald-400; }
+  .log-warn    { @apply text-amber-400; }
+  .log-warning { @apply text-amber-400; }
+  .log-error   { @apply text-rose-400; }
+  .log-cancel  { @apply text-orange-400; }
+
+  /* Scrollbar styling for terminal */
+  .terminal-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .terminal-scroll::-webkit-scrollbar-track {
+    background: #0f172a;
+  }
+  .terminal-scroll::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+}
