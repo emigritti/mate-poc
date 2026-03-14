@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     llm_max_output_chars: int = 50_000
 
     # ── CORS (comma-separated origin list) ────────────────────────────
-    cors_origins: str = "http://localhost:8080,http://localhost:3000"
+    cors_origins: str = "http://localhost:8080,http://localhost:3000,http://localhost:5173"
 
     # ── Log TTL ──────────────────────────────────────────────────────
     log_ttl_hours: int = 4   # env: LOG_TTL_HOURS — prune entries older than N hours
