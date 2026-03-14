@@ -55,7 +55,27 @@
       "Bash(git commit:*)",
       "Bash(python -m pytest tests/test_log_agent.py::test_logs_endpoint_returns_structured_entries -v)",
       "Bash(python -m pytest tests/test_agent_flow.py::TestGenerateWithOllamaOptions -v)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(python -m pytest tests/test_schemas.py -v)",
+      "Bash(python -m pytest tests/test_tag_suggestion.py::test_extract_category_tags_unique -v)",
+      "Bash(python -m pytest tests/test_tag_suggestion.py -k \"extract_category\" -v)",
+      "Bash(python -m pytest tests/test_tag_suggestion.py -v)",
+      "Bash(python -m pytest tests/test_tag_suggestion.py::test_suggest_tags_via_llm_valid_json -v)",
+      "Bash(python -m pytest tests/test_upload_creates_catalog.py -v)",
+      "Bash(python -m pytest tests/test_requirements_upload.py -v)",
+      "Bash(python -m pytest tests/test_suggest_tags_endpoint.py -v)",
+      "Bash(python -m pytest tests/test_confirm_tags.py -v)",
+      "Bash(python -m pytest tests/)",
+      "Bash(python -m pytest tests/test_trigger_gate.py::test_trigger_blocked_when_pending_tag_review -v)",
+      "Bash(python -m pytest tests/test_trigger_gate.py -v)",
+      "Bash(python -m pytest tests/test_agent_flow.py::TestLLMErrorHandling::test_llm_connection_error_is_caught_in_flow -v)",
+      "Bash(python -m pytest tests/test_rag_filtering.py -v)",
+      "Bash(python:*)",
+      "Bash(python -c \"print\\(list\\(b''\\\\n---\\\\n''\\)\\)\")",
+      "Bash(npm run:*)",
+      "Skill(commit-commands:commit-push-pr)",
+      "Skill(commit-commands:commit-push-pr:*)"
     ]
   }
 }
