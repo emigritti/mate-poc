@@ -170,9 +170,13 @@ export default function RequirementsPage() {
   const [error, setError]               = useState(null);
   const fileInputRef = useRef(null);
 
+  // Load existing data on mount and after each successful upload
+  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleFile = async (file) => {
-    if (!file?.name.endsWith('.csv')) {
-      setError('Please upload a CSV file');
+    const lowerName = file?.name?.toLowerCase() ?? '';
+    if (!lowerName.endsWith('.csv')) {
+      setError('Please upload a CSV file (.csv)');
       return;
     }
     setError(null);
@@ -189,14 +193,20 @@ export default function RequirementsPage() {
   };
 
   const loadData = async () => {
-    const [reqRes, catRes] = await Promise.all([
-      API.requirements.list(),
-      API.catalog.list(),
-    ]);
-    const reqs = await reqRes.json();
-    setRequirements(reqs.requirements || []);
-    const cats = await catRes.json();
-    setPendingTags((cats.integrations || []).filter(i => i.status === 'PENDING_TAG_REVIEW'));
+    try {
+      const [reqRes, catRes] = await Promise.all([
+        API.requirements.list(),
+        API.catalog.list(),
+      ]);
+      const reqs = await reqRes.json();
+      // Backend returns { status, data: [...] }
+      setRequirements(reqs.data || []);
+      const cats = await catRes.json();
+      // Backend returns { status, data: [...] }
+      setPendingTags((cats.data || []).filter(i => i.status === 'PENDING_TAG_REVIEW'));
+    } catch (e) {
+      setError(`Could not load data: ${e.message}`);
+    }
   };
 
   const onTagConfirmed = (id) =>
@@ -271,7 +281,7 @@ export default function RequirementsPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {['ID', 'Name', 'Source', 'Target', 'Type', 'Status'].map(h => (
+                  {['Req ID', 'Description', 'Source', 'Target', 'Category', 'Status'].map(h => (
                     <th
                       key={h}
                       className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider"
@@ -282,24 +292,19 @@ export default function RequirementsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {requirements.map((req, i) => {
-                  const statusCfg = STATUS_MAP[req.status];
-                  return (
-                    <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-400">{req.id || '—'}</td>
-                      <td className="px-4 py-3 font-medium text-slate-900">{req.name || req.integration_name || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600">{req.source_system || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600">{req.target_system || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600">{req.type || '—'}</td>
-                      <td className="px-4 py-3">
-                        {statusCfg
-                          ? <Badge variant={statusCfg.variant} dot>{statusCfg.label}</Badge>
-                          : <span className="text-slate-300">—</span>
-                        }
-                      </td>
-                    </tr>
-                  );
-                })}
+                {requirements.map((req, i) => (
+                  <tr key={i} className="hover:bg-slate-50/70 transition-colors">
+                    {/* field names match Requirement schema: req_id, source_system, target_system, category, description */}
+                    <td className="px-4 py-3 font-mono text-xs text-slate-400">{req.req_id || '—'}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900 max-w-xs truncate" title={req.description}>{req.description || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{req.source_system || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{req.target_system || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{req.category || '—'}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant="primary" dot>Parsed</Badge>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
