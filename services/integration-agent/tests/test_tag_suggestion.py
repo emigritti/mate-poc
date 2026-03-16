@@ -81,3 +81,24 @@ def test_suggest_tags_via_llm_max_2(monkeypatch):
     )
     result = asyncio.run(_suggest_tags_via_llm("ERP", "PLM", "sync products"))
     assert len(result) <= 2
+
+
+def test_suggest_tags_via_llm_passes_tag_settings(monkeypatch):
+    """_suggest_tags_via_llm must forward tag-specific settings as kwargs."""
+    from main import _suggest_tags_via_llm
+    from config import settings
+
+    captured_kwargs: dict = {}
+
+    async def _mock(prompt, *, num_predict=None, timeout=None, temperature=None):
+        captured_kwargs["num_predict"]  = num_predict
+        captured_kwargs["timeout"]      = timeout
+        captured_kwargs["temperature"]  = temperature
+        return '["Data Sync"]'
+
+    monkeypatch.setattr("main.generate_with_ollama", _mock)
+    asyncio.run(_suggest_tags_via_llm("ERP", "PLM", "sync products"))
+
+    assert captured_kwargs["num_predict"] == settings.tag_num_predict
+    assert captured_kwargs["timeout"]     == settings.tag_timeout_seconds
+    assert captured_kwargs["temperature"] == settings.tag_temperature

@@ -233,7 +233,13 @@ async def _require_token(
 
 # ── LLM call ──────────────────────────────────────────────────────────────────
 
-async def generate_with_ollama(prompt: str) -> str:
+async def generate_with_ollama(
+    prompt: str,
+    *,
+    num_predict: int | None = None,
+    timeout: int | None = None,
+    temperature: float | None = None,
+) -> str:
     """
     Call Ollama LLM and return the raw response text.
 
@@ -241,14 +247,17 @@ async def generate_with_ollama(prompt: str) -> str:
     Raises httpx.HTTPStatusError or httpx.RequestError on failure.
     Logs token/timing metrics to agent_logs for dashboard visibility.
     """
+    _num_predict = num_predict if num_predict is not None else settings.ollama_num_predict
+    _timeout     = timeout     if timeout     is not None else settings.ollama_timeout_seconds
+    _temperature = temperature if temperature is not None else settings.ollama_temperature
+
     log_agent(
         f"[LLM] → model={settings.ollama_model} "
         f"prompt_chars={len(prompt)} "
-        f"timeout={settings.ollama_timeout_seconds}s"
+        f"timeout={_timeout}s "
+        f"num_predict={_num_predict}"
     )
-    async with httpx.AsyncClient(
-        timeout=settings.ollama_timeout_seconds
-    ) as client:
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         res = await client.post(
             f"{settings.ollama_host}/api/generate",
             json={
@@ -256,8 +265,8 @@ async def generate_with_ollama(prompt: str) -> str:
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "num_predict": settings.ollama_num_predict,
-                    "temperature": settings.ollama_temperature,
+                    "num_predict": _num_predict,
+                    "temperature": _temperature,
                 },
             },
         )
@@ -316,7 +325,12 @@ async def _suggest_tags_via_llm(source: str, target: str, req_text: str) -> list
         'Reply with a JSON array only. Example: ["Data Sync", "Real-time"]'
     )
     try:
-        raw = await generate_with_ollama(prompt)
+        raw = await generate_with_ollama(
+            prompt,
+            num_predict=settings.tag_num_predict,
+            timeout=settings.tag_timeout_seconds,
+            temperature=settings.tag_temperature,
+        )
         # Extract JSON array from response (LLM may wrap it in prose)
         match = re.search(r"\[.*?\]", raw, re.DOTALL)
         if not match:
