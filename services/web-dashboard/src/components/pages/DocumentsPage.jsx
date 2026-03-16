@@ -17,7 +17,7 @@ export default function DocumentsPage() {
   useEffect(() => {
     API.catalog.list()
       .then(r => r.json())
-      .then(d => setIntegrations(d.integrations || []))
+      .then(d => setIntegrations(d.data || []))
       .catch(() => {})
       .finally(() => setListLoading(false));
   }, []);
@@ -30,7 +30,8 @@ export default function DocumentsPage() {
       const fn  = type === 'functional' ? API.catalog.functionalSpec : API.catalog.technicalSpec;
       const res = await fn(id);
       const d   = await res.json();
-      setContent(d.content || d.spec || '');
+      // Backend returns { status, data: { content, ... } }
+      setContent(d.data?.content || d.content || '');
     } catch {
       setError('Failed to load specification');
     } finally {
