@@ -32,6 +32,7 @@ catalog_col:      motor.motor_asyncio.AsyncIOMotorCollection | None = None
 approvals_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
 documents_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
 kb_documents_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
+llm_settings_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
 
 
 async def init_db(retries: int = 20, delay: float = 3.0) -> None:
@@ -41,7 +42,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
     Retries up to `retries` times with `delay` seconds between attempts.
     On failure, collections remain None (degraded mode — no crash).
     """
-    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col
+    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col
 
     for attempt in range(1, retries + 1):
         try:
@@ -58,6 +59,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             approvals_col    = _db["approvals"]
             documents_col    = _db["documents"]
             kb_documents_col = _db["kb_documents"]
+            llm_settings_col = _db["llm_settings"]
 
             # Idempotent index creation
             await catalog_col.create_index("id", unique=True)

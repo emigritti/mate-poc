@@ -84,6 +84,12 @@ approvals: dict[str, Approval]     = {}
 agent_logs: list[LogEntry]         = []
 kb_docs:   dict[str, KBDocument]   = {}   # Knowledge Base document metadata
 
+# ── LLM runtime overrides (ADR-022) ──────────────────────────────────────────
+# Populated at startup from MongoDB llm_settings collection.
+# Consulted by generate_with_ollama() and _suggest_tags_via_llm()
+# before falling back to settings.* pydantic defaults.
+_llm_overrides: dict = {}
+
 # Task registry — prevents concurrent agent runs (F-09)
 _agent_lock = asyncio.Lock()
 _running_tasks: dict[str, asyncio.Task] = {}
@@ -305,6 +311,14 @@ async def lifespan(app: FastAPI):
     await _init_chromadb()
     await db.init_db()
 
+    # Load persisted LLM overrides from MongoDB
+    if db.llm_settings_col is not None:
+        doc = await db.llm_settings_col.find_one({"_id": "current"})
+        if doc:
+            doc.pop("_id", None)
+            _llm_overrides.update(doc)
+            logger.info("[LLM-SETTINGS] Loaded %d overrides from MongoDB.", len(_llm_overrides))
+
     # Seed in-memory cache from MongoDB (survives container restarts)
     if db.catalog_col is not None:
         async for doc in db.catalog_col.find({}, {"_id": 0}):
@@ -401,12 +415,13 @@ async def generate_with_ollama(
     Raises httpx.HTTPStatusError or httpx.RequestError on failure.
     Logs token/timing metrics to agent_logs for dashboard visibility.
     """
-    _num_predict = num_predict if num_predict is not None else settings.ollama_num_predict
-    _timeout     = timeout     if timeout     is not None else settings.ollama_timeout_seconds
-    _temperature = temperature if temperature is not None else settings.ollama_temperature
+    _num_predict = num_predict if num_predict is not None else _llm_overrides.get("num_predict",      settings.ollama_num_predict)
+    _timeout     = timeout     if timeout     is not None else _llm_overrides.get("timeout_seconds",  settings.ollama_timeout_seconds)
+    _temperature = temperature if temperature is not None else _llm_overrides.get("temperature",      settings.ollama_temperature)
+    _model       = _llm_overrides.get("model", settings.ollama_model)
 
     log_agent(
-        f"[LLM] → model={settings.ollama_model} "
+        f"[LLM] → model={_model} "
         f"prompt_chars={len(prompt)} "
         f"timeout={_timeout}s "
         f"num_predict={_num_predict}"
@@ -415,7 +430,7 @@ async def generate_with_ollama(
         res = await client.post(
             f"{settings.ollama_host}/api/generate",
             json={
-                "model": settings.ollama_model,
+                "model": _model,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
@@ -481,9 +496,9 @@ async def _suggest_tags_via_llm(source: str, target: str, req_text: str) -> list
     try:
         raw = await generate_with_ollama(
             prompt,
-            num_predict=settings.tag_num_predict,
-            timeout=settings.tag_timeout_seconds,
-            temperature=settings.tag_temperature,
+            num_predict=_llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
+            timeout=_llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
+            temperature=_llm_overrides.get("tag_temperature",    settings.tag_temperature),
         )
         # Extract JSON array from response (LLM may wrap it in prose)
         match = re.search(r"\[.*?\]", raw, re.DOTALL)
@@ -501,7 +516,7 @@ async def _suggest_tags_via_llm(source: str, target: str, req_text: str) -> list
 def _build_rag_context(docs: list[str]) -> str:
     """Join docs and truncate to prevent prompt overflow on CPU instances."""
     raw = "\n---\n".join(docs)
-    max_chars = settings.ollama_rag_max_chars
+    max_chars = _llm_overrides.get("rag_max_chars", settings.ollama_rag_max_chars)
     if len(raw) > max_chars:
         log_agent(f"[RAG] Context truncated to {max_chars} chars (was {len(raw)}).")
         return raw[:max_chars]
@@ -603,9 +618,9 @@ async def _suggest_kb_tags_via_llm(text_preview: str, filename: str) -> list[str
     try:
         raw = await generate_with_ollama(
             prompt,
-            num_predict=settings.tag_num_predict,
-            timeout=settings.tag_timeout_seconds,
-            temperature=settings.tag_temperature,
+            num_predict=_llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
+            timeout=_llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
+            temperature=_llm_overrides.get("tag_temperature",    settings.tag_temperature),
         )
         match = re.search(r"\[.*?\]", raw, re.DOTALL)
         if not match:
