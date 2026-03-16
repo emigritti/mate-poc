@@ -18,6 +18,7 @@
 9. [The RAG Learning Loop](#9-the-rag-learning-loop)
 10. [Security Model — Why and How](#10-security-model--why-and-how)
 11. [Running the System](#11-running-the-system)
+12. [Admin Tools](#12-admin-tools)
 
 ---
 
@@ -67,6 +68,14 @@ The Integration Agent:
 - Validates the file (MIME type, max 1 MB, UTF-8 encoding).
 - Parses each row into a `Requirement` object.
 - Groups requirements by `source_system → target_system` pair.
+
+**Step 1b — Upload Best-Practice Documents (optional but recommended)**
+
+Before triggering the agent, architects can upload existing integration design documents (PDF, DOCX, XLSX, PPTX, or Markdown) to the **Knowledge Base** via the dedicated section in the sidebar.
+
+These documents are chunked, embedded, and stored in a dedicated ChromaDB collection (`knowledge_base`). When the agent generates a new integration document, it queries the knowledge base alongside the approved-examples RAG store — injecting the most relevant best-practice content into the prompt.
+
+This is optional: if the Knowledge Base is empty, the agent relies solely on past approved documents from the `approved_integrations` ChromaDB collection.
 
 ### Step 2 — Trigger the Agent
 
@@ -365,6 +374,23 @@ def build_prompt(source, target, requirements, rag_context="") -> str:
     return result
 ```
 
+### 7.x ChromaDB — Two Collections
+
+The system uses two distinct ChromaDB collections:
+
+| Collection | Purpose | Populated by |
+|---|---|---|
+| `approved_integrations` | Past HITL-approved integration documents used as RAG examples | Approval workflow |
+| `knowledge_base` | Uploaded best-practice documents (chunked and embedded) | KB upload endpoint |
+
+Both collections are queried during document generation and their results are injected into the LLM prompt. The `approved_integrations` results are weighted as "PAST APPROVED EXAMPLES" while the `knowledge_base` results provide broader context.
+
+### 7.x MongoDB — `llm_settings` Collection
+
+A single MongoDB document (`_id: "current"`) persists any admin-configured LLM parameter overrides. At startup, the integration agent loads this document into an in-memory `_llm_overrides` dict that is consulted before the pydantic-settings defaults.
+
+When a full system reset is triggered, this document is deleted and `_llm_overrides` is cleared — restoring all LLM parameters to their design-time defaults.
+
 ---
 
 ## 8. The Document Template System
@@ -561,3 +587,32 @@ python -m pytest tests/ -v
 ```
 
 All 52 tests must pass before any commit (per CLAUDE.md Definition of Done).
+
+---
+
+## 12. Admin Tools
+
+The dashboard includes three admin-only tools accessible from the **Admin** section of the sidebar:
+
+### Reset Tools
+Performs a full system reset:
+- Clears parsed requirements from memory
+- Deletes all MongoDB collections (catalog, approvals, documents, KB documents, LLM settings)
+- Recreates ChromaDB collections (approved_integrations, knowledge_base)
+- Resets LLM parameter overrides to design defaults
+- Blocked while the agent is running (returns 409)
+
+### Project Docs
+A read-only markdown browser for significant project documentation. Displays 19 curated documents grouped by category (Guides, ADRs, Checklists, Test Plans, Mappings). Content is served from the mounted `docs/` directory — path traversal and non-.md requests are rejected by the backend.
+
+### LLM Settings
+An admin page for tuning LLM parameters at runtime without restarting the container:
+
+| Group | Parameters |
+|---|---|
+| Document Generation | Model name, max tokens, timeout, temperature, RAG context limit |
+| Tag Suggestion | Max tokens, timeout, temperature |
+
+Changes are applied **immediately** to the running agent and persisted in MongoDB. The "Reset to Defaults" button restores pydantic-settings values (as defined in `config.py` or overridden by env vars at startup).
+
+**Why this matters:** On slow CPU hardware (e.g., llama3.1:8b at ~3 tokens/s), reducing `num_predict` from 1000 to 200 cuts generation time from ~5 minutes to ~1 minute for testing purposes — without requiring a container rebuild.
