@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 2.1.0 (Merged — PoC) |
-| **Date** | 2026-03-11 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10) |
+| **Version** | 2.2.0 (Merged — PoC) |
+| **Date** | 2026-03-16 |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -47,6 +47,9 @@ The **Functional Integration Mate** is an AI-powered platform that automates the
 2. **Functional Specifications** — LLM-generated business-level documents (template-driven)
 3. **Technical Design Documents** — LLM-generated implementation-level blueprints *(planned)*
 4. **Agentic Execution Engine** — AI agent that autonomously orchestrates documentation generation with RAG and HITL
+5. **Knowledge Base** — Multi-format document library (PDF, DOCX, XLSX, PPTX, MD) enabling best-practice injection into the RAG prompt via a dedicated ChromaDB collection
+6. **LLM Settings** — Admin-configurable runtime overrides for model parameters (temperature, token limits, timeout, RAG context size), persisted in MongoDB and effective without restart
+7. **Admin Tools** — Project Docs browser (curated markdown viewer for ADRs, checklists, guides) and Reset Tools for full system reset including LLM override clearing
 
 The platform focuses strictly on the **Documentation and Cataloging** layer of the integration lifecycle — not on runtime execution (ESB, iPaaS, or middleware role).
 
@@ -1004,7 +1007,8 @@ graph TB
 mongodb://mate-mongodb:27017/integration_mate
   ├── catalog_entries       { id, name, type, source, target, status, requirements[] }
   ├── approvals             { id, integration_id, doc_type, content, status, generated_at, feedback? }
-  └── documents             { id, integration_id, doc_type, content, generated_at }
+  ├── documents             { id, integration_id, doc_type, content, generated_at }
+  └── llm_settings          { _id: "current", overrides for temperature/max_tokens/timeout/rag_context_size }
 ```
 
 **Indexing strategy:**
@@ -1079,6 +1083,16 @@ All endpoints are served by `mate-integration-agent` on port `4003`.
 | `/api/v1/admin/reset/mongodb` | DELETE | Token | Wipe all MongoDB collections |
 | `/api/v1/admin/reset/chromadb` | DELETE | Token | Wipe ChromaDB RAG collection |
 | `/api/v1/admin/reset/all` | DELETE | Token | Full system reset |
+| `/api/v1/admin/llm-settings` | GET | — | Retrieve current effective LLM parameters and design defaults |
+| `/api/v1/admin/llm-settings` | PATCH | Token | Update LLM runtime parameters (persisted to MongoDB, applied immediately) |
+| `/api/v1/admin/llm-settings/reset` | POST | Token | Reset all LLM parameters to design defaults |
+| `/api/v1/admin/docs` | GET | — | Retrieve curated project documentation manifest |
+| `/api/v1/admin/docs/{path}` | GET | — | Retrieve markdown content of a specific project document |
+| `/api/v1/kb/documents` | GET | — | List all Knowledge Base documents |
+| `/api/v1/kb/upload` | POST | Token | Upload a document to the Knowledge Base |
+| `/api/v1/kb/documents/{id}` | DELETE | Token | Remove a Knowledge Base document |
+| `/api/v1/kb/search` | GET | — | Semantic search over the Knowledge Base |
+| `/api/v1/kb/stats` | GET | — | Knowledge Base statistics |
 
 **Auth model:** Optional Bearer token. If `API_KEY` env var is set, mutating endpoints (`trigger`, `cancel`, `approve`, `reject`, `reset/*`) require `Authorization: Bearer <key>` with `hmac.compare_digest()` constant-time comparison. If unset, endpoints log a warning and allow through (dev/PoC mode).
 
@@ -1617,16 +1631,20 @@ gantt
 
 ## 18. ADR Index
 
-| ADR | Decision | Status |
-|-----|----------|--------|
-| ADR-001–011 | Early foundational decisions (tooling, patterns) | Accepted |
-| ADR-012 | Async LLM client via `httpx.AsyncClient` | Accepted |
-| ADR-013 | MongoDB persistence + Motor async driver | Accepted |
-| ADR-014 | External prompt template (`reusable-meta-prompt.md`) | Accepted |
-| ADR-015 | LLM output guard (structural + bleach) | Accepted |
-| ADR-016 | Secret management via Pydantic Settings | Accepted |
-| ADR-017 | Frontend XSS mitigation (`escapeHtml()`) | Accepted |
-| ADR-018 | CORS standardization (env-var allowlist) | Accepted |
+| ADR | Decision | Status | Notes |
+|-----|----------|--------|-------|
+| ADR-001–011 | Early foundational decisions (tooling, patterns) | Accepted | |
+| ADR-012 | Async LLM client via `httpx.AsyncClient` | Accepted | |
+| ADR-013 | MongoDB persistence + Motor async driver | Accepted | |
+| ADR-014 | External prompt template (`reusable-meta-prompt.md`) | Accepted | |
+| ADR-015 | LLM output guard (structural + bleach) | Accepted | |
+| ADR-016 | Secret management via Pydantic Settings | Accepted | |
+| ADR-017 | Frontend XSS mitigation (`escapeHtml()`) | Accepted | |
+| ADR-018 | CORS standardization (env-var allowlist) | Accepted | |
+| ADR-019 | RAG Tag Filtering | Approved | Filter ChromaDB queries by confirmed integration tags to improve context relevance |
+| ADR-020 | Tag LLM Tuning | Approved | Dedicated lightweight LLM settings for tag suggestion (20-token cap, 15s timeout, temperature=0) |
+| ADR-021 | Best Practice Knowledge Base | Approved | Multi-format document ingestion pipeline (PyMuPDF, python-docx, openpyxl, python-pptx) with ChromaDB knowledge_base collection |
+| ADR-022 | LLM Runtime Settings | Approved | MongoDB-persisted admin-configurable LLM parameter overrides applied without container restart |
 
 ---
 
