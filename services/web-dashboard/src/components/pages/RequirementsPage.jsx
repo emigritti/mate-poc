@@ -114,7 +114,9 @@ function TagConfirmPanel({ integrationId, onConfirmed }) {
             <TagChip key={tag} tag={tag} selected={selected.includes(tag)} onToggle={toggleTag} />
           ))}
           {suggested.length === 0 && (
-            <span className="text-xs text-slate-400">No suggested tags available</span>
+            <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+              No suggestions — re-upload your CSV so the backend can analyse requirements, or type custom tags below.
+            </span>
           )}
         </div>
       </div>

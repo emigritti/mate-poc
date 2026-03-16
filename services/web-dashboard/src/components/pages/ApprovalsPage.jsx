@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertCircle, Loader2, Clock, ChevronRight } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, Loader2, Clock, ChevronRight, RefreshCw } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
 
@@ -45,12 +45,16 @@ export default function ApprovalsPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await API.approvals.approve(selectedId, content);
+      const res = await API.approvals.approve(selectedId, content);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || `Approval failed (${res.status})`);
+      }
       setSuccessMsg('Document approved and saved to RAG vector store');
       setApprovals(prev => prev.filter(a => a.id !== selectedId));
       setSelectedId(null);
-    } catch {
-      setError('Approval failed — please try again');
+    } catch (e) {
+      setError(e.message || 'Approval failed — please try again');
     } finally {
       setSubmitting(false);
     }
@@ -64,12 +68,16 @@ export default function ApprovalsPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await API.approvals.reject(selectedId, feedback);
+      const res = await API.approvals.reject(selectedId, feedback);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || `Rejection failed (${res.status})`);
+      }
       setSuccessMsg('Document rejected — agent will retry with your feedback');
       setApprovals(prev => prev.filter(a => a.id !== selectedId));
       setSelectedId(null);
-    } catch {
-      setError('Rejection failed — please try again');
+    } catch (e) {
+      setError(e.message || 'Rejection failed — please try again');
     } finally {
       setSubmitting(false);
     }
@@ -89,9 +97,18 @@ export default function ApprovalsPage() {
               Pending Approvals
             </span>
           </div>
-          {approvals.length > 0 && (
-            <Badge variant="warning" dot>{approvals.length}</Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {approvals.length > 0 && (
+              <Badge variant="warning" dot>{approvals.length}</Badge>
+            )}
+            <button
+              onClick={loadApprovals}
+              title="Refresh"
+              className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1">

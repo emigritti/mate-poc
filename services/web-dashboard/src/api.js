@@ -35,7 +35,8 @@ export const API = {
       fetch(`${getBase()}/api/v1/approvals/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        // Backend ApproveRequest expects final_markdown, not content
+        body: JSON.stringify({ final_markdown: content }),
       }),
     reject: (id, feedback) =>
       fetch(`${getBase()}/api/v1/approvals/${id}/reject`, {

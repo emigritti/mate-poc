@@ -53,11 +53,11 @@ function IntegrationCard({ integration }) {
         {/* Source → Target */}
         <div className="flex items-center gap-2 mb-3">
           <span className="text-xs font-medium text-slate-600 truncate max-w-[110px] bg-slate-100 px-2 py-0.5 rounded">
-            {integration.source_system || '—'}
+            {integration.source?.system || '—'}
           </span>
           <ArrowRight size={12} className="text-slate-400 flex-shrink-0" />
           <span className="text-xs font-medium text-slate-600 truncate max-w-[110px] bg-slate-100 px-2 py-0.5 rounded">
-            {integration.target_system || '—'}
+            {integration.target?.system || '—'}
           </span>
         </div>
 
