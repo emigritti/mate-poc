@@ -1159,7 +1159,7 @@ async def reset_all(
     Full system reset: requirements, agent logs, MongoDB collections,
     ChromaDB vector store. Rejected if the agent is currently running.
     """
-    global parsed_requirements, agent_logs, collection, kb_collection
+    global parsed_requirements, agent_logs, collection, kb_collection, _llm_overrides
     if _agent_lock.locked():
         raise HTTPException(
             status_code=409,
@@ -1184,6 +1184,11 @@ async def reset_all(
     documents.clear()
     kb_docs.clear()
 
+    # 4. LLM overrides
+    _llm_overrides.clear()
+    if db.llm_settings_col is not None:
+        await db.llm_settings_col.delete_one({"_id": "current"})
+
     # 3. ChromaDB (non-fatal if unavailable)
     chroma_warning = ""
     if chroma_client is not None:
@@ -1198,6 +1203,112 @@ async def reset_all(
     msg = f"Full reset completed.{chroma_warning}"
     logger.info("[ADMIN] %s", msg)
     return {"status": "success", "message": msg}
+
+
+# ── LLM Settings (admin) ──────────────────────────────────────────────────────
+
+def _llm_settings_response() -> dict:
+    """Build the current LLM settings response (effective values + design defaults)."""
+    defaults = {
+        "doc_llm": {
+            "model":           settings.ollama_model,
+            "num_predict":     settings.ollama_num_predict,
+            "timeout_seconds": settings.ollama_timeout_seconds,
+            "temperature":     settings.ollama_temperature,
+            "rag_max_chars":   settings.ollama_rag_max_chars,
+        },
+        "tag_llm": {
+            "num_predict":     settings.tag_num_predict,
+            "timeout_seconds": settings.tag_timeout_seconds,
+            "temperature":     settings.tag_temperature,
+        },
+    }
+    effective = {
+        "doc_llm": {
+            "model":           _llm_overrides.get("model",           settings.ollama_model),
+            "num_predict":     _llm_overrides.get("num_predict",      settings.ollama_num_predict),
+            "timeout_seconds": _llm_overrides.get("timeout_seconds",  settings.ollama_timeout_seconds),
+            "temperature":     _llm_overrides.get("temperature",      settings.ollama_temperature),
+            "rag_max_chars":   _llm_overrides.get("rag_max_chars",    settings.ollama_rag_max_chars),
+        },
+        "tag_llm": {
+            "num_predict":     _llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
+            "timeout_seconds": _llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
+            "temperature":     _llm_overrides.get("tag_temperature",    settings.tag_temperature),
+        },
+    }
+    return {
+        "status": "success",
+        "data": {
+            "effective": effective,
+            "defaults":  defaults,
+            "overrides_active": bool(_llm_overrides),
+        },
+    }
+
+
+@app.get("/api/v1/admin/llm-settings", tags=["admin"])
+async def get_llm_settings(
+    _token: str = Depends(_require_token),
+) -> dict:
+    """Return current effective LLM parameters and design defaults."""
+    return _llm_settings_response()
+
+
+@app.patch("/api/v1/admin/llm-settings", tags=["admin"])
+async def patch_llm_settings(
+    body: dict,
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Partially update LLM runtime parameters.
+
+    Accepted body shape:
+      { "doc_llm": { "temperature": 0.5, "num_predict": 800 },
+        "tag_llm": { "timeout_seconds": 20 } }
+
+    Changes are applied immediately to _llm_overrides (no restart needed)
+    and persisted to MongoDB for survival across restarts.
+    """
+    global _llm_overrides
+
+    DOC_FIELDS = {"model", "num_predict", "timeout_seconds", "temperature", "rag_max_chars"}
+    TAG_FIELDS = {"tag_num_predict", "tag_timeout_seconds", "tag_temperature"}
+
+    if "doc_llm" in body:
+        for k, v in body["doc_llm"].items():
+            if k in DOC_FIELDS:
+                _llm_overrides[k] = v
+
+    if "tag_llm" in body:
+        for k, v in body["tag_llm"].items():
+            flat_key = f"tag_{k}"  # e.g. "num_predict" → "tag_num_predict"
+            if flat_key in TAG_FIELDS:
+                _llm_overrides[flat_key] = v
+
+    # Persist to MongoDB
+    if db.llm_settings_col is not None:
+        await db.llm_settings_col.replace_one(
+            {"_id": "current"},
+            {"_id": "current", **_llm_overrides},
+            upsert=True,
+        )
+
+    logger.info("[LLM-SETTINGS] Overrides updated: %s", _llm_overrides)
+    return _llm_settings_response()
+
+
+@app.post("/api/v1/admin/llm-settings/reset", tags=["admin"])
+async def reset_llm_settings(
+    _token: str = Depends(_require_token),
+) -> dict:
+    """Reset all LLM parameters to design defaults (clears MongoDB doc + in-memory overrides)."""
+    global _llm_overrides
+    _llm_overrides.clear()
+    if db.llm_settings_col is not None:
+        await db.llm_settings_col.delete_one({"_id": "current"})
+    logger.info("[LLM-SETTINGS] Reset to design defaults.")
+    return _llm_settings_response()
 
 
 # ── Project Docs (read-only) ──────────────────────────────────────────────────
