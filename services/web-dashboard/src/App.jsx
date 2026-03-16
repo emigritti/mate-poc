@@ -11,11 +11,12 @@ import DocumentsPage from './components/pages/DocumentsPage.jsx';
 import ApprovalsPage from './components/pages/ApprovalsPage.jsx';
 import ResetPage from './components/pages/ResetPage.jsx';
 import ProjectDocsPage from './components/pages/ProjectDocsPage.jsx';
+import LlmSettingsPage from './components/pages/LlmSettingsPage.jsx';
 import { API } from './api.js';
 
 const PAGE_META = {
   requirements: { title: 'Requirements', subtitle: 'Upload and manage integration requirements', step: 1 },
-  kb: { title: 'Knowledge Base', subtitle: 'Best practices document library', step: 2 },
+  kb: { title: 'Knowledge Base', subtitle: 'Best practices document library', step: null, hideTopBar: true },
   apis: { title: 'API Systems', subtitle: 'Connected source and target systems', step: null },
   agent: { title: 'Agent Workspace', subtitle: 'AI-powered document generation', step: 3 },
   catalog: { title: 'Integration Catalog', subtitle: 'Browse generated integrations', step: 5 },
@@ -23,6 +24,7 @@ const PAGE_META = {
   approvals: { title: 'HITL Approvals', subtitle: 'Human-in-the-loop document review', step: 4 },
   reset: { title: 'Reset Tools', subtitle: 'Admin data management', step: null },
   'project-docs': { title: 'Project Docs', subtitle: 'Browse governance documents, ADRs, and checklists', step: null },
+  'llm-settings': { title: 'LLM Settings', subtitle: 'Tune model parameters and test response times', step: null },
 };
 
 function renderPage(page) {
@@ -36,6 +38,7 @@ function renderPage(page) {
     case 'approvals': return <ApprovalsPage />;
     case 'reset': return <ResetPage />;
     case 'project-docs': return <ProjectDocsPage />;
+    case 'llm-settings': return <LlmSettingsPage />;
     default: return <RequirementsPage />;
   }
 }
@@ -70,9 +73,9 @@ export default function App() {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
 
       <div className="flex flex-col flex-1 overflow-hidden">
-        <TopBar title={meta.title} subtitle={meta.subtitle} />
+        {!meta.hideTopBar && <TopBar title={meta.title} subtitle={meta.subtitle} />}
 
-        {meta.step !== null && <WorkflowStepper activeStep={meta.step} />}
+        {meta.step !== null && !meta.hideTopBar && <WorkflowStepper activeStep={meta.step} />}
 
         <main
           key={currentPage}

@@ -1,28 +1,34 @@
-import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked } from 'lucide-react';
+import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
     label: 'Workflow',
     items: [
-      { id: 'requirements', label: 'Requirements', icon: Upload },
+      { id: 'requirements', label: 'Requirements',   icon: Upload },
+      { id: 'apis',         label: 'API Systems',    icon: Plug   },
+      { id: 'agent',        label: 'Agent Workspace', icon: Bot   },
+    ],
+  },
+  {
+    label: 'Knowledge Base',
+    items: [
       { id: 'kb', label: 'Knowledge Base', icon: Library },
-      { id: 'apis', label: 'API Systems', icon: Plug },
-      { id: 'agent', label: 'Agent Workspace', icon: Bot },
     ],
   },
   {
     label: 'Results',
     items: [
-      { id: 'catalog', label: 'Integration Catalog', icon: BookOpen },
-      { id: 'documents', label: 'Generated Docs', icon: FileText },
-      { id: 'approvals', label: 'HITL Approvals', icon: CheckSquare },
+      { id: 'catalog',   label: 'Integration Catalog', icon: BookOpen    },
+      { id: 'documents', label: 'Generated Docs',       icon: FileText    },
+      { id: 'approvals', label: 'HITL Approvals',       icon: CheckSquare },
     ],
   },
   {
     label: 'Admin',
     items: [
-      { id: 'reset', label: 'Reset Tools', icon: Trash2 },
-      { id: 'project-docs', label: 'Project Docs', icon: BookMarked },
+      { id: 'reset',        label: 'Reset Tools',  icon: Trash2            },
+      { id: 'project-docs', label: 'Project Docs', icon: BookMarked        },
+      { id: 'llm-settings', label: 'LLM Settings', icon: SlidersHorizontal },
     ],
   },
 ];
