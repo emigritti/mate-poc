@@ -52,8 +52,26 @@ export const API = {
   },
 
   projectDocs: {
-    list:    ()     => fetch(`${getBase()}/api/v1/admin/docs`),
+    list: () => fetch(`${getBase()}/api/v1/admin/docs`),
     content: (path) => fetch(`${getBase()}/api/v1/admin/docs/${path}`),
+  },
+
+  kb: {
+    upload: (file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return fetch(`${getBase()}/api/v1/kb/upload`, { method: 'POST', body: fd });
+    },
+    list: () => fetch(`${getBase()}/api/v1/kb/documents`),
+    get: (id) => fetch(`${getBase()}/api/v1/kb/documents/${id}`),
+    delete: (id) => fetch(`${getBase()}/api/v1/kb/documents/${id}`, { method: 'DELETE' }),
+    updateTags: (id, tags) => fetch(`${getBase()}/api/v1/kb/documents/${id}/tags`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    }),
+    search: (q, n = 5) => fetch(`${getBase()}/api/v1/kb/search?q=${encodeURIComponent(q)}&n=${n}`),
+    stats: () => fetch(`${getBase()}/api/v1/kb/stats`),
   },
 
   health: {

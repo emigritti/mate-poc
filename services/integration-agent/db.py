@@ -28,9 +28,10 @@ logger = logging.getLogger(__name__)
 _client: motor.motor_asyncio.AsyncIOMotorClient | None = None
 _db: motor.motor_asyncio.AsyncIOMotorDatabase | None = None
 
-catalog_col:   motor.motor_asyncio.AsyncIOMotorCollection | None = None
-approvals_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
-documents_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
+catalog_col:      motor.motor_asyncio.AsyncIOMotorCollection | None = None
+approvals_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
+documents_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
+kb_documents_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
 
 
 async def init_db(retries: int = 20, delay: float = 3.0) -> None:
@@ -40,7 +41,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
     Retries up to `retries` times with `delay` seconds between attempts.
     On failure, collections remain None (degraded mode — no crash).
     """
-    global _client, _db, catalog_col, approvals_col, documents_col
+    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col
 
     for attempt in range(1, retries + 1):
         try:
@@ -53,15 +54,18 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             # Ping to verify the connection is alive
             await _db.command("ping")
 
-            catalog_col   = _db["catalog_entries"]
-            approvals_col = _db["approvals"]
-            documents_col = _db["documents"]
+            catalog_col      = _db["catalog_entries"]
+            approvals_col    = _db["approvals"]
+            documents_col    = _db["documents"]
+            kb_documents_col = _db["kb_documents"]
 
             # Idempotent index creation
             await catalog_col.create_index("id", unique=True)
             await approvals_col.create_index("id", unique=True)
             await approvals_col.create_index("status")
             await documents_col.create_index("id", unique=True)
+            await kb_documents_col.create_index("id", unique=True)
+            await kb_documents_col.create_index("tags")
 
             logger.info("[DB] MongoDB connected (attempt %d/%d).", attempt, retries)
             return

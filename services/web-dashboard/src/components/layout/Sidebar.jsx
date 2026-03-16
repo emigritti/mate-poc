@@ -1,20 +1,21 @@
-import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap } from 'lucide-react';
+import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
     label: 'Workflow',
     items: [
       { id: 'requirements', label: 'Requirements', icon: Upload },
-      { id: 'apis',         label: 'API Systems',  icon: Plug },
-      { id: 'agent',        label: 'Agent Workspace', icon: Bot },
+      { id: 'kb', label: 'Knowledge Base', icon: Library },
+      { id: 'apis', label: 'API Systems', icon: Plug },
+      { id: 'agent', label: 'Agent Workspace', icon: Bot },
     ],
   },
   {
     label: 'Results',
     items: [
-      { id: 'catalog',   label: 'Integration Catalog', icon: BookOpen },
-      { id: 'documents', label: 'Generated Docs',       icon: FileText },
-      { id: 'approvals', label: 'HITL Approvals',       icon: CheckSquare },
+      { id: 'catalog', label: 'Integration Catalog', icon: BookOpen },
+      { id: 'documents', label: 'Generated Docs', icon: FileText },
+      { id: 'approvals', label: 'HITL Approvals', icon: CheckSquare },
     ],
   },
   {
@@ -26,9 +27,9 @@ const NAV_GROUPS = [
 ];
 
 const DOT_COLOR = {
-  ok:    'bg-emerald-400',
+  ok: 'bg-emerald-400',
   error: 'bg-rose-500',
-  null:  'bg-amber-400',
+  null: 'bg-amber-400',
 };
 
 function ServiceDot({ status }) {
@@ -72,11 +73,10 @@ export default function Sidebar({ currentPage, onNavigate, services }) {
                 <button
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 text-left mb-0.5 ${
-                    active
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 text-left mb-0.5 ${active
                       ? 'bg-indigo-600 text-white font-medium shadow-md shadow-indigo-900/40'
                       : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
-                  }`}
+                    }`}
                 >
                   <Icon size={15} className="flex-shrink-0" />
                   <span className="truncate">{item.label}</span>

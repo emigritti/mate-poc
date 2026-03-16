@@ -36,12 +36,19 @@ from pathlib import Path
 
 import chromadb
 import httpx
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 import db
 from config import settings
+from document_parser import (
+    DocumentParseError,
+    chunk_text,
+    detect_file_type,
+    parse_document,
+    ALLOWED_KB_MIME,
+)
 from output_guard import (
     LLMOutputValidationError,
     sanitize_human_content,
@@ -54,6 +61,12 @@ from schemas import (
     CatalogEntry,
     ConfirmTagsRequest,
     Document,
+    KBDocument,
+    KBSearchResponse,
+    KBSearchResult,
+    KBStatsResponse,
+    KBUpdateTagsRequest,
+    KBUploadResponse,
     LogEntry,
     LogLevel,
     Requirement,
@@ -69,14 +82,16 @@ catalog:   dict[str, CatalogEntry] = {}
 documents: dict[str, Document]     = {}
 approvals: dict[str, Approval]     = {}
 agent_logs: list[LogEntry]         = []
+kb_docs:   dict[str, KBDocument]   = {}   # Knowledge Base document metadata
 
 # Task registry — prevents concurrent agent runs (F-09)
 _agent_lock = asyncio.Lock()
 _running_tasks: dict[str, asyncio.Task] = {}
 
 # ChromaDB — initialized with retry in lifespan
-chroma_client = None
+chroma_client  = None
 collection     = None
+kb_collection  = None        # separate collection for Knowledge Base chunks
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 _ALLOWED_CSV_MIME = frozenset({
@@ -259,7 +274,7 @@ async def _prune_logs_loop() -> None:
 # ── ChromaDB init with retry ──────────────────────────────────────────────────
 
 async def _init_chromadb(retries: int = 20, delay: float = 5.0) -> None:
-    global chroma_client, collection
+    global chroma_client, collection, kb_collection
     for attempt in range(1, retries + 1):
         try:
             chroma_client = chromadb.HttpClient(
@@ -267,6 +282,9 @@ async def _init_chromadb(retries: int = 20, delay: float = 5.0) -> None:
             )
             collection = chroma_client.get_or_create_collection(
                 name="approved_integrations"
+            )
+            kb_collection = chroma_client.get_or_create_collection(
+                name="knowledge_base"
             )
             logger.info("[ChromaDB] Connected (attempt %d/%d).", attempt, retries)
             return
@@ -299,6 +317,12 @@ async def lifespan(app: FastAPI):
             "[DB] Seeded %d catalog / %d approvals / %d documents from MongoDB.",
             len(catalog), len(approvals), len(documents),
         )
+
+    # Seed Knowledge Base docs from MongoDB
+    if db.kb_documents_col is not None:
+        async for doc in db.kb_documents_col.find({}, {"_id": 0}):
+            kb_docs[doc["id"]] = KBDocument(**doc)
+        logger.info("[DB] Seeded %d KB documents from MongoDB.", len(kb_docs))
 
     prune_task = asyncio.create_task(_prune_logs_loop(), name="log-pruner")
 
@@ -524,6 +548,77 @@ async def _query_rag_with_tags(
     return "", "none"
 
 
+async def _query_kb_context(
+    query_text: str, tags: list[str]
+) -> str:
+    """Query the Knowledge Base collection for relevant best-practice context.
+
+    Returns a string of joined KB chunks (truncated to kb_max_rag_chars).
+    Returns empty string if KB is unavailable or has no results.
+    """
+    if not kb_collection:
+        return ""
+
+    # Tag-filtered query first, then similarity fallback (same pattern as _query_rag_with_tags)
+    for attempt_label, where_filter in [
+        ("tag_filtered", {"tags_csv": {"$contains": tags[0]}} if tags else None),
+        ("similarity", None),
+    ]:
+        if attempt_label == "tag_filtered" and not tags:
+            continue
+        try:
+            kwargs: dict = {"query_texts": [query_text], "n_results": 3}
+            if where_filter:
+                kwargs["where"] = where_filter
+            results = kb_collection.query(**kwargs)
+            docs = (results or {}).get("documents", [[]])[0]
+            if docs:
+                raw = "\n---\n".join(docs)
+                max_chars = settings.kb_max_rag_chars
+                if len(raw) > max_chars:
+                    log_agent(f"[KB-RAG] Context truncated to {max_chars} chars (was {len(raw)}).")
+                    raw = raw[:max_chars]
+                log_agent(f"[KB-RAG] Found {len(docs)} relevant chunk(s) via {attempt_label}.")
+                return raw
+        except Exception as exc:
+            log_agent(f"[KB-RAG] {attempt_label} query failed: {exc}")
+
+    return ""
+
+
+async def _suggest_kb_tags_via_llm(text_preview: str, filename: str) -> list[str]:
+    """Call LLM to suggest tags for a KB document.
+
+    Uses the same lightweight LLM settings as _suggest_tags_via_llm (ADR-020).
+    Returns empty list on any failure.
+    """
+    short_text = text_preview[:600]
+    prompt = (
+        f"Given this document '{filename}' with the following content preview:\n"
+        f"{short_text}\n\n"
+        "Suggest up to 3 short tags (1-3 words each) that best categorize "
+        "this best-practice or reference document.\n"
+        'Reply with a JSON array only. Example: ["Data Mapping", "Integration Pattern", "Error Handling"]'
+    )
+    try:
+        raw = await generate_with_ollama(
+            prompt,
+            num_predict=settings.tag_num_predict,
+            timeout=settings.tag_timeout_seconds,
+            temperature=settings.tag_temperature,
+        )
+        match = re.search(r"\[.*?\]", raw, re.DOTALL)
+        if not match:
+            return []
+        tags = json.loads(match.group())
+        if not isinstance(tags, list):
+            return []
+        return [str(t).strip()[:50] for t in tags if str(t).strip()][:3]
+    except Exception as exc:
+        logger.warning("[KB] LLM tag suggestion failed for %s: %s", filename, exc)
+        return []
+
+
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
 
 async def run_agentic_rag_flow() -> None:
@@ -555,13 +650,22 @@ async def run_agentic_rag_flow() -> None:
         rag_context, rag_source = await _query_rag_with_tags(query_text, entry.tags)
         log_agent(f"[RAG] Source: {rag_source} | chars: {len(rag_context)}")
 
-        # 2. Build prompt from meta-prompt template (G-09)
+        # 2. Query Knowledge Base for best-practice context
+        log_agent(f"[KB-RAG] Querying Knowledge Base for {entry.id}...")
+        kb_context = await _query_kb_context(query_text, entry.tags)
+        if kb_context:
+            log_agent(f"[KB-RAG] KB context chars: {len(kb_context)}")
+        else:
+            log_agent("[KB-RAG] No KB best practices found.")
+
+        # 3. Build prompt from meta-prompt template (G-09)
         log_agent(f"[LLM] Prompting for Functional Spec for {entry.id}...")
         prompt = build_prompt(
             source_system=source,
             target_system=target,
             formatted_requirements=query_text,
             rag_context=rag_context,
+            kb_context=kb_context,
         )
 
         # 3. Call real LLM, apply output guard (G-01, G-08)
@@ -1040,7 +1144,7 @@ async def reset_all(
     Full system reset: requirements, agent logs, MongoDB collections,
     ChromaDB vector store. Rejected if the agent is currently running.
     """
-    global parsed_requirements, agent_logs, collection
+    global parsed_requirements, agent_logs, collection, kb_collection
     if _agent_lock.locked():
         raise HTTPException(
             status_code=409,
@@ -1058,9 +1162,12 @@ async def reset_all(
         await db.approvals_col.delete_many({})
     if db.documents_col is not None:
         await db.documents_col.delete_many({})
+    if db.kb_documents_col is not None:
+        await db.kb_documents_col.delete_many({})
     catalog.clear()
     approvals.clear()
     documents.clear()
+    kb_docs.clear()
 
     # 3. ChromaDB (non-fatal if unavailable)
     chroma_warning = ""
@@ -1068,6 +1175,8 @@ async def reset_all(
         try:
             chroma_client.delete_collection("approved_integrations")
             collection = chroma_client.get_or_create_collection("approved_integrations")
+            chroma_client.delete_collection("knowledge_base")
+            kb_collection = chroma_client.get_or_create_collection("knowledge_base")
         except Exception as exc:
             chroma_warning = f" ChromaDB warning: {exc}"
 
@@ -1151,3 +1260,271 @@ async def reject_doc(
         )
 
     return {"status": "success", "message": "Rejected. Feedback stored for agent retry context."}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# KNOWLEDGE BASE ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/v1/kb/upload", tags=["knowledge-base"])
+async def kb_upload(
+    file: UploadFile = File(...),
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Upload a best-practice document to the Knowledge Base.
+
+    Flow: validate → parse → chunk → auto-tag via LLM → store in ChromaDB + MongoDB.
+
+    Guards:
+      - MIME/extension validation
+      - File size capped at KB_MAX_FILE_BYTES (default 10 MB)
+      - Content must be parseable
+    """
+    filename = file.filename or "unnamed"
+
+    # 1. Validate file type
+    try:
+        file_type = detect_file_type(filename, file.content_type)
+    except DocumentParseError as exc:
+        raise HTTPException(status_code=415, detail=str(exc))
+
+    # 2. Read and validate size
+    content = await file.read()
+    if len(content) > settings.kb_max_file_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"File exceeds the {settings.kb_max_file_bytes // 1_048_576} MB limit "
+                f"({len(content):,} bytes received)."
+            ),
+        )
+
+    # 3. Parse document
+    try:
+        result = parse_document(content, filename, file.content_type)
+    except DocumentParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    # 4. Chunk text
+    chunks = chunk_text(
+        result.text,
+        chunk_size=settings.kb_chunk_size,
+        chunk_overlap=settings.kb_chunk_overlap,
+    )
+    if not chunks:
+        raise HTTPException(status_code=422, detail="No text could be extracted from the file.")
+
+    # 5. Auto-tag via LLM
+    auto_tags = await _suggest_kb_tags_via_llm(result.text[:1000], filename)
+    log_agent(f"[KB] Auto-tags for '{filename}': {auto_tags}")
+
+    # 6. Generate document ID and store in ChromaDB
+    doc_id = f"KB-{uuid.uuid4().hex[:8].upper()}"
+    if kb_collection is not None:
+        tags_csv = ",".join(auto_tags)
+        try:
+            kb_collection.upsert(
+                documents=[c.text for c in chunks],
+                metadatas=[
+                    {
+                        "document_id": doc_id,
+                        "filename": filename,
+                        "chunk_index": c.index,
+                        "tags_csv": tags_csv,
+                    }
+                    for c in chunks
+                ],
+                ids=[f"{doc_id}-chunk-{c.index}" for c in chunks],
+            )
+            logger.info("[KB] Stored %d chunks in ChromaDB for %s.", len(chunks), doc_id)
+        except Exception as exc:
+            logger.warning("[KB] ChromaDB upsert failed for %s: %s", doc_id, exc)
+            raise HTTPException(status_code=500, detail=f"Vector store failed: {exc}")
+    else:
+        raise HTTPException(status_code=503, detail="ChromaDB is unavailable.")
+
+    # 7. Save metadata to MongoDB
+    kb_doc = KBDocument(
+        id=doc_id,
+        filename=filename,
+        file_type=result.file_type,
+        file_size_bytes=len(content),
+        tags=auto_tags,
+        chunk_count=len(chunks),
+        content_preview=result.text[:500],
+        uploaded_at=_now_iso(),
+    )
+    kb_docs[doc_id] = kb_doc
+    if db.kb_documents_col is not None:
+        await db.kb_documents_col.replace_one(
+            {"id": doc_id}, kb_doc.model_dump(), upsert=True
+        )
+
+    log_agent(f"[KB] Document '{filename}' imported as {doc_id} ({len(chunks)} chunks).")
+    return KBUploadResponse(
+        id=doc_id,
+        filename=filename,
+        file_type=result.file_type,
+        chunks_created=len(chunks),
+        auto_tags=auto_tags,
+    ).model_dump()
+
+
+@app.get("/api/v1/kb/documents", tags=["knowledge-base"])
+async def kb_list_documents() -> dict:
+    """Return all Knowledge Base documents with metadata."""
+    return {
+        "status": "success",
+        "data": [d.model_dump() for d in kb_docs.values()],
+    }
+
+
+@app.get("/api/v1/kb/documents/{id}", tags=["knowledge-base"])
+async def kb_get_document(id: str) -> dict:
+    """Return a single Knowledge Base document by ID."""
+    if id not in kb_docs:
+        raise HTTPException(status_code=404, detail="KB document not found.")
+    return {"status": "success", "data": kb_docs[id].model_dump()}
+
+
+@app.delete("/api/v1/kb/documents/{id}", tags=["knowledge-base"])
+async def kb_delete_document(
+    id: str,
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Delete a Knowledge Base document and its chunks from ChromaDB and MongoDB.
+    """
+    if id not in kb_docs:
+        raise HTTPException(status_code=404, detail="KB document not found.")
+
+    kb_doc = kb_docs[id]
+
+    # Remove chunks from ChromaDB
+    if kb_collection is not None:
+        try:
+            chunk_ids = [f"{id}-chunk-{i}" for i in range(kb_doc.chunk_count)]
+            kb_collection.delete(ids=chunk_ids)
+            logger.info("[KB] Deleted %d chunks from ChromaDB for %s.", kb_doc.chunk_count, id)
+        except Exception as exc:
+            logger.warning("[KB] ChromaDB delete failed for %s: %s", id, exc)
+
+    # Remove from MongoDB
+    if db.kb_documents_col is not None:
+        await db.kb_documents_col.delete_one({"id": id})
+
+    # Remove from in-memory cache
+    del kb_docs[id]
+
+    return {"status": "success", "message": f"KB document {id} deleted."}
+
+
+@app.put("/api/v1/kb/documents/{id}/tags", tags=["knowledge-base"])
+async def kb_update_tags(
+    id: str,
+    body: KBUpdateTagsRequest,
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Update tags for a Knowledge Base document.
+
+    Also updates the tags_csv metadata on all associated ChromaDB chunks
+    so tag-filtered RAG queries reflect the change.
+    """
+    if id not in kb_docs:
+        raise HTTPException(status_code=404, detail="KB document not found.")
+
+    # Strip whitespace, discard blank tags, enforce max 50 chars each
+    clean_tags = [t.strip()[:50] for t in body.tags if t.strip()]
+    if not clean_tags:
+        raise HTTPException(status_code=422, detail="No valid tags after stripping whitespace.")
+
+    kb_doc = kb_docs[id]
+    kb_doc.tags = clean_tags
+
+    # Update MongoDB
+    if db.kb_documents_col is not None:
+        await db.kb_documents_col.replace_one(
+            {"id": id}, kb_doc.model_dump(), upsert=True
+        )
+
+    # Update ChromaDB chunk metadata
+    if kb_collection is not None:
+        tags_csv = ",".join(clean_tags)
+        try:
+            chunk_ids = [f"{id}-chunk-{i}" for i in range(kb_doc.chunk_count)]
+            kb_collection.update(
+                ids=chunk_ids,
+                metadatas=[{"tags_csv": tags_csv, "document_id": id, "filename": kb_doc.filename, "chunk_index": i} for i in range(kb_doc.chunk_count)],
+            )
+        except Exception as exc:
+            logger.warning("[KB] ChromaDB tag update failed for %s: %s", id, exc)
+
+    return {
+        "status": "success",
+        "integration_id": id,
+        "updated_tags": clean_tags,
+    }
+
+
+@app.get("/api/v1/kb/search", tags=["knowledge-base"])
+async def kb_search(
+    q: str = Query(..., min_length=1, max_length=500, description="Semantic search query"),
+    n: int = Query(5, ge=1, le=20, description="Max results to return"),
+) -> dict:
+    """
+    Semantic search across Knowledge Base chunks.
+
+    Returns the most relevant chunks with their source document info.
+    """
+    if not kb_collection:
+        raise HTTPException(status_code=503, detail="ChromaDB is unavailable.")
+
+    try:
+        results = kb_collection.query(
+            query_texts=[q],
+            n_results=n,
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Search failed: {exc}")
+
+    docs = (results or {}).get("documents", [[]])[0]
+    metas = (results or {}).get("metadatas", [[]])[0]
+    distances = (results or {}).get("distances", [[]])[0]
+
+    items: list[dict] = []
+    for text, meta, dist in zip(docs, metas, distances):
+        items.append(KBSearchResult(
+            chunk_text=text,
+            document_id=meta.get("document_id", ""),
+            filename=meta.get("filename", ""),
+            score=round(1.0 - dist, 4) if dist is not None else None,
+        ).model_dump())
+
+    return KBSearchResponse(
+        results=items,
+        query=q,
+        total_results=len(items),
+    ).model_dump()
+
+
+@app.get("/api/v1/kb/stats", tags=["knowledge-base"])
+async def kb_stats() -> dict:
+    """Return Knowledge Base statistics."""
+    file_types: dict[str, int] = {}
+    all_tags: set[str] = set()
+    total_chunks = 0
+
+    for doc in kb_docs.values():
+        file_types[doc.file_type] = file_types.get(doc.file_type, 0) + 1
+        all_tags.update(doc.tags)
+        total_chunks += doc.chunk_count
+
+    return KBStatsResponse(
+        total_documents=len(kb_docs),
+        total_chunks=total_chunks,
+        file_types=file_types,
+        all_tags=sorted(all_tags),
+    ).model_dump()
