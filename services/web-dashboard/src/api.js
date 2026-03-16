@@ -25,7 +25,7 @@ export const API = {
       fetch(`${getBase()}/api/v1/catalog/integrations/${id}/confirm-tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmed_tags: tags }),
+        body: JSON.stringify({ tags }),
       }),
   },
 
