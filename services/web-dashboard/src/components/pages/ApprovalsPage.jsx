@@ -21,7 +21,8 @@ export default function ApprovalsPage() {
     try {
       const res  = await API.approvals.pending();
       const data = await res.json();
-      setApprovals(data.pending || []);
+      // Backend returns { status, data: [...] }
+      setApprovals(data.data || []);
     } catch {
       setError('Failed to load pending approvals');
     } finally {

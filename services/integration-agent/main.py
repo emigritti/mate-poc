@@ -602,10 +602,19 @@ async def cancel_agent(
 
 
 @app.get("/api/v1/agent/logs", tags=["agent"])
-async def get_logs() -> dict:
+async def get_logs(offset: int = 0) -> dict:
+    """Return agent logs from *offset* onwards (max 100 per call).
+
+    Clients should pass next_offset from the previous response so only new
+    entries are returned. finished=True means the agent is no longer running
+    and the client can stop polling.
+    """
+    capped = agent_logs[offset:][:100]
     return {
         "status": "success",
-        "logs": [e.model_dump(mode="json") for e in agent_logs[-100:]],
+        "logs": [e.model_dump(mode="json") for e in capped],
+        "next_offset": offset + len(capped),
+        "finished": not _agent_lock.locked(),
     }
 
 

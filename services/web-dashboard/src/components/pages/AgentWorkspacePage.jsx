@@ -69,6 +69,33 @@ export default function AgentWorkspacePage() {
     clearInterval(progressRef.current);
   }, []);
 
+  // Restore log state when navigating back to this page while agent is running
+  // or after it has already completed (logs survive navigation).
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const res  = await API.agent.logs(0);
+        const data = await res.json();
+        if (!data.logs?.length) return; // never ran — keep fresh state
+        setLogs(data.logs);
+        offsetRef.current = data.next_offset ?? data.logs.length;
+        if (!data.finished) {
+          // agent still running — resume polling and progress bar
+          setRunning(true);
+          setStatus('running');
+          startPolling();
+          startProgress();
+        } else {
+          setStatus('done');
+          setProgress(100);
+        }
+      } catch {
+        // network error on restore — silently keep fresh state
+      }
+    };
+    restore();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // auto-scroll log to bottom
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
