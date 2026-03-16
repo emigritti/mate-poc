@@ -51,6 +51,11 @@ export const API = {
       fetch(`${getBase()}/api/v1/admin/reset/${target}`, { method: 'DELETE' }),
   },
 
+  projectDocs: {
+    list:    ()     => fetch(`${getBase()}/api/v1/admin/docs`),
+    content: (path) => fetch(`${getBase()}/api/v1/admin/docs/${path}`),
+  },
+
   health: {
     check: (port) => fetch(`http://${window.location.hostname}:${port}/health`),
   },
