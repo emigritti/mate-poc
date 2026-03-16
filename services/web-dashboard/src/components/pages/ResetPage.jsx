@@ -58,6 +58,8 @@ function ResetCard({ action }) {
       if (!res.ok) throw new Error(data.detail || `Reset failed (${res.status})`);
       setMsg(data.message || 'Reset complete');
       setStep('done');
+      // Reload the app so all pages discard stale in-memory state
+      setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
       setMsg(e.message || 'Reset failed');
       setStep('error');

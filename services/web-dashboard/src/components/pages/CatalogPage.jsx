@@ -94,7 +94,8 @@ export default function CatalogPage() {
     try {
       const res  = await API.catalog.list();
       const data = await res.json();
-      setIntegrations(data.integrations || []);
+      // Backend returns { status, data: [...] }
+      setIntegrations(data.data || []);
     } catch {
       setError('Failed to load integrations');
     } finally {

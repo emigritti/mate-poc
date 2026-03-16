@@ -69,11 +69,20 @@ function TagConfirmPanel({ integrationId, onConfirmed }) {
 
   const confirm = async () => {
     setConfirming(true);
+    setError(null);
     try {
-      await API.catalog.confirmTags(integrationId, selected);
+      const res = await API.catalog.confirmTags(integrationId, selected);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        // Pydantic 422 returns detail as an array of {loc, msg, type} objects
+        const msg = Array.isArray(d.detail)
+          ? d.detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+          : (d.detail || `Server error ${res.status}`);
+        throw new Error(msg);
+      }
       onConfirmed(integrationId);
-    } catch {
-      setError('Failed to confirm tags');
+    } catch (e) {
+      setError(e.message || 'Failed to confirm tags');
     } finally {
       setConfirming(false);
     }
