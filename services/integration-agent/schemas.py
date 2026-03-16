@@ -97,3 +97,67 @@ class SuggestTagsResponse(BaseModel):
     integration_id: str
     suggested_tags: List[str]
     source: Dict[str, List[str]]
+
+
+# ── Knowledge Base models ─────────────────────────────────────────────────────
+
+class KBDocument(BaseModel):
+    """Metadata record for a Knowledge Base document stored in MongoDB."""
+    id: str
+    filename: str
+    file_type: str                  # "pdf", "docx", "xlsx", "pptx", "md"
+    file_size_bytes: int
+    tags: List[str] = []
+    chunk_count: int
+    content_preview: str            # first ~500 chars of extracted text
+    uploaded_at: str
+
+
+class KBUploadResponse(BaseModel):
+    """Response for POST /api/v1/kb/upload."""
+    id: str
+    filename: str
+    file_type: str
+    chunks_created: int
+    auto_tags: List[str]
+
+
+class KBUpdateTagsRequest(BaseModel):
+    """Body for PUT /api/v1/kb/documents/{id}/tags."""
+    tags: List[str] = Field(
+        min_length=1,
+        max_length=10,
+        description="Updated tags (1–10 items). Each tag max 50 chars.",
+    )
+
+
+class KBSearchRequest(BaseModel):
+    """Query parameters for GET /api/v1/kb/search."""
+    query: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Semantic search query.",
+    )
+
+
+class KBSearchResult(BaseModel):
+    """A single search result from the Knowledge Base."""
+    chunk_text: str
+    document_id: str
+    filename: str
+    score: Optional[float] = None
+
+
+class KBSearchResponse(BaseModel):
+    """Response for GET /api/v1/kb/search."""
+    results: List[KBSearchResult]
+    query: str
+    total_results: int
+
+
+class KBStatsResponse(BaseModel):
+    """Response for GET /api/v1/kb/stats."""
+    total_documents: int
+    total_chunks: int
+    file_types: Dict[str, int]
+    all_tags: List[str]

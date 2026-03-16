@@ -40,6 +40,7 @@ _FALLBACK_TEMPLATE = (
     "For any section with no information write exactly `n/a`.\n\n"
     "Requirements:\n{formatted_requirements}\n\n"
     "{rag_context}\n\n"
+    "{kb_context}\n\n"
     "TEMPLATE:\n{document_template}\n\n"
     "Output ONLY valid Markdown. Begin immediately with "
     "`# Integration Functional Design`."
@@ -104,6 +105,7 @@ def build_prompt(
     target_system: str,
     formatted_requirements: str,
     rag_context: str = "",
+    kb_context: str = "",
 ) -> str:
     """
     Populate the meta-prompt template with runtime values.
@@ -113,6 +115,7 @@ def build_prompt(
         target_system:           Name of the integration target system.
         formatted_requirements:  Concatenated requirement descriptions.
         rag_context:             Past approved examples from ChromaDB (may be empty).
+        kb_context:              Best-practice reference from Knowledge Base (may be empty).
 
     Returns:
         A fully populated prompt string ready to be sent to the LLM.
@@ -120,6 +123,11 @@ def build_prompt(
     rag_block = (
         f"PAST APPROVED EXAMPLES:\n{rag_context}"
         if rag_context.strip()
+        else ""
+    )
+    kb_block = (
+        f"BEST PRACTICES REFERENCE:\n{kb_context}"
+        if kb_context.strip()
         else ""
     )
     # F-09 / CLAUDE.md §10: sequential str.replace() instead of str.format()
@@ -130,5 +138,6 @@ def build_prompt(
     result = result.replace("{target_system}", target_system)
     result = result.replace("{formatted_requirements}", formatted_requirements)
     result = result.replace("{rag_context}", rag_block)
+    result = result.replace("{kb_context}", kb_block)
     result = result.replace("{document_template}", _FUNCTIONAL_TEMPLATE)
     return result

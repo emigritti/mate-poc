@@ -3,6 +3,7 @@ import Sidebar from './components/layout/Sidebar.jsx';
 import TopBar from './components/layout/TopBar.jsx';
 import WorkflowStepper from './components/WorkflowStepper.jsx';
 import RequirementsPage from './components/pages/RequirementsPage.jsx';
+import KnowledgeBasePage from './components/pages/KnowledgeBasePage.jsx';
 import ApiSystemsPage from './components/pages/ApiSystemsPage.jsx';
 import AgentWorkspacePage from './components/pages/AgentWorkspacePage.jsx';
 import CatalogPage from './components/pages/CatalogPage.jsx';
@@ -13,24 +14,26 @@ import { API } from './api.js';
 
 const PAGE_META = {
   requirements: { title: 'Requirements', subtitle: 'Upload and manage integration requirements', step: 1 },
-  apis:         { title: 'API Systems',  subtitle: 'Connected source and target systems', step: null },
-  agent:        { title: 'Agent Workspace', subtitle: 'AI-powered document generation', step: 3 },
-  catalog:      { title: 'Integration Catalog', subtitle: 'Browse generated integrations', step: 5 },
-  documents:    { title: 'Generated Docs', subtitle: 'View functional and technical specifications', step: 5 },
-  approvals:    { title: 'HITL Approvals', subtitle: 'Human-in-the-loop document review', step: 4 },
-  reset:        { title: 'Reset Tools', subtitle: 'Admin data management', step: null },
+  kb: { title: 'Knowledge Base', subtitle: 'Best practices document library', step: 2 },
+  apis: { title: 'API Systems', subtitle: 'Connected source and target systems', step: null },
+  agent: { title: 'Agent Workspace', subtitle: 'AI-powered document generation', step: 3 },
+  catalog: { title: 'Integration Catalog', subtitle: 'Browse generated integrations', step: 5 },
+  documents: { title: 'Generated Docs', subtitle: 'View functional and technical specifications', step: 5 },
+  approvals: { title: 'HITL Approvals', subtitle: 'Human-in-the-loop document review', step: 4 },
+  reset: { title: 'Reset Tools', subtitle: 'Admin data management', step: null },
 };
 
 function renderPage(page) {
   switch (page) {
     case 'requirements': return <RequirementsPage />;
-    case 'apis':         return <ApiSystemsPage />;
-    case 'agent':        return <AgentWorkspacePage />;
-    case 'catalog':      return <CatalogPage />;
-    case 'documents':    return <DocumentsPage />;
-    case 'approvals':    return <ApprovalsPage />;
-    case 'reset':        return <ResetPage />;
-    default:             return <RequirementsPage />;
+    case 'kb': return <KnowledgeBasePage />;
+    case 'apis': return <ApiSystemsPage />;
+    case 'agent': return <AgentWorkspacePage />;
+    case 'catalog': return <CatalogPage />;
+    case 'documents': return <DocumentsPage />;
+    case 'approvals': return <ApprovalsPage />;
+    case 'reset': return <ResetPage />;
+    default: return <RequirementsPage />;
   }
 }
 

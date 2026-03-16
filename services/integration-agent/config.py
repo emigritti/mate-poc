@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # ── Log TTL ──────────────────────────────────────────────────────
     log_ttl_hours: int = 4   # env: LOG_TTL_HOURS — prune entries older than N hours
 
+    # ── Knowledge Base ─────────────────────────────────────────────────
+    kb_max_file_bytes: int = 10_485_760    # 10 MB — override via KB_MAX_FILE_BYTES
+    kb_chunk_size: int = 1000              # chars per chunk — override via KB_CHUNK_SIZE
+    kb_chunk_overlap: int = 200            # overlap chars — override via KB_CHUNK_OVERLAP
+    kb_max_rag_chars: int = 2000           # max KB context in prompt — override via KB_MAX_RAG_CHARS
+
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.
     # If absent, endpoints log a warning and allow through (dev mode).
