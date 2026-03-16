@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from main import DOCS_MANIFEST
 
 
 @pytest.fixture
@@ -18,7 +19,7 @@ def test_list_docs_returns_manifest(client):
     data = res.json()
     assert data["status"] == "success"
     entries = data["data"]
-    assert len(entries) == 19
+    assert len(entries) == len(DOCS_MANIFEST)
     # Every entry has required keys
     for entry in entries:
         assert {"path", "name", "category", "description"} <= entry.keys()
@@ -63,14 +64,25 @@ def test_get_doc_rejects_non_md(client):
 
 
 def test_get_doc_path_traversal_blocked(client, tmp_path, monkeypatch):
-    """Path traversal attempt (percent-encoded ../) is rejected with 400.
+    """Path traversal attempt (percent-encoded ../) is rejected.
 
-    Starlette normalizes bare '../' segments before they reach the handler, so
-    the guard is exercised via a percent-encoded traversal sequence which
-    Starlette passes through without normalisation.
+    The manifest allow-list rejects any path not explicitly listed, so traversal
+    paths (e.g. ../../etc/passwd.md) are blocked with 404 before any filesystem
+    access occurs.
     """
     import main
     monkeypatch.setattr(main, "DOCS_ROOT", tmp_path)
     res = client.get("/api/v1/admin/docs/%2e%2e%2fetc%2fpasswd.md")
-    assert res.status_code == 400
-    assert "Invalid document path" in res.json()["detail"]
+    assert res.status_code == 404
+    assert "not found" in res.json()["detail"].lower()
+
+
+def test_list_docs_no_auth_required_when_api_key_unset(client):
+    """When API_KEY env var is unset, _require_token is a no-op and docs are accessible.
+
+    conftest.py pops API_KEY so settings.api_key is None → _require_token bypasses
+    auth enforcement in tests (PoC dev mode).
+    """
+    # conftest.py pops API_KEY so settings.api_key is None → auth bypassed in tests
+    res = client.get("/api/v1/admin/docs")
+    assert res.status_code == 200

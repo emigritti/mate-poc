@@ -86,7 +86,9 @@ _CSV_MAX_BYTES = 1_048_576  # 1 MB
 _SAFE_FILENAME_RE = re.compile(r"[^\w\-.]")
 
 # ── Project Docs ──────────────────────────────────────────────────────────────
-DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent / "docs"))
+DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent.parent.parent / "docs"))
+if not DOCS_ROOT.is_dir():
+    logger.warning("DOCS_ROOT %s does not exist or is not a directory; doc endpoints will return 404.", DOCS_ROOT)
 
 # Significant project docs — excludes templates, obsolete, and plans/
 DOCS_MANIFEST: list[dict] = [
@@ -1077,21 +1079,30 @@ async def reset_all(
 # ── Project Docs (read-only) ──────────────────────────────────────────────────
 
 @app.get("/api/v1/admin/docs", tags=["admin"])
-async def list_project_docs() -> dict:
+async def list_project_docs(_token: str = Depends(_require_token)) -> dict:
     """Return the curated manifest of significant project documentation."""
     return {"status": "success", "data": DOCS_MANIFEST}
 
 
 @app.get("/api/v1/admin/docs/{path:path}", tags=["admin"])
-async def get_project_doc(path: str) -> dict:
+async def get_project_doc(path: str, _token: str = Depends(_require_token)) -> dict:
     """Return the markdown content of a single project doc.
 
     Path traversal protection: resolves the absolute path and rejects any
     request that escapes DOCS_ROOT.
     """
+    # Null-byte injection guard
+    if "\x00" in path:
+        raise HTTPException(status_code=400, detail="Invalid document path.")
+
     # Only .md files are served
     if not path.endswith(".md"):
         raise HTTPException(status_code=400, detail="Only .md files are served.")
+
+    # Restrict to manifest allow-list (also covers path traversal attempts)
+    _manifest_paths = {d["path"] for d in DOCS_MANIFEST}
+    if path not in _manifest_paths:
+        raise HTTPException(status_code=404, detail="Document not found.")
 
     resolved = (DOCS_ROOT / path).resolve()
     docs_root_resolved = DOCS_ROOT.resolve()
