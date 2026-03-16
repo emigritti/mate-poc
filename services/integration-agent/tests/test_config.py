@@ -82,3 +82,21 @@ def test_log_ttl_hours_env_override(monkeypatch):
     monkeypatch.setenv("LOG_TTL_HOURS", "8")
     s = Settings()
     assert s.log_ttl_hours == 8
+
+
+def test_tag_num_predict_default():
+    from config import Settings
+    s = Settings()
+    assert s.tag_num_predict == 20
+
+
+def test_tag_timeout_seconds_default():
+    from config import Settings
+    s = Settings()
+    assert s.tag_timeout_seconds == 15
+
+
+def test_tag_temperature_default():
+    from config import Settings
+    s = Settings()
+    assert s.tag_temperature == 0.0
