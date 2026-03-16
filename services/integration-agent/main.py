@@ -27,10 +27,12 @@ import hmac
 import io
 import json
 import logging
+import os
 import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import chromadb
 import httpx
@@ -82,6 +84,132 @@ _ALLOWED_CSV_MIME = frozenset({
 })
 _CSV_MAX_BYTES = 1_048_576  # 1 MB
 _SAFE_FILENAME_RE = re.compile(r"[^\w\-.]")
+
+# ── Project Docs ──────────────────────────────────────────────────────────────
+DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent / "docs"))
+
+# Significant project docs — excludes templates, obsolete, and plans/
+DOCS_MANIFEST: list[dict] = [
+    # ── Guides ────────────────────────────────────────────────────────────────
+    {
+        "path": "README.md",
+        "name": "README",
+        "category": "Guide",
+        "description": "Overview of the project, quick-start instructions, and service map.",
+    },
+    {
+        "path": "AWS-DEPLOYMENT-GUIDE.md",
+        "name": "AWS Deployment Guide",
+        "category": "Guide",
+        "description": "Step-by-step instructions to deploy the full stack on AWS (ECS, RDS, managed services).",
+    },
+    {
+        "path": "architecture_specification.md",
+        "name": "Architecture Specification",
+        "category": "Guide",
+        "description": "Full technical architecture: service topology, data flows, and component responsibilities.",
+    },
+    {
+        "path": "functional-guide.md",
+        "name": "Functional Guide",
+        "category": "Guide",
+        "description": "End-to-end functional walkthrough of the integration generation workflow.",
+    },
+    # ── ADRs ──────────────────────────────────────────────────────────────────
+    {
+        "path": "adr/ADR-001-011-decisions.md",
+        "name": "ADR-001\u2026011",
+        "category": "ADR",
+        "description": "Batch record of foundational decisions: tech stack, RAG design, HITL flow, initial security posture.",
+    },
+    {
+        "path": "adr/ADR-012-async-llm-client.md",
+        "name": "ADR-012 Async LLM Client",
+        "category": "ADR",
+        "description": "Decision to replace synchronous requests with httpx.AsyncClient for non-blocking Ollama calls.",
+    },
+    {
+        "path": "adr/ADR-013-mongodb-persistence.md",
+        "name": "ADR-013 MongoDB Persistence",
+        "category": "ADR",
+        "description": "Decision to add MongoDB as write-through cache for catalog, approvals, and documents.",
+    },
+    {
+        "path": "adr/ADR-014-prompt-builder.md",
+        "name": "ADR-014 Prompt Builder",
+        "category": "ADR",
+        "description": "Decision to extract prompt assembly into a dedicated module with a reusable meta-prompt template.",
+    },
+    {
+        "path": "adr/ADR-015-llm-output-guard.md",
+        "name": "ADR-015 LLM Output Guard",
+        "category": "ADR",
+        "description": "Decision to add an output sanitization layer validating and bleach-cleaning LLM responses.",
+    },
+    {
+        "path": "adr/ADR-016-secret-management.md",
+        "name": "ADR-016 Secret Management",
+        "category": "ADR",
+        "description": "Decision to move all config to pydantic-settings with env-var overrides, eliminating hardcoded secrets.",
+    },
+    {
+        "path": "adr/ADR-017-frontend-xss-mitigation.md",
+        "name": "ADR-017 Frontend XSS Mitigation",
+        "category": "ADR",
+        "description": "Decision to introduce escapeHtml() in the frontend to neutralize XSS from server-sourced innerHTML.",
+    },
+    {
+        "path": "adr/ADR-018-cors-standardization.md",
+        "name": "ADR-018 CORS Standardization",
+        "category": "ADR",
+        "description": "Decision to replace wildcard CORS with an env-var-driven allowlist.",
+    },
+    {
+        "path": "adr/ADR-019-rag-tag-filtering.md",
+        "name": "ADR-019 RAG Tag Filtering",
+        "category": "ADR",
+        "description": "Decision to filter ChromaDB queries by confirmed integration tags to improve context relevance.",
+    },
+    {
+        "path": "adr/ADR-020-tag-llm-tuning.md",
+        "name": "ADR-020 Tag LLM Tuning",
+        "category": "ADR",
+        "description": "Decision to introduce dedicated lightweight LLM settings for tag suggestion (20-token cap, 15s timeout).",
+    },
+    # ── Checklists ────────────────────────────────────────────────────────────
+    {
+        "path": "code-review/CODE-REVIEW-CHECKLIST.md",
+        "name": "Code Review Checklist",
+        "category": "Checklist",
+        "description": "Structured checklist covering architecture, correctness, security, and testability gates.",
+    },
+    {
+        "path": "security-review/SECURITY-REVIEW-CHECKLIST.md",
+        "name": "Security Review Checklist",
+        "category": "Checklist",
+        "description": "OWASP-aligned checklist applied at every PR to catch injection, auth, logging, and dependency risks.",
+    },
+    {
+        "path": "unit-test-review/UNIT-TEST-REVIEW-CHECKLIST.md",
+        "name": "Unit Test Review Checklist",
+        "category": "Checklist",
+        "description": "Quality gate checklist: determinism, isolation, readability, edge-case coverage.",
+    },
+    # ── Test Plans ────────────────────────────────────────────────────────────
+    {
+        "path": "test-plan/TEST-PLAN-001-remediation.md",
+        "name": "TEST-PLAN-001 Remediation",
+        "category": "Test Plan",
+        "description": "v2.0 plan covering 50 unit tests, 10 integration tests, and 16 security tests from Phase 4.",
+    },
+    # ── Mappings ──────────────────────────────────────────────────────────────
+    {
+        "path": "mappings/UNIT-SECURITY-OWASP-MAPPING.md",
+        "name": "OWASP Unit-Test Mapping",
+        "category": "Mapping",
+        "description": "Traceability matrix linking each unit test to its OWASP Top 10 / ASVS control.",
+    },
+]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -944,6 +1072,42 @@ async def reset_all(
     msg = f"Full reset completed.{chroma_warning}"
     logger.info("[ADMIN] %s", msg)
     return {"status": "success", "message": msg}
+
+
+# ── Project Docs (read-only) ──────────────────────────────────────────────────
+
+@app.get("/api/v1/admin/docs", tags=["admin"])
+async def list_project_docs() -> dict:
+    """Return the curated manifest of significant project documentation."""
+    return {"status": "success", "data": DOCS_MANIFEST}
+
+
+@app.get("/api/v1/admin/docs/{path:path}", tags=["admin"])
+async def get_project_doc(path: str) -> dict:
+    """Return the markdown content of a single project doc.
+
+    Path traversal protection: resolves the absolute path and rejects any
+    request that escapes DOCS_ROOT.
+    """
+    # Only .md files are served
+    if not path.endswith(".md"):
+        raise HTTPException(status_code=400, detail="Only .md files are served.")
+
+    resolved = (DOCS_ROOT / path).resolve()
+    docs_root_resolved = DOCS_ROOT.resolve()
+
+    # Path traversal guard
+    try:
+        resolved.relative_to(docs_root_resolved)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document path.")
+
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    content = resolved.read_text(encoding="utf-8")
+    name = next((d["name"] for d in DOCS_MANIFEST if d["path"] == path), path)
+    return {"status": "success", "data": {"path": path, "name": name, "content": content}}
 
 
 @app.post("/api/v1/approvals/{id}/reject", tags=["approvals"])
