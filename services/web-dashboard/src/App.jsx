@@ -10,6 +10,7 @@ import CatalogPage from './components/pages/CatalogPage.jsx';
 import DocumentsPage from './components/pages/DocumentsPage.jsx';
 import ApprovalsPage from './components/pages/ApprovalsPage.jsx';
 import ResetPage from './components/pages/ResetPage.jsx';
+import ProjectDocsPage from './components/pages/ProjectDocsPage.jsx';
 import { API } from './api.js';
 
 const PAGE_META = {
@@ -21,6 +22,7 @@ const PAGE_META = {
   documents: { title: 'Generated Docs', subtitle: 'View functional and technical specifications', step: 5 },
   approvals: { title: 'HITL Approvals', subtitle: 'Human-in-the-loop document review', step: 4 },
   reset: { title: 'Reset Tools', subtitle: 'Admin data management', step: null },
+  'project-docs': { title: 'Project Docs', subtitle: 'Browse governance documents, ADRs, and checklists', step: null },
 };
 
 function renderPage(page) {
@@ -33,6 +35,7 @@ function renderPage(page) {
     case 'documents': return <DocumentsPage />;
     case 'approvals': return <ApprovalsPage />;
     case 'reset': return <ResetPage />;
+    case 'project-docs': return <ProjectDocsPage />;
     default: return <RequirementsPage />;
   }
 }

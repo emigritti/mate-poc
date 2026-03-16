@@ -1,4 +1,4 @@
-import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library } from 'lucide-react';
+import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
@@ -22,6 +22,7 @@ const NAV_GROUPS = [
     label: 'Admin',
     items: [
       { id: 'reset', label: 'Reset Tools', icon: Trash2 },
+      { id: 'project-docs', label: 'Project Docs', icon: BookMarked },
     ],
   },
 ];
