@@ -55,6 +55,7 @@ function ResetCard({ action }) {
     try {
       const res  = await API.admin.reset(action.id);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Reset failed (${res.status})`);
       setMsg(data.message || 'Reset complete');
       setStep('done');
     } catch (e) {
