@@ -32,14 +32,14 @@ class Settings(BaseSettings):
     # 1500 chars captures the key patterns without exploding the KV cache.
     ollama_rag_max_chars: int = 1500
 
-    # ── Tag Suggestion LLM (lightweight — separate from main doc-generation) ──
+    # ── Tag Suggestion LLM (lightweight — overrides for tag-only calls) ───────
     # Tag output is a JSON array of ≤2 items (~15 tokens).
     # num_predict=20 caps well above that to avoid truncation.
     # timeout=15s is generous even on slow CPU. temperature=0 = deterministic.
     # Override via TAG_NUM_PREDICT / TAG_TIMEOUT_SECONDS / TAG_TEMPERATURE.
-    tag_num_predict:     int   = 20
-    tag_timeout_seconds: int   = 15
-    tag_temperature:     float = 0.0
+    tag_num_predict: int = 20
+    tag_timeout_seconds: int = 15
+    tag_temperature: float = 0.0
 
     # ── Vector DB ─────────────────────────────────────────────────────
     chroma_host: str = "mate-chromadb"

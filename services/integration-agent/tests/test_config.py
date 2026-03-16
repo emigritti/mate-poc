@@ -85,18 +85,18 @@ def test_log_ttl_hours_env_override(monkeypatch):
 
 
 def test_tag_num_predict_default():
-    from config import Settings
+    """tag_num_predict defaults to 20 (vs 1000 for main LLM)."""
     s = Settings()
     assert s.tag_num_predict == 20
 
 
 def test_tag_timeout_seconds_default():
-    from config import Settings
+    """tag_timeout_seconds defaults to 15 (vs 120s for main LLM)."""
     s = Settings()
     assert s.tag_timeout_seconds == 15
 
 
 def test_tag_temperature_default():
-    from config import Settings
+    """tag_temperature defaults to 0.0 (deterministic output)."""
     s = Settings()
     assert s.tag_temperature == 0.0
