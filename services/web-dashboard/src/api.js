@@ -56,6 +56,16 @@ export const API = {
     content: (path) => fetch(`${getBase()}/api/v1/admin/docs/${path}`),
   },
 
+  llmSettings: {
+    get:   ()     => fetch(`${getBase()}/api/v1/admin/llm-settings`),
+    patch: (body) => fetch(`${getBase()}/api/v1/admin/llm-settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    reset: ()     => fetch(`${getBase()}/api/v1/admin/llm-settings/reset`, { method: 'POST' }),
+  },
+
   kb: {
     upload: (file) => {
       const fd = new FormData();
