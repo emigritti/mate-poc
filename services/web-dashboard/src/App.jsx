@@ -54,15 +54,15 @@ export default function App() {
   }, []);
 
   async function checkServices() {
-    const check = async (port) => {
+    const check = async (service) => {
       try {
-        const res = await API.health.check(port);
+        const res = await API.health.check(service);
         return res.ok ? 'ok' : 'error';
       } catch {
         return 'error';
       }
     };
-    const [agent, plm, pim] = await Promise.all([check(4003), check(3001), check(3002)]);
+    const [agent, plm, pim] = await Promise.all([check('agent'), check('plm'), check('pim')]);
     setServices({ agent, plm, pim });
   }
 

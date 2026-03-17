@@ -308,13 +308,38 @@ services:
 
   # ── Frontend Layer ─────────────────────────────────────
 
+  # ── Gateway Layer ─────────────────────────────────────
+  # Reverse proxy unico su porta 8080: elimina la necessità di
+  # aprire le porte 4001/4002/4003 sul firewall aziendale.
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    container_name: mate-gateway
+    ports:
+      - "8080:80"
+    depends_on:
+      - web-dashboard
+      - integration-agent
+      - plm-mock
+      - pim-mock
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:80/ || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
   web-dashboard:
     build:
       context: ./services/web-dashboard
       dockerfile: Dockerfile
     container_name: mate-web-dashboard
-    ports:
-      - "8080:80"
+    # Porta non esposta all'esterno: il traffico arriva tramite il gateway
+    expose:
+      - "80"
     networks:
       - integration-mate-net
     healthcheck:

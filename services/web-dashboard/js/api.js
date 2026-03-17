@@ -1,16 +1,16 @@
 /**
  * API Client — Communicates with the unified Integration Agent
  *
- * Service URLs are derived from the current page hostname so the same
- * build works on localhost and on any remote host (e.g. AWS EC2).
+ * All requests are routed through the nginx gateway on the same origin
+ * (port 8080). No hardcoded hostnames or ports are needed.
  */
 
-const _HOST = window.location.hostname;
-
+// Gateway-relative: tutta la comunicazione via porta 8080 (same-origin).
+// Routing: /agent/* → integration-agent:3003 | /plm/* → plm-mock:3001 | /pim/* → pim-mock:3002
 const API = {
-    AGENT: `http://${_HOST}:4003`,
-    PLM:   `http://${_HOST}:4001`,
-    PIM:   `http://${_HOST}:4002`,
+    AGENT: '/agent',
+    PLM:   '/plm',
+    PIM:   '/pim',
 
     headers() {
         return { 'Content-Type': 'application/json' };
