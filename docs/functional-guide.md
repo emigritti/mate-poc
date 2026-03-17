@@ -255,6 +255,9 @@ bleach is used in two modes:
 **Why no React, Vue, Angular:**
 - **Auditability:** A PoC that runs security reviews benefits from zero framework complexity. Reviewers can read every line without knowing framework internals.
 - **Zero build step:** HTML + JS files are served directly by Nginx. No `npm build`, no webpack, no bundle optimization.
+
+**Gateway routing:** All browser API calls are routed through the nginx gateway container (`mate-gateway`) on port 8080. Path prefixes map to internal services: `/agent/*` → integration-agent, `/plm/*` → PLM mock, `/pim/*` → PIM mock. This eliminates the need to open ports 4001, 4002, or 4003 on firewalls or security groups.
+
 - **Minimal attack surface:** No npm dependency tree = no supply chain risk.
 - **Simplicity:** The dashboard is a relatively simple CRUD UI — a framework would add complexity without value.
 
@@ -510,6 +513,8 @@ Markdown rendered in a browser can include HTML. `bleach.clean(strip=True)` remo
 ```python
 # config.py
 cors_origins: str = "http://localhost:8080,http://localhost:3000"
+# Note: with the nginx gateway, browser calls are same-origin (:8080) — CORS headers
+# are not required for browser→gateway→backend communication.
 # → parsed to list in main.py
 # Never: allow_origins=["*"] with allow_credentials=True
 ```
@@ -544,19 +549,19 @@ docker compose up -d
 
 ### Access Points
 
-| Service | URL |
-|---------|-----|
-| Web Dashboard | http://localhost:8080 |
-| Integration Agent Swagger | http://localhost:4003/docs |
-| PLM Mock Swagger | http://localhost:4001/docs |
-| PIM Mock Swagger | http://localhost:4002/docs |
-| DAM Mock Swagger | http://localhost:4005/docs |
-| MinIO Console | http://localhost:9001 (admin/minioadmin) |
-| ChromaDB API | http://localhost:8000/api/v1/heartbeat |
+| Service | URL | Notes |
+|---------|-----|-------|
+| Web Dashboard | http://localhost:8080 | Via nginx gateway |
+| Integration Agent Swagger | http://localhost:8080/agent/docs | Via gateway (also direct: :4003/docs on same network) |
+| PLM Mock Swagger | http://localhost:8080/plm/docs | Via gateway (also direct: :4001/docs on same network) |
+| PIM Mock Swagger | http://localhost:8080/pim/docs | Via gateway (also direct: :4002/docs on same network) |
+| DAM Mock Swagger | http://localhost:4005/docs |  |
+| MinIO Console | http://localhost:9001 (admin/minioadmin) |  |
+| ChromaDB API | http://localhost:8000/api/v1/heartbeat |  |
 
 ### First Run Walkthrough
 
-1. Open **http://localhost:8080**
+1. Open **http://localhost:8080** (all API calls are routed through the nginx gateway — no other ports need to be open)
 2. Navigate to **Requirements (CSV)** → upload `sample-requirements.csv`
 3. Navigate to **Agent Workspace** → click **Start Agent Processing**
 4. Watch the terminal logs in real time

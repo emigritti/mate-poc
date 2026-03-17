@@ -145,7 +145,8 @@ graph TB
     analyst["👤 Integration Analyst"]
 
     subgraph frontend["Frontend Layer"]
-        dashboard["Web Dashboard<br/><b>HTML / JS / Nginx</b><br/>:8080<br/><i>SPA: CSV upload, agent control,<br/>real-time logs, HITL review, catalog</i>"]
+        gateway["Nginx Gateway<br/><b>nginx:alpine</b><br/>:8080<br/><i>Reverse proxy — single entry point</i>"]
+        dashboard["Web Dashboard<br/><b>React / Vite / Nginx</b><br/>internal<br/><i>SPA: CSV upload, agent control,<br/>real-time logs, HITL review, catalog,<br/>KB, LLM Settings</i>"]
     end
 
     subgraph agent_layer["Agent Layer"]
@@ -168,12 +169,13 @@ graph TB
     end
 
     analyst --> dashboard
-    dashboard -- "REST API :4003" --> agent
+    dashboard -- "REST /agent/* :8080" --> gateway
+    gateway -- "proxy :3003" --> agent
     agent -- "TCP :27017" --> mongo
     agent -- "HTTP :8000" --> chroma
     agent -- "HTTP :11434" --> ollama
-    dashboard -- "Swagger :4001" --> plm
-    dashboard -- "Swagger :4002" --> pim
+    gateway -- "proxy :3001" --> plm
+    gateway -- "proxy :3002" --> pim
     dashboard -- "Swagger :4005" --> dam
     plm -- "S3 :9000" --> minio
     pim -- "S3 :9000" --> minio
@@ -185,7 +187,8 @@ graph TB
 
 | Container | Image / Stack | Port (ext → int) | Key Responsibility |
 |-----------|--------------|-------------------|--------------------|
-| `mate-web-dashboard` | Nginx + Vanilla JS | `8080 → 80` | SPA: upload, agent control, logs, HITL, catalog |
+| `mate-gateway` | Nginx Alpine | `8080 → 80` | Reverse-proxy gateway: routes `/agent/`, `/plm/`, `/pim/` to backends; single public entry point |
+| `mate-web-dashboard` | Nginx + React (Vite) | internal `→ 80` | SPA: upload, agent control, logs, HITL, catalog, KB, LLM settings |
 | `mate-integration-agent` | Python 3.12 / FastAPI + Motor | `4003 → 3003` | Agentic RAG loop, all business logic, 15 REST endpoints |
 | `mate-catalog-generator` | FastAPI | `4004 → 3004` | Catalog composition from agent output |
 | `mate-security-middleware` | FastAPI + JWT | `4000 → 3000` | Auth gateway (passthrough in PoC dev mode) |
@@ -1063,7 +1066,7 @@ Used exclusively for **RAG retrieval**: when a new integration requires document
 
 ### 10.1 Integration Agent Endpoints
 
-All endpoints are served by `mate-integration-agent` on port `4003`.
+All endpoints are served by `mate-integration-agent` on port `3003` (internal). Externally, they are reachable via the nginx gateway at `http://host:8080/agent/api/v1/...`.
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
@@ -1392,14 +1395,16 @@ graph TB
         end
     end
 
-    user["Browser"] -- ":8080" --> dashboard
+    user["Browser"] -- ":8080" --> gateway
+    gateway -- "internal" --> dashboard
 ```
 
 ### 14.2 Port Mapping (host → container)
 
 | Host Port | Container | Service |
 |-----------|-----------|---------|
-| 8080 | 80 | Web Dashboard |
+| 8080 | 80 | Gateway (nginx reverse proxy) |
+| — (internal) | 80 | Web Dashboard |
 | 4000 | 3000 | Security Middleware |
 | 4001 | 3001 | PLM Mock |
 | 4002 | 3002 | PIM Mock |
