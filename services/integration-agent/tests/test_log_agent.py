@@ -56,8 +56,29 @@ class TestLogAgent:
         entry = agent_main.agent_logs[-1]
         assert isinstance(entry, LogEntry)
         assert entry.level == LogLevel.LLM
-        assert entry.message == "[LLM] Test call"
+        assert entry.message == "Test call"  # bracket prefix stripped; level is the structured field
         assert entry.ts.tzinfo is not None
+        # cleanup
+        agent_main.agent_logs.pop()
+
+    def test_log_agent_strips_bracket_prefix(self):
+        """Stored message must NOT repeat the bracket prefix — level is the structured field."""
+        original_len = len(agent_main.agent_logs)
+        agent_main.log_agent("[ERROR] Something went wrong")
+        entry = agent_main.agent_logs[-1]
+        assert entry.level == LogLevel.ERROR
+        assert entry.message == "Something went wrong"
+        assert not entry.message.startswith("[ERROR]")
+        # cleanup
+        agent_main.agent_logs.pop()
+
+    def test_log_agent_strips_kb_rag_prefix(self):
+        """[KB-RAG] prefix is stripped and detected as RAG level."""
+        original_len = len(agent_main.agent_logs)
+        agent_main.log_agent("[KB-RAG] KB context found: 450 chars")
+        entry = agent_main.agent_logs[-1]
+        assert entry.level == LogLevel.RAG
+        assert entry.message == "KB context found: 450 chars"
         # cleanup
         agent_main.agent_logs.pop()
 

@@ -243,24 +243,37 @@ def _now_iso() -> str:
 
 def _detect_level(msg: str) -> LogLevel:
     """Infer LogLevel from message prefix/content (single responsibility)."""
-    if "[LLM]"   in msg: return LogLevel.LLM
-    if "[RAG]"   in msg: return LogLevel.RAG
-    if "[ERROR]" in msg: return LogLevel.ERROR
-    if "[GUARD]" in msg: return LogLevel.WARN
-    if "⛔"      in msg or "cancelled" in msg: return LogLevel.CANCEL
+    if "[LLM]"    in msg: return LogLevel.LLM
+    if "[RAG]"    in msg: return LogLevel.RAG
+    if "[KB-RAG]" in msg: return LogLevel.RAG
+    if "[ERROR]"  in msg: return LogLevel.ERROR
+    if "[GUARD]"  in msg: return LogLevel.WARN
+    if "⛔"       in msg or "cancelled" in msg: return LogLevel.CANCEL
     if "completed" in msg or "Approved" in msg or "✓" in msg: return LogLevel.SUCCESS
     return LogLevel.INFO
 
 
+# Regex pattern to strip leading bracket prefix from stored messages.
+# Matches: [LLM], [RAG], [KB-RAG], [ERROR], [GUARD], [CANCEL], [INFO], [STEP N/M]
+_LOG_PREFIX_RE = re.compile(r"^\[(?:[A-Z][A-Z0-9\-]*(?:\s+\d+/\d+)?)\]\s*")
+
+
 def log_agent(msg: str) -> None:
-    """Append a structured LogEntry and emit as INFO log."""
+    """Append a structured LogEntry and emit as INFO log.
+
+    The stored message strips the leading bracket prefix (e.g. '[ERROR] ')
+    since `level` is the structured field. The Python logger still receives
+    the full original message for traceability.
+    """
+    level = _detect_level(msg)
+    clean_msg = _LOG_PREFIX_RE.sub("", msg, count=1)
     entry = LogEntry(
         ts=datetime.now(timezone.utc),
-        level=_detect_level(msg),
-        message=msg,
+        level=level,
+        message=clean_msg,
     )
     agent_logs.append(entry)
-    logger.info("[%s] %s", entry.level, msg)
+    logger.info("[%s] %s", level, msg)
 
 
 def _prune_logs() -> None:
@@ -644,12 +657,18 @@ async def run_agentic_rag_flow() -> None:
     This function only processes entries with confirmed tags (TAG_CONFIRMED).
     """
     confirmed = [e for e in catalog.values() if e.status == "TAG_CONFIRMED"]
-    log_agent(f"Processing {len(confirmed)} TAG_CONFIRMED integration(s)...")
+    total = len(confirmed)
+    log_agent(f"Processing {total} TAG_CONFIRMED integration(s)...")
 
-    for entry in confirmed:
+    for idx, entry in enumerate(confirmed, start=1):
         source = entry.source.get("system", "Unknown")
         target = entry.target.get("system", "Unknown")
         reqs = [r for r in parsed_requirements if r.req_id in entry.requirements]
+
+        log_agent(
+            f"[STEP {idx}/{total}] {entry.id} — {source} → {target} "
+            f"({len(reqs)} requirement(s), tags: {entry.tags})"
+        )
 
         # Update status to PROCESSING
         entry.status = "PROCESSING"
@@ -674,7 +693,6 @@ async def run_agentic_rag_flow() -> None:
             log_agent("[KB-RAG] No KB best practices found.")
 
         # 3. Build prompt from meta-prompt template (G-09)
-        log_agent(f"[LLM] Prompting for Functional Spec for {entry.id}...")
         prompt = build_prompt(
             source_system=source,
             target_system=target,
@@ -682,20 +700,39 @@ async def run_agentic_rag_flow() -> None:
             rag_context=rag_context,
             kb_context=kb_context,
         )
+        log_agent(f"[LLM] Prompt ready for {entry.id} — {len(prompt)} chars. Calling {settings.ollama_model}...")
 
         # 3. Call real LLM, apply output guard (G-01, G-08)
         try:
             raw = await generate_with_ollama(prompt)
             func_content = sanitize_llm_output(raw)
-            log_agent(f"[LLM] Spec generated and sanitized for {entry.id}.")
+            log_agent(
+                f"[LLM] Spec generated and sanitized for {entry.id} — "
+                f"{len(func_content)} chars."
+            )
         except LLMOutputValidationError as exc:
             preview = (raw or "")[:120].replace("\n", " ")
             log_agent(f"[GUARD] Output rejected for {entry.id}: {exc}")
             log_agent(f"[GUARD] Raw preview: {preview!r}")
             func_content = "[LLM_OUTPUT_REJECTED: structural guard failed -- see agent logs]"
         except Exception as exc:
-            log_agent(f"[ERROR] LLM generation failed for {entry.id}: {exc}")
-            func_content = "[LLM_UNAVAILABLE: generation failed -- retry after Ollama is ready]"
+            exc_type = type(exc).__name__
+            if isinstance(exc, httpx.TimeoutException):
+                detail = (
+                    f"timeout after {settings.ollama_timeout_seconds}s — "
+                    "increase OLLAMA_TIMEOUT_SECONDS or switch to a smaller model"
+                )
+            elif isinstance(exc, httpx.ConnectError):
+                detail = (
+                    f"cannot reach Ollama at {settings.ollama_host} — "
+                    "is the ollama container running?"
+                )
+            elif isinstance(exc, httpx.HTTPStatusError):
+                detail = f"Ollama returned HTTP {exc.response.status_code}"
+            else:
+                detail = str(exc) if str(exc) else exc_type
+            log_agent(f"[ERROR] LLM generation failed for {entry.id} — {exc_type}: {detail}")
+            func_content = "[LLM_UNAVAILABLE: generation failed — see agent logs for details]"
 
         # 4. Create HITL Approval entry
         app_id = f"APP-{uuid.uuid4().hex[:6].upper()}"
