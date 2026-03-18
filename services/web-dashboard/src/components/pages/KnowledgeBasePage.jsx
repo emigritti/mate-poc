@@ -481,6 +481,7 @@ function UnifiedDocumentsPanel({ docs, onDelete, deletingId, onPreview, onEditTa
 
 export default function KnowledgeBasePage() {
     const [docs, setDocs] = useState([]);
+    const [unifiedDocs, setUnifiedDocs] = useState([]);
     const [stats, setStats] = useState(null);
     const [uploading, setUploading] = useState(false);
     const [dragOver, setDragOver] = useState(false);
@@ -494,14 +495,26 @@ export default function KnowledgeBasePage() {
 
     const loadData = async () => {
         try {
-            const [docsRes, statsRes] = await Promise.all([
+            const [docsRes, statsRes, intDocsRes] = await Promise.all([
                 API.kb.list(),
                 API.kb.stats(),
+                API.documents.list(),
             ]);
             const docsData = await docsRes.json();
-            setDocs(docsData.data || []);
+            const kbDocs = docsData.data || [];
+            setDocs(kbDocs);
+
             const statsData = await statsRes.json();
             setStats(statsData);
+
+            // Integration docs: graceful fallback if endpoint fails or returns error
+            let intDocs = [];
+            if (intDocsRes.ok) {
+                const intData = await intDocsRes.json();
+                intDocs = intData.data || [];
+            }
+
+            setUnifiedDocs(normalizeKBDocs(kbDocs, intDocs));
         } catch (e) {
             setError(`Could not load data: ${e.message}`);
         }
@@ -537,6 +550,14 @@ export default function KnowledgeBasePage() {
         } finally {
             setDeletingId(null);
         }
+    };
+
+    const handlePreviewUnified = (unifiedDoc) => {
+        setPreviewDoc({
+            filename: unifiedDoc.name,
+            chunk_count: unifiedDoc.chunkCount,
+            content_preview: unifiedDoc.previewText,
+        });
     };
 
     return (
@@ -615,100 +636,14 @@ export default function KnowledgeBasePage() {
                 </div>
             )}
 
-            {/* Documents table */}
-            {docs.length > 0 && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-                        <BookOpen size={15} className="text-slate-400" />
-                        <h2 className="font-semibold text-slate-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                            Knowledge Base Documents
-                        </h2>
-                        <Badge variant="slate">{docs.length}</Badge>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-slate-50">
-                                <tr>
-                                    {['File', 'Type', 'Size', 'Chunks', 'Tags', 'Uploaded', 'Actions'].map(h => (
-                                        <th key={h}
-                                            className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                            {h}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {docs.map(doc => {
-                                    const TypeIcon = FILE_TYPE_ICONS[doc.file_type] || FileText;
-                                    return (
-                                        <tr key={doc.id} className="hover:bg-slate-50/70 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-2">
-                                                    <TypeIcon size={15} className="text-slate-400 flex-shrink-0" />
-                                                    <div>
-                                                        <p className="font-medium text-slate-900 max-w-[200px] truncate" title={doc.filename}>
-                                                            {doc.filename}
-                                                        </p>
-                                                        <p className="text-xs font-mono text-slate-400">{doc.id}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <Badge variant="info">{FILE_TYPE_LABELS[doc.file_type] || doc.file_type}</Badge>
-                                            </td>
-                                            <td className="px-4 py-3 text-slate-600">{formatBytes(doc.file_size_bytes)}</td>
-                                            <td className="px-4 py-3 text-slate-600">{doc.chunk_count}</td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                                    {(doc.tags || []).map(tag => (
-                                                        <span key={tag}
-                                                            className="inline-block px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-xs">
-                                                            {tag}
-                                                        </span>
-                                                    ))}
-                                                    {(!doc.tags || doc.tags.length === 0) && (
-                                                        <span className="text-xs text-slate-400">—</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-slate-500 text-xs">{formatDate(doc.uploaded_at)}</td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={() => setPreviewDoc(doc)}
-                                                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                                                        title="Preview content"
-                                                    >
-                                                        <Eye size={14} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setEditingDoc(doc)}
-                                                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors"
-                                                        title="Edit tags"
-                                                    >
-                                                        <Tag size={14} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(doc.id)}
-                                                        disabled={deletingId === doc.id}
-                                                        className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 disabled:opacity-50 transition-colors"
-                                                        title="Delete"
-                                                    >
-                                                        {deletingId === doc.id
-                                                            ? <Loader2 size={14} className="animate-spin" />
-                                                            : <Trash2 size={14} />
-                                                        }
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
+            {/* Unified KB documents list */}
+            <UnifiedDocumentsPanel
+                docs={unifiedDocs}
+                onDelete={handleDelete}
+                deletingId={deletingId}
+                onPreview={handlePreviewUnified}
+                onEditTags={(kbDoc) => setEditingDoc(kbDoc)}
+            />
 
             {/* Semantic Search */}
             <SearchPanel />
