@@ -970,6 +970,72 @@ async def list_documents():
     return list(documents.values())
 
 
+@app.post("/api/v1/documents/{doc_id}/promote-to-kb", tags=["documents"])
+async def promote_document_to_kb(doc_id: str, _user: str = Depends(_require_token)):
+    """Promote a staged document to the RAG Knowledge Base (ChromaDB).
+
+    This is the explicit human action that makes a document available for
+    RAG context enrichment in future agent runs. Only staged documents can
+    be promoted. Returns 409 if already promoted (idempotency guard).
+
+    ADR-023: Documents must not enter RAG without explicit human intent.
+    """
+    # 1. Lookup document
+    doc = documents.get(doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found.")
+
+    # 2. Guard: already promoted
+    if doc.kb_status == "promoted":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document '{doc_id}' is already promoted to the Knowledge Base.",
+        )
+
+    # 3. Write to ChromaDB
+    if collection is not None:
+        try:
+            cat_entry = catalog.get(doc.integration_id)
+            tags_csv = ",".join(cat_entry.tags) if cat_entry else ""
+            collection.upsert(
+                documents=[doc.content],
+                metadatas=[{
+                    "integration_id": doc.integration_id,
+                    "type": doc.doc_type,
+                    "tags_csv": tags_csv,
+                }],
+                ids=[doc_id],
+            )
+            logger.info("[RAG] Promoted %s to ChromaDB (tags: %s).", doc_id, tags_csv)
+        except Exception as exc:
+            logger.warning("[RAG] ChromaDB promote failed for %s: %s", doc_id, exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"ChromaDB write failed: {exc}",
+            )
+    else:
+        logger.warning("[RAG] ChromaDB unavailable — cannot promote %s.", doc_id)
+        raise HTTPException(
+            status_code=503,
+            detail="ChromaDB is unavailable. Cannot promote document to Knowledge Base.",
+        )
+
+    # 4. Update kb_status in memory and MongoDB
+    doc.kb_status = "promoted"
+    documents[doc_id] = doc
+    if db.documents_col is not None:
+        await db.documents_col.update_one(
+            {"id": doc_id},
+            {"$set": {"kb_status": "promoted"}},
+        )
+
+    return {
+        "status": "success",
+        "doc_id": doc_id,
+        "message": f"Document '{doc_id}' promoted to Knowledge Base.",
+    }
+
+
 # ── Catalog ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/catalog/integrations", tags=["catalog"])

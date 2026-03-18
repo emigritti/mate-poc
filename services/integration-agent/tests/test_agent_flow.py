@@ -20,7 +20,7 @@ Fixes applied (2026-03-06):
 """
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -452,3 +452,53 @@ class TestDocumentLifecycle:
         finally:
             agent_main.documents.clear()
             agent_main.documents.update(original)
+
+    def test_promote_unknown_doc_returns_404(self, client):
+        """POST promote-to-kb with unknown doc_id must return 404."""
+        response = client.post("/api/v1/documents/NONEXISTENT-functional/promote-to-kb")
+        assert response.status_code == 404
+
+    def test_promote_already_promoted_returns_409(self, client):
+        """POST promote-to-kb on an already-promoted doc must return 409."""
+        import main as agent_main
+        from schemas import Document
+        doc = Document(
+            id="INT-ALREADY-functional",
+            integration_id="INT-ALREADY",
+            doc_type="functional",
+            content="# Spec",
+            generated_at="2026-03-18T00:00:00Z",
+            kb_status="promoted",
+        )
+        agent_main.documents["INT-ALREADY-functional"] = doc
+        try:
+            response = client.post("/api/v1/documents/INT-ALREADY-functional/promote-to-kb")
+            assert response.status_code == 409
+            assert "already" in response.json().get("detail", "").lower()
+        finally:
+            agent_main.documents.pop("INT-ALREADY-functional", None)
+
+    def test_promote_staged_doc_succeeds(self, client):
+        """POST promote-to-kb must set kb_status='promoted' and return 200."""
+        import main as agent_main
+        from schemas import Document, CatalogEntry
+        doc = Document(
+            id="INT-PROMOTE-functional",
+            integration_id="INT-PROMOTE",
+            doc_type="functional",
+            content="# Spec\n\nContent.",
+            generated_at="2026-03-18T00:00:00Z",
+            kb_status="staged",
+        )
+        agent_main.documents["INT-PROMOTE-functional"] = doc
+        try:
+            with patch("main.collection") as mock_col:
+                mock_col.upsert = MagicMock()
+                response = client.post("/api/v1/documents/INT-PROMOTE-functional/promote-to-kb")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "success"
+            assert agent_main.documents["INT-PROMOTE-functional"].kb_status == "promoted"
+        finally:
+            agent_main.documents.pop("INT-PROMOTE-functional", None)
+            agent_main.catalog.pop("INT-PROMOTE", None)
