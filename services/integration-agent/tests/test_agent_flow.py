@@ -495,9 +495,10 @@ class TestDocumentLifecycle:
             with patch("main.collection") as mock_col:
                 mock_col.upsert = MagicMock()
                 response = client.post("/api/v1/documents/INT-PROMOTE-functional/promote-to-kb")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "success"
+                assert response.status_code == 200
+                data = response.json()
+                assert data["status"] == "success"
+                mock_col.upsert.assert_called_once()
             assert agent_main.documents["INT-PROMOTE-functional"].kb_status == "promoted"
         finally:
             agent_main.documents.pop("INT-PROMOTE-functional", None)

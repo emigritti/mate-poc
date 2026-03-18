@@ -960,7 +960,7 @@ async def trigger_agent(
 # ── Documents list ────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/documents", response_model=list[Document], tags=["documents"])
-async def list_documents():
+async def list_documents(_user: str = Depends(_require_token)):
     """Return all approved documents with their KB promotion status.
 
     Returns both staged (not yet promoted to RAG) and promoted documents.
