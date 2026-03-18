@@ -383,3 +383,32 @@ class TestDocumentLifecycle:
                 generated_at="2026-03-18T00:00:00Z",
                 kb_status="archived",
             )
+
+    def test_approve_sets_kb_status_staged(self, client):
+        """After approval, document kb_status must be 'staged' (not written to ChromaDB)."""
+        import main as agent_main
+        from schemas import Approval
+
+        approval_id = "test-approve-lifecycle"
+        agent_main.approvals[approval_id] = Approval(
+            id=approval_id,
+            integration_id="INT-LIFECYCLE",
+            doc_type="functional",
+            content="# Test\n\nContent.",
+            status="PENDING",
+            generated_at="2026-03-18T00:00:00Z",
+        )
+        try:
+            response = client.post(
+                f"/api/v1/approvals/{approval_id}/approve",
+                json={"final_markdown": "# Functional Specification\n\nApproved content."},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["message"] == "Approved and staged. Use 'Promote to KB' to add to RAG."
+            doc_id = "INT-LIFECYCLE-functional"
+            assert doc_id in agent_main.documents
+            assert agent_main.documents[doc_id].kb_status == "staged"
+        finally:
+            agent_main.approvals.pop(approval_id, None)
+            agent_main.documents.pop("INT-LIFECYCLE-functional", None)

@@ -1096,6 +1096,7 @@ async def approve_doc(
         doc_type=app_entry.doc_type,
         content=safe_md,
         generated_at=_now_iso(),
+        kb_status="staged",
     )
     documents[doc_id] = doc
     if db.documents_col is not None:
@@ -1103,26 +1104,7 @@ async def approve_doc(
             {"id": doc_id}, doc.model_dump(), upsert=True
         )
 
-    # Persist to ChromaDB RAG store (learning loop)
-    if collection is not None:
-        try:
-            # Include confirmed tags as searchable metadata
-            cat_entry = catalog.get(app_entry.integration_id)
-            tags_csv = ",".join(cat_entry.tags) if cat_entry else ""
-            collection.upsert(
-                documents=[safe_md],
-                metadatas=[{
-                    "integration_id": app_entry.integration_id,
-                    "type": app_entry.doc_type,
-                    "tags_csv": tags_csv,
-                }],
-                ids=[doc_id],
-            )
-            logger.info("[RAG] Saved %s to ChromaDB (tags: %s).", doc_id, tags_csv)
-        except Exception as exc:
-            logger.warning("[RAG] ChromaDB save failed for %s: %s", doc_id, exc)
-
-    return {"status": "success", "message": "Approved and saved to RAG."}
+    return {"status": "success", "message": "Approved and staged. Use 'Promote to KB' to add to RAG."}
 
 
 # ── Admin / Reset ─────────────────────────────────────────────────────────────
