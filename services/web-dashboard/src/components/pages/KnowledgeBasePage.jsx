@@ -48,7 +48,7 @@ function formatDate(iso) {
  * Merge KB-uploaded docs and promoted integration docs into a single array.
  * Only integration docs with kb_status === "promoted" are included.
  */
-function normalizeKBDocs(kbList, intList) {
+function normalizeKBDocs(kbList = [], intList = []) {
     const uploaded = kbList.map(d => ({
         id: d.id,
         name: d.filename,
@@ -78,7 +78,7 @@ function normalizeKBDocs(kbList, intList) {
  * Filter unified docs by name or tag (case-insensitive).
  * Empty query returns full list unchanged.
  */
-function filterDocs(docs, query) {
+function filterDocs(docs = [], query = '') {
     if (!query.trim()) return docs;
     const q = query.toLowerCase();
     return docs.filter(d =>
