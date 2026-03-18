@@ -59,6 +59,15 @@ export const API = {
       }),
   },
 
+  documents: {
+    list: () =>
+      fetch(`${AGENT}/api/v1/documents`).then(r => r.json()),
+    promoteToKB: (docId) =>
+      fetch(`${AGENT}/api/v1/documents/${encodeURIComponent(docId)}/promote-to-kb`, {
+        method: 'POST',
+      }).then(r => r.json()),
+  },
+
   admin: {
     reset: (target) =>
       fetch(`${AGENT}/api/v1/admin/reset/${target}`, { method: 'DELETE' }),
