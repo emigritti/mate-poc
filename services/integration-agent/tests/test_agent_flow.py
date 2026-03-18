@@ -481,7 +481,7 @@ class TestDocumentLifecycle:
     def test_promote_staged_doc_succeeds(self, client):
         """POST promote-to-kb must set kb_status='promoted' and return 200."""
         import main as agent_main
-        from schemas import Document, CatalogEntry
+        from schemas import Document
         doc = Document(
             id="INT-PROMOTE-functional",
             integration_id="INT-PROMOTE",
@@ -502,3 +502,24 @@ class TestDocumentLifecycle:
         finally:
             agent_main.documents.pop("INT-PROMOTE-functional", None)
             agent_main.catalog.pop("INT-PROMOTE", None)
+
+    def test_promote_returns_503_when_chromadb_unavailable(self, client):
+        """POST promote-to-kb must return 503 when ChromaDB collection is None."""
+        import main as agent_main
+        from schemas import Document
+        doc = Document(
+            id="INT-503-functional",
+            integration_id="INT-503",
+            doc_type="functional",
+            content="# Spec",
+            generated_at="2026-03-18T00:00:00Z",
+            kb_status="staged",
+        )
+        agent_main.documents["INT-503-functional"] = doc
+        try:
+            with patch("main.collection", None):
+                response = client.post("/api/v1/documents/INT-503-functional/promote-to-kb")
+            assert response.status_code == 503
+            assert "unavailable" in response.json().get("detail", "").lower()
+        finally:
+            agent_main.documents.pop("INT-503-functional", None)
