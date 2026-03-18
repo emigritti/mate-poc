@@ -13,6 +13,23 @@ export default function DocumentsPage() {
   const [listLoading, setListLoading]   = useState(true);
   const [specLoading, setSpecLoading]   = useState(false);
   const [error, setError]               = useState(null);
+  const [docStatuses, setDocStatuses]   = useState({});
+  const [promoting, setPromoting]       = useState(false);
+  const [promoteMsg, setPromoteMsg]     = useState('');
+  const [selectedDocId, setSelectedDocId] = useState(null);
+
+  const loadDocStatuses = async () => {
+    try {
+      const docs = await API.documents.list();
+      const map = {};
+      if (Array.isArray(docs)) {
+        docs.forEach(d => { map[d.id] = d.kb_status; });
+      }
+      setDocStatuses(map);
+    } catch (e) {
+      console.error('Failed to load document statuses', e);
+    }
+  };
 
   useEffect(() => {
     API.catalog.list()
@@ -20,6 +37,7 @@ export default function DocumentsPage() {
       .then(d => setIntegrations(d.data || []))
       .catch(() => {})
       .finally(() => setListLoading(false));
+    loadDocStatuses();
   }, []);
 
   const loadSpec = async (id, type) => {
@@ -39,9 +57,31 @@ export default function DocumentsPage() {
     }
   };
 
+  const handlePromote = async () => {
+    if (!selectedDocId) return;
+    setPromoting(true);
+    setPromoteMsg('');
+    try {
+      const result = await API.documents.promoteToKB(selectedDocId);
+      if (result.status === 'success') {
+        setPromoteMsg('Successfully promoted to Knowledge Base!');
+        await loadDocStatuses();
+      } else {
+        setPromoteMsg(result.detail || 'Promotion failed.');
+      }
+    } catch (e) {
+      setPromoteMsg('Error: could not promote document.');
+    } finally {
+      setPromoting(false);
+    }
+  };
+
   const handleSelect = (id, type) => {
     setSelectedId(id);
     setSpecType(type);
+    setSelectedDocId(`${id}-${type}`);
+    setPromoteMsg('');
+    setPromoting(false);
     loadSpec(id, type);
   };
 
@@ -80,6 +120,15 @@ export default function DocumentsPage() {
                 <div className="px-4 py-3">
                   <p className="text-sm font-medium text-slate-900 truncate">{int.name}</p>
                   <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{int.id}</p>
+                  {docStatuses[`${int.id}-functional`] && (
+                    <span className={
+                      docStatuses[`${int.id}-functional`] === 'promoted'
+                        ? 'text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    }>
+                      {docStatuses[`${int.id}-functional`] === 'promoted' ? 'In KB' : 'Staged'}
+                    </span>
+                  )}
                   <div className="flex gap-2 mt-2">
                     {['functional', 'technical'].map(type => (
                       <button
@@ -139,6 +188,22 @@ export default function DocumentsPage() {
             <div className="flex-1 overflow-y-auto p-6 prose prose-slate prose-sm max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
+            {selectedDocId && docStatuses[selectedDocId] === 'staged' && (
+              <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-3">
+                <button
+                  onClick={handlePromote}
+                  disabled={promoting}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+                >
+                  {promoting ? 'Promoting...' : '⬆ Promote to KB'}
+                </button>
+                {promoteMsg && (
+                  <span className={promoteMsg.startsWith('Error') || promoteMsg.includes('failed') ? 'text-rose-400 text-sm' : 'text-emerald-400 text-sm'}>
+                    {promoteMsg}
+                  </span>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
