@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
     Upload, Trash2, Search, Tag, FileText, X, Loader2,
     AlertCircle, CheckCircle, Eye, BookOpen, BarChart3,
-    FileSpreadsheet, FileType, Presentation,
+    FileSpreadsheet, FileType, Presentation, Cpu,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
@@ -39,6 +39,52 @@ function formatDate(iso) {
     } catch {
         return iso;
     }
+}
+
+
+// ── Unified KB helpers ───────────────────────────────────────────────────────
+
+/**
+ * Merge KB-uploaded docs and promoted integration docs into a single array.
+ * Only integration docs with kb_status === "promoted" are included.
+ */
+function normalizeKBDocs(kbList, intList) {
+    const uploaded = kbList.map(d => ({
+        id: d.id,
+        name: d.filename,
+        tags: d.tags || [],
+        date: d.uploaded_at,
+        source: 'uploaded',
+        previewText: d.content_preview || '',
+        chunkCount: d.chunk_count,
+        _kbDoc: d,             // kept for delete / tag-edit actions
+    }));
+    const integration = intList
+        .filter(d => d.kb_status === 'promoted')
+        .map(d => ({
+            id: d.id,
+            name: `${d.integration_id} · ${d.doc_type}`,
+            tags: [],
+            date: d.generated_at,
+            source: 'integration',
+            previewText: typeof d.content === 'string' ? d.content.slice(0, 500) : '',
+            chunkCount: null,
+            docType: d.doc_type,
+        }));
+    return [...uploaded, ...integration];
+}
+
+/**
+ * Filter unified docs by name or tag (case-insensitive).
+ * Empty query returns full list unchanged.
+ */
+function filterDocs(docs, query) {
+    if (!query.trim()) return docs;
+    const q = query.toLowerCase();
+    return docs.filter(d =>
+        d.name.toLowerCase().includes(q) ||
+        d.tags.some(t => t.toLowerCase().includes(q))
+    );
 }
 
 
