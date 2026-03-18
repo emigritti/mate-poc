@@ -50,7 +50,7 @@ export default function ApprovalsPage() {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.detail || `Approval failed (${res.status})`);
       }
-      setSuccessMsg('Document approved and saved to RAG vector store');
+      setSuccessMsg('Document staged. Use the Documents page to promote to Knowledge Base.');
       setApprovals(prev => prev.filter(a => a.id !== selectedId));
       setSelectedId(null);
     } catch (e) {
@@ -238,7 +238,7 @@ export default function ApprovalsPage() {
                       ? <Loader2 size={13} className="animate-spin" />
                       : <CheckCircle size={13} />
                     }
-                    Approve &amp; Save to RAG
+                    Approve &amp; Stage
                   </button>
                   <button
                     onClick={() => setRejectMode(true)}
