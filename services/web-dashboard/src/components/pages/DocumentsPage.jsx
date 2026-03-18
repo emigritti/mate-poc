@@ -20,7 +20,8 @@ export default function DocumentsPage() {
 
   const loadDocStatuses = async () => {
     try {
-      const docs = await API.documents.list();
+      const res = await API.documents.list();
+      const docs = await res.json();
       const map = {};
       if (Array.isArray(docs)) {
         docs.forEach(d => { map[d.id] = d.kb_status; });
@@ -62,7 +63,8 @@ export default function DocumentsPage() {
     setPromoting(true);
     setPromoteMsg('');
     try {
-      const result = await API.documents.promoteToKB(selectedDocId);
+      const res = await API.documents.promoteToKB(selectedDocId);
+      const result = await res.json();
       if (result.status === 'success') {
         setPromoteMsg('Successfully promoted to Knowledge Base!');
         await loadDocStatuses();
@@ -188,8 +190,9 @@ export default function DocumentsPage() {
             <div className="flex-1 overflow-y-auto p-6 prose prose-slate prose-sm max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
+            {/* Promote to KB button — only shown when staged */}
             {selectedDocId && docStatuses[selectedDocId] === 'staged' && (
-              <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-3">
+              <div className="px-6 pt-4 border-t border-slate-100">
                 <button
                   onClick={handlePromote}
                   disabled={promoting}
@@ -197,11 +200,17 @@ export default function DocumentsPage() {
                 >
                   {promoting ? 'Promoting...' : '⬆ Promote to KB'}
                 </button>
-                {promoteMsg && (
-                  <span className={promoteMsg.startsWith('Error') || promoteMsg.includes('failed') ? 'text-rose-400 text-sm' : 'text-emerald-400 text-sm'}>
-                    {promoteMsg}
-                  </span>
-                )}
+              </div>
+            )}
+
+            {/* Promotion feedback message — shown whenever there is a message */}
+            {selectedDocId && promoteMsg && (
+              <div className={`px-6 pb-4${docStatuses[selectedDocId] === 'staged' ? ' pt-2' : ' pt-4 border-t border-slate-100'}`}>
+                <span className={promoteMsg.startsWith('Error') || promoteMsg.includes('failed')
+                  ? 'text-rose-400 text-sm'
+                  : 'text-emerald-400 text-sm'}>
+                  {promoteMsg}
+                </span>
               </div>
             )}
           </>

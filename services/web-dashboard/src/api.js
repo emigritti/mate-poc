@@ -61,11 +61,11 @@ export const API = {
 
   documents: {
     list: () =>
-      fetch(`${AGENT}/api/v1/documents`).then(r => r.json()),
+      fetch(`${AGENT}/api/v1/documents`),
     promoteToKB: (docId) =>
       fetch(`${AGENT}/api/v1/documents/${encodeURIComponent(docId)}/promote-to-kb`, {
         method: 'POST',
-      }).then(r => r.json()),
+      }),
   },
 
   admin: {
