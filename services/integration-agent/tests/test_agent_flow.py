@@ -412,3 +412,40 @@ class TestDocumentLifecycle:
         finally:
             agent_main.approvals.pop(approval_id, None)
             agent_main.documents.pop("INT-LIFECYCLE-functional", None)
+
+    def test_documents_list_endpoint_returns_empty_list(self, client):
+        """GET /api/v1/documents must return an empty list when no documents exist."""
+        import main as agent_main
+        original = dict(agent_main.documents)
+        agent_main.documents.clear()
+        try:
+            response = client.get("/api/v1/documents")
+            assert response.status_code == 200
+            data = response.json()
+            assert isinstance(data, list)
+            assert len(data) == 0
+        finally:
+            agent_main.documents.update(original)
+
+    def test_documents_list_endpoint_returns_documents_with_kb_status(self, client):
+        """GET /api/v1/documents must return all documents with their kb_status."""
+        import main as agent_main
+        from schemas import Document
+        doc = Document(
+            id="INT-TEST-functional",
+            integration_id="INT-TEST",
+            doc_type="functional",
+            content="# Test",
+            generated_at="2026-03-18T00:00:00Z",
+            kb_status="staged",
+        )
+        agent_main.documents["INT-TEST-functional"] = doc
+        try:
+            response = client.get("/api/v1/documents")
+            assert response.status_code == 200
+            items = response.json()
+            assert len(items) == 1
+            assert items[0]["kb_status"] == "staged"
+            assert items[0]["id"] == "INT-TEST-functional"
+        finally:
+            agent_main.documents.pop("INT-TEST-functional", None)

@@ -957,6 +957,19 @@ async def trigger_agent(
     return {"status": "started", "task_id": task_id}
 
 
+# ── Documents list ────────────────────────────────────────────────────────────
+
+@app.get("/api/v1/documents", response_model=list[Document])
+async def list_documents():
+    """Return all approved documents with their KB promotion status.
+
+    Returns both staged (not yet promoted to RAG) and promoted documents.
+    Used by the Documents page to show kb_status badges.
+    ADR-023: Documents are staged after HITL approval; promoted only on explicit action.
+    """
+    return list(documents.values())
+
+
 # ── Catalog ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/catalog/integrations", tags=["catalog"])
