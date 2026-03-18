@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Literal, Optional
 
 
 class LogLevel(str, Enum):
@@ -47,6 +47,7 @@ class Document(BaseModel):
     doc_type: str  # 'functional' or 'technical'
     content: str
     generated_at: str
+    kb_status: Literal["staged", "promoted"] = "staged"
 
 
 class Approval(BaseModel):

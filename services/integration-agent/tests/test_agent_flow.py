@@ -338,3 +338,33 @@ class TestHealthEndpoint:
         response = client.get("/health")
         data = response.json()
         assert "chromadb" in data or "chroma" in str(data).lower()
+
+
+# ── Document lifecycle ─────────────────────────────────────────────────
+
+
+class TestDocumentLifecycle:
+    def test_document_model_has_kb_status_field(self):
+        """Document model must include kb_status field defaulting to 'staged'."""
+        from schemas import Document
+        doc = Document(
+            id="INT-001-functional",
+            integration_id="INT-001",
+            doc_type="functional",
+            content="# Spec",
+            generated_at="2026-03-18T00:00:00Z",
+        )
+        assert doc.kb_status == "staged"
+
+    def test_document_model_accepts_promoted_status(self):
+        """Document model must accept 'promoted' as a valid kb_status value."""
+        from schemas import Document
+        doc = Document(
+            id="INT-001-functional",
+            integration_id="INT-001",
+            doc_type="functional",
+            content="# Spec",
+            generated_at="2026-03-18T00:00:00Z",
+            kb_status="promoted",
+        )
+        assert doc.kb_status == "promoted"
