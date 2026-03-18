@@ -214,7 +214,9 @@ function PreviewModal({ doc, onClose }) {
                         <h3 className="font-semibold text-slate-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
                             Content Preview
                         </h3>
-                        <p className="text-xs text-slate-400 mt-0.5">{doc.filename} · {doc.chunk_count} chunks</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                            {doc.filename}{doc.chunk_count != null ? ` · ${doc.chunk_count} chunks` : ''}
+                        </p>
                     </div>
                     <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
                         <X size={18} className="text-slate-400" />
