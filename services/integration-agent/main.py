@@ -959,7 +959,7 @@ async def trigger_agent(
 
 # ── Documents list ────────────────────────────────────────────────────────────
 
-@app.get("/api/v1/documents", response_model=list[Document])
+@app.get("/api/v1/documents", response_model=list[Document], tags=["documents"])
 async def list_documents():
     """Return all approved documents with their KB promotion status.
 

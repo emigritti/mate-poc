@@ -431,6 +431,8 @@ class TestDocumentLifecycle:
         """GET /api/v1/documents must return all documents with their kb_status."""
         import main as agent_main
         from schemas import Document
+        original = dict(agent_main.documents)
+        agent_main.documents.clear()
         doc = Document(
             id="INT-TEST-functional",
             integration_id="INT-TEST",
@@ -448,4 +450,5 @@ class TestDocumentLifecycle:
             assert items[0]["kb_status"] == "staged"
             assert items[0]["id"] == "INT-TEST-functional"
         finally:
-            agent_main.documents.pop("INT-TEST-functional", None)
+            agent_main.documents.clear()
+            agent_main.documents.update(original)
