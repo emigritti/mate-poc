@@ -368,3 +368,18 @@ class TestDocumentLifecycle:
             kb_status="promoted",
         )
         assert doc.kb_status == "promoted"
+
+    def test_document_model_rejects_invalid_kb_status(self):
+        """Document model must reject any kb_status value outside the allowed Literal."""
+        from schemas import Document
+        from pydantic import ValidationError
+        import pytest
+        with pytest.raises(ValidationError):
+            Document(
+                id="INT-001-functional",
+                integration_id="INT-001",
+                doc_type="functional",
+                content="# Spec",
+                generated_at="2026-03-18T00:00:00Z",
+                kb_status="archived",
+            )

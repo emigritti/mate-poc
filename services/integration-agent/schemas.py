@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 
 class LogLevel(str, Enum):
