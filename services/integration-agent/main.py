@@ -1069,7 +1069,9 @@ async def approve_doc(
       - Typed body (G-07 / OWASP A03)
       - Status machine check — prevents double-approval (F-15)
       - sanitize_human_content — strips HTML from clipboard paste (G-08 / F-05)
-      - ChromaDB upsert uses doc_id as stable key; duplicate raises caught (F-14)
+      - ADR-023: ChromaDB write removed. Approved documents are staged in MongoDB
+               with kb_status='staged'. Use POST /api/v1/documents/{id}/promote-to-kb
+               to promote to the RAG Knowledge Base.
     """
     if id not in approvals:
         raise HTTPException(status_code=404, detail="Approval not found.")
