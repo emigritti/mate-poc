@@ -15,6 +15,7 @@ def pending_entry(client):
     import main
     main.catalog.clear()
     main.parsed_requirements.clear()
+    main.projects.clear()
     csv = (
         "ReqID,Source,Target,Category,Description\n"
         "REQ-101,ERP,PLM,Sync,Sync articles.\n"
@@ -23,6 +24,8 @@ def pending_entry(client):
         "/api/v1/requirements/upload",
         files={"file": ("reqs.csv", io.BytesIO(csv.encode()), "text/csv")},
     )
+    client.post("/api/v1/projects", json={"prefix": "TST", "client_name": "Test Corp", "domain": "Testing"})
+    client.post("/api/v1/requirements/finalize", json={"project_id": "TST"})
     return list(main.catalog.keys())[0]
 
 

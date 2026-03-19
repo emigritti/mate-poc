@@ -55,7 +55,7 @@ class TestUploadRequirements:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "success"
+        assert data["status"] == "parsed"
         assert data["total_parsed"] == 2
 
     def test_non_csv_mime_returns_415(self, client):
