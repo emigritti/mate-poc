@@ -885,37 +885,24 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
         )
         parsed_requirements.append(req)
 
-    # Group requirements by source→target and create CatalogEntries
-    groups: dict[str, list[Requirement]] = {}
+    # Build a preview of detected source→target pairs.
+    # CatalogEntry creation is deferred to POST /api/v1/requirements/finalize
+    # once the caller has provided a project_id (ADR-025).
+    seen: dict[str, dict] = {}
     for r in parsed_requirements:
         key = f"{r.source_system}|||{r.target_system}"
-        groups.setdefault(key, []).append(r)
+        if key not in seen:
+            seen[key] = {"source": r.source_system, "target": r.target_system}
 
-    for _key, reqs in groups.items():
-        source = reqs[0].source_system
-        target = reqs[0].target_system
-        entry_id = f"INT-{uuid.uuid4().hex[:6].upper()}"
-        entry = CatalogEntry(
-            id=entry_id,
-            name=f"{source} to {target} Integration",
-            type="Auto-discovered",
-            source={"system": source},
-            target={"system": target},
-            requirements=[r.req_id for r in reqs],
-            status="PENDING_TAG_REVIEW",
-            tags=[],
-            created_at=_now_iso(),
-        )
-        catalog[entry_id] = entry
-        if db.catalog_col is not None:
-            await db.catalog_col.replace_one(
-                {"id": entry_id}, entry.model_dump(), upsert=True
-            )
-
+    logger.info(
+        "[UPLOAD] Parsed %d requirements, %d integration pair(s) detected. Awaiting /finalize.",
+        len(parsed_requirements),
+        len(seen),
+    )
     return {
-        "status": "success",
+        "status": "parsed",
         "total_parsed": len(parsed_requirements),
-        "integrations_created": len(groups),
+        "preview": list(seen.values()),
     }
 
 
