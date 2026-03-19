@@ -924,6 +924,62 @@ async def get_requirements() -> dict:
     return {"status": "success", "data": [r.model_dump() for r in parsed_requirements]}
 
 
+# ── Projects (ADR-025) ────────────────────────────────────────────────────────
+
+@app.post("/api/v1/projects", tags=["projects"])
+async def create_project(
+    body: ProjectCreateRequest,
+    _token: str = Depends(_require_token),
+) -> dict:
+    """Create a new project or return existing if prefix + client_name match.
+
+    - 200 + {status:"ok"} if prefix exists and client_name matches (idempotent)
+    - 201 equivalent (200 + {status:"created"}) for new project
+    - 409 if prefix exists but client_name differs
+    """
+    prefix = body.prefix.upper().strip()
+    existing = projects.get(prefix)
+    if existing:
+        if existing.client_name.lower() == body.client_name.lower():
+            return {"status": "ok", "data": existing.model_dump()}
+        raise HTTPException(
+            status_code=409,
+            detail=f"Prefix '{prefix}' already used by project '{existing.client_name}'.",
+        )
+
+    project = Project(
+        prefix=prefix,
+        client_name=body.client_name,
+        domain=body.domain,
+        description=body.description,
+        accenture_ref=body.accenture_ref,
+        created_at=_now_iso(),
+    )
+    projects[prefix] = project
+    if db.projects_col is not None:
+        await db.projects_col.replace_one(
+            {"prefix": prefix}, project.model_dump(), upsert=True
+        )
+    logger.info("[PROJECT] Created project '%s' for client '%s'.", prefix, project.client_name)
+    return {"status": "created", "data": project.model_dump()}
+
+
+@app.get("/api/v1/projects", tags=["projects"])
+async def list_projects() -> dict:
+    """List all projects (used to populate filter dropdowns in the frontend)."""
+    return {"status": "success", "data": [p.model_dump() for p in projects.values()]}
+
+
+@app.get("/api/v1/projects/{prefix}", tags=["projects"])
+async def get_project(prefix: str) -> dict:
+    """Get a project by prefix (used by the frontend modal for uniqueness checks)."""
+    prefix = prefix.upper().strip()
+    project = projects.get(prefix)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{prefix}' not found.")
+    return {"status": "success", "data": project.model_dump()}
+
+
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 @app.post("/api/v1/agent/cancel", tags=["agent"])
