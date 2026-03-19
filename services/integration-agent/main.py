@@ -906,6 +906,67 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
     }
 
 
+@app.post("/api/v1/requirements/finalize", tags=["requirements"])
+async def finalize_requirements(body: FinalizeRequirementsRequest) -> dict:
+    """Create CatalogEntries for the current parsed_requirements under a given project.
+
+    Must be called after POST /api/v1/requirements/upload.
+    The project identified by body.project_id must already exist.
+    CatalogEntry IDs use the project prefix: e.g., "ACM-4F2A1B".
+    """
+    if not parsed_requirements:
+        raise HTTPException(
+            status_code=400,
+            detail="No parsed requirements in memory. Upload a CSV first.",
+        )
+
+    project_id = body.project_id.upper().strip()
+    project = projects.get(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project '{project_id}' not found. Create it first via POST /api/v1/projects.",
+        )
+
+    # Group requirements by source→target pair
+    groups: dict[str, list[Requirement]] = {}
+    for r in parsed_requirements:
+        key = f"{r.source_system}|||{r.target_system}"
+        groups.setdefault(key, []).append(r)
+
+    created = 0
+    for _key, reqs in groups.items():
+        source = reqs[0].source_system
+        target = reqs[0].target_system
+        entry_id = f"{project_id}-{uuid.uuid4().hex[:6].upper()}"
+        entry = CatalogEntry(
+            id=entry_id,
+            name=f"{source} to {target} Integration",
+            type="Auto-discovered",
+            source={"system": source},
+            target={"system": target},
+            requirements=[r.req_id for r in reqs],
+            status="PENDING_TAG_REVIEW",
+            tags=[],
+            project_id=project_id,
+            created_at=_now_iso(),
+        )
+        catalog[entry_id] = entry
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one(
+                {"id": entry_id}, entry.model_dump(), upsert=True
+            )
+        created += 1
+
+    logger.info(
+        "[FINALIZE] Created %d CatalogEntry(ies) under project '%s' (%s).",
+        created,
+        project_id,
+        project.client_name,
+    )
+    return {"status": "success", "integrations_created": created, "project_id": project_id}
+
+
 @app.get("/api/v1/requirements", tags=["requirements"])
 async def get_requirements() -> dict:
     return {"status": "success", "data": [r.model_dump() for r in parsed_requirements]}
