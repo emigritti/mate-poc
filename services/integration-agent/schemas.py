@@ -223,6 +223,6 @@ class FinalizeRequirementsRequest(BaseModel):
     """Body for POST /api/v1/requirements/finalize."""
     project_id: str = Field(
         ...,
-        pattern=r"^[A-Z0-9]{1,3}$",
+        pattern=r"^[A-Za-z0-9]{1,3}$",
         description="Prefix of an existing Project. CatalogEntries will use this as ID prefix.",
     )

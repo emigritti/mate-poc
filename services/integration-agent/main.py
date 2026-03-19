@@ -1239,17 +1239,17 @@ async def get_catalog(
             and low in p.accenture_ref.lower()
         ]
 
-    # Enrich with project metadata for frontend display
+    # Enrich with project metadata for frontend display.
+    # LEGACY entries (no project) receive _project=None for a predictable response shape.
     result = []
     for i in items:
         d = i.model_dump()
         proj = projects.get(i.project_id)
-        if proj:
-            d["_project"] = {
-                "client_name": proj.client_name,
-                "domain": proj.domain,
-                "accenture_ref": proj.accenture_ref,
-            }
+        d["_project"] = {
+            "client_name": proj.client_name,
+            "domain": proj.domain,
+            "accenture_ref": proj.accenture_ref,
+        } if proj else None
         result.append(d)
 
     return {"status": "success", "data": result}
