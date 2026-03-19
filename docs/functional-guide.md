@@ -67,7 +67,30 @@ REQ-002,PLM,PIM,Pricing,Transfer net price lists to PIM upon approval in PLM
 The Integration Agent:
 - Validates the file (MIME type, max 1 MB, UTF-8 encoding).
 - Parses each row into a `Requirement` object.
-- Groups requirements by `source_system → target_system` pair.
+- Returns a preview `[{source, target}, …]` **without yet creating CatalogEntries** (ADR-025).
+
+**Step 1a — Project Modal (mandatory)**
+
+After the CSV is parsed, the dashboard automatically opens the **Project Modal**. The analyst fills in:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| Nome Cliente | Required | e.g. "Acme Corp" |
+| Dominio | Required | e.g. "Fashion Retail" (free text) |
+| Prefisso | Required, max 3 chars | Auto-generated from client initials; must be unique per client |
+| Descrizione | Optional | Free text, max 500 chars |
+| Riferimento Accenture | Optional | Free text, max 100 chars |
+
+The prefix is auto-generated as the analyst types the client name (e.g., "Acme Corp" → `AC`, "Global Fashion Group" → `GFG`, "Salsify" → `SAL`). A debounced uniqueness check (`GET /api/v1/projects/{prefix}`) fires 400 ms after the last keystroke:
+
+- **Green banner**: "Acme Corp esiste già. I documenti saranno aggiunti al progetto AC." → reuse existing project.
+- **Red banner + Confirm disabled**: Prefix is taken by a different client → analyst must change the prefix.
+
+On confirm:
+1. If the project is new: `POST /api/v1/projects` creates it.
+2. `POST /api/v1/requirements/finalize` creates CatalogEntries with IDs in the format `{PREFIX}-{6hex}` (e.g., `ACM-4F2A1B`).
+
+The catalog entry ID prefix makes every integration immediately identifiable by client.
 
 **Step 1b — Enrich the Knowledge Base (optional but recommended)**
 
@@ -125,9 +148,10 @@ The analyst navigates to **"HITL Approvals (RAG)"** and sees the generated docum
 ### Step 5 — Catalog & Document Access
 
 After approval, the document is accessible via:
-- `GET /api/v1/catalog/integrations` → lists all integration entries.
+- `GET /api/v1/catalog/integrations` → lists all integration entries. Supports filter params `?project_id=`, `?domain=`, `?accenture_ref=` for case-insensitive partial matching.
 - `GET /api/v1/catalog/integrations/{id}/functional-spec` → returns the approved Markdown.
-- The **"Generated Docs"** page in the dashboard renders it as formatted HTML via `marked.js`.
+- The **"Integration Catalog"** page in the dashboard shows a filter bar above the grid (client dropdown, domain/Accenture text inputs with debounce). Each catalog card shows a prefix badge (e.g., `[ACM]`), the client name, domain, and optionally the Accenture reference.
+- The **"Generated Docs"** page renders the approved Markdown as formatted HTML via `marked.js`.
 
 ---
 
@@ -574,12 +598,13 @@ docker compose up -d
 ### First Run Walkthrough
 
 1. Open **http://localhost:8080** (all API calls are routed through the nginx gateway — no other ports need to be open)
-2. Navigate to **Requirements (CSV)** → upload `sample-requirements.csv`
-3. Navigate to **Agent Workspace** → click **Start Agent Processing**
-4. Watch the terminal logs in real time
-5. When generation completes, navigate to **HITL Approvals (RAG)**
-6. Select the pending document → review + optionally edit → **Approve & Save to RAG**
-7. Navigate to **Integration Catalog** and **Generated Docs** to view results
+2. Navigate to **Agent Workspace** → upload `sample-requirements.csv`
+3. The **Project Modal** opens automatically — fill in Nome Cliente, Dominio, and confirm the auto-generated Prefisso → click **Conferma →** (this creates the project and the catalog entries with `{PREFIX}-{hex}` IDs)
+4. Click **Start Agent Processing** to trigger the agentic RAG flow
+5. Watch the terminal logs in real time
+6. When generation completes, navigate to **HITL Approvals (RAG)**
+7. Select the pending document → review + optionally edit → **Approve & Save to RAG**
+8. Navigate to **Integration Catalog** to browse with client/domain filters, and **Generated Docs** to view full specs
 
 ### Switching the LLM Model
 
@@ -603,7 +628,7 @@ cd services/integration-agent
 python -m pytest tests/ -v
 ```
 
-All 52 tests must pass before any commit (per CLAUDE.md Definition of Done).
+All 195 tests must pass before any commit (per CLAUDE.md Definition of Done).
 
 ---
 

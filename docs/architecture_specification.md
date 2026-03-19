@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 2.2.0 (Merged — PoC) |
-| **Date** | 2026-03-16 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11) |
+| **Version** | 2.3.0 |
+| **Date** | 2026-03-19 |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -670,8 +670,9 @@ graph LR
 
 | Page | Features |
 |---|---|
-| **Agent Workspace** | CSV upload, Start/Stop agent, real-time log terminal with persistent state |
-| **Integration Catalog** | Grid/list of integrations, filter by status/system, click for detail |
+| **Agent Workspace** | CSV upload → Project Modal (collect client name, domain, prefix, description, Accenture ref) → finalize creates `{prefix}-{hex}` catalog entries; Start/Stop agent; real-time log terminal |
+| **Integration Catalog** | Grid/list of integrations; filter bar (client dropdown, domain text, Accenture ref text); prefix badge on each card; project metadata (client, domain) displayed per entry |
+| **Knowledge Base** | Upload file (PDF/DOCX/XLSX/PPTX/MD) or add HTTP/HTTPS URL as reference link; manage tags for RAG filtering; semantic search |
 | **Approvals** | Pending HITL approvals with approve/reject, inline markdown editor |
 | **Documents** | Browse generated functional + technical specs, download as MD |
 
@@ -1008,7 +1009,10 @@ graph TB
 
 ```
 mongodb://mate-mongodb:27017/integration_mate
-  ├── catalog_entries       { id, name, type, source, target, status, tags[], requirements[] }
+  ├── projects              { prefix (PK, ^[A-Z0-9]{1,3}$), client_name, domain,
+  │                           description?, accenture_ref?, created_at }  ← ADR-025
+  ├── catalog_entries       { id ("{prefix}-{6hex}" e.g. "ACM-4F2A1B"), project_id (FK → prefix),
+  │                           name, type, source, target, status, tags[], requirements[] }
   ├── approvals             { id, integration_id, doc_type, content, status, generated_at, feedback? }
   ├── documents             { id, integration_id, doc_type, content, generated_at, kb_status: "staged"|"promoted" }
   ├── kb_documents          { id, filename, file_type, file_size_bytes, tags[], chunk_count,
@@ -1041,10 +1045,12 @@ Used exclusively for **RAG retrieval**: when a new integration requires document
 
 | Variable | Type | Purpose | Persisted? |
 |----------|------|---------|------------|
-| `parsed_requirements` | `list[Requirement]` | Current CSV upload | No (transient) |
+| `parsed_requirements` | `list[Requirement]` | Current CSV upload (pre-finalize) | No (transient) |
+| `projects` | `dict[str, Project]` | Client project registry | Yes (MongoDB) |
 | `catalog` | `dict[str, CatalogEntry]` | Integration entries | Yes (MongoDB) |
 | `documents` | `dict[str, Document]` | Approved final docs | Yes (MongoDB + ChromaDB) |
 | `approvals` | `dict[str, Approval]` | HITL queue items | Yes (MongoDB) |
+| `kb_docs` | `dict[str, KBDocument]` | Knowledge Base entries | Yes (MongoDB) |
 | `agent_logs` | `list[str]` | Real-time execution log | No (last 50 entries) |
 | `_agent_lock` | `asyncio.Lock` | Concurrency guard | No |
 | `_running_tasks` | `dict[str, asyncio.Task]` | Cancellable tasks | No |
@@ -1075,12 +1081,16 @@ All endpoints are served by `mate-integration-agent` on port `3003` (internal). 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/health` | GET | — | Service + ChromaDB + MongoDB health |
-| `/api/v1/requirements/upload` | POST | — | Parse CSV; validate MIME/size/encoding |
+| `/api/v1/requirements/upload` | POST | — | Parse CSV; returns `{status:"parsed", total_parsed, preview}`; **no CatalogEntry creation** (ADR-025) |
+| `/api/v1/requirements/finalize` | POST | — | Create CatalogEntries with `{prefix}-{6hex}` IDs for current parsed reqs (ADR-025) |
 | `/api/v1/requirements` | GET | — | List all parsed requirements |
+| `/api/v1/projects` | POST | Token | Create client project (idempotent; 200 if same client, 409 if prefix clash) (ADR-025) |
+| `/api/v1/projects` | GET | — | List all client projects (for catalog filter dropdown) (ADR-025) |
+| `/api/v1/projects/{prefix}` | GET | — | Get project by prefix; used for real-time uniqueness check in Project Modal (ADR-025) |
 | `/api/v1/agent/trigger` | POST | Token | Start agentic RAG flow (async) |
 | `/api/v1/agent/cancel` | POST | Token | Cancel running agent task |
 | `/api/v1/agent/logs` | GET | — | Stream last 50 log lines |
-| `/api/v1/catalog/integrations` | GET | — | List all catalog entries |
+| `/api/v1/catalog/integrations` | GET | — | List catalog entries; filter params: `?project_id=`, `?domain=`, `?accenture_ref=`; each entry includes `_project` metadata (ADR-025) |
 | `/api/v1/catalog/integrations/{id}/functional-spec` | GET | — | Get approved functional spec |
 | `/api/v1/catalog/integrations/{id}/technical-spec` | GET | — | *Not yet implemented (501)* |
 | `/api/v1/approvals/pending` | GET | — | List PENDING approvals |
@@ -1472,7 +1482,7 @@ graph LR
 | **Scalability** | Concurrent agents | 1 (asyncio.Lock) | 50+ |
 | **Scalability** | Catalog size | 50 integrations | 10,000+ |
 | **Observability** | Logging | stdout + ring buffer | ELK / Datadog |
-| **Observability** | Tracing | Execution ID (INT-XXXXXX) | OpenTelemetry |
+| **Observability** | Tracing | Entry ID (`{PREFIX}-{6hex}` e.g. `ACM-4F2A1B`) | OpenTelemetry |
 | **CDN** | Asset delivery | MinIO direct | CloudFront / Akamai |
 
 ---
@@ -1665,6 +1675,7 @@ gantt
 | ADR-022 | Nginx Reverse-Proxy Gateway | Accepted | Single nginx entry point on port 8080; routes `/agent/`, `/plm/`, `/pim/` to backends; security headers |
 | ADR-023 | Document Lifecycle: Staged Promotion | Accepted | Decouples HITL approval from ChromaDB RAG promotion; explicit `promote-to-kb` action |
 | ADR-024 | KB URL Links: Live Fetch | Accepted | HTTP/HTTPS URL entries in KB fetched live at generation time; SSRF guard on private IP ranges |
+| ADR-025 | Project Metadata & Upload Modal | Accepted | `projects` MongoDB collection; upload split into parse-only + finalize; `{prefix}-{hex}` catalog IDs; Project Modal with debounce uniqueness check; Catalog filter bar |
 
 ---
 
