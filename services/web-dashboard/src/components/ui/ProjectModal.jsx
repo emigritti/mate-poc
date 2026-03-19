@@ -156,7 +156,8 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
         if (!res.ok) {
           throw new Error(extractDetail(projData, `Errore creazione progetto (${res.status})`));
         }
-        projectId = projData.prefix;
+        // Backend envelope: {"status":"created","data":{prefix,...}} — prefix is nested under .data
+        projectId = projData.data?.prefix;
       }
 
       // Finalize: create CatalogEntries with prefix IDs
