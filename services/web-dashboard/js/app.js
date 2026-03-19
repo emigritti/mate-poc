@@ -581,34 +581,118 @@ async function renderCatalog() {
     area.innerHTML = '<div class="loading">Loading catalog integrations...</div>';
 
     try {
-        const data = await API.getCatalogEntries();
-        const items = data?.data || [];
+        // Fetch projects for filter dropdown
+        const projectsData = await API.listProjects();
+        const allProjects  = projectsData?.data || [];
 
-        if (items.length === 0) {
-            area.innerHTML = `<div class="empty-state"><div class="icon">📋</div><h3>No Catalog Entries Yet</h3><p>Trigger the agent to generate the catalog from the requirements.</p></div>`;
-            return;
-        }
+        // Fetch catalog entries with active filters
+        const catalogData = await API.getCatalogEntries({
+            projectId:    _catalogFilterProjectId || undefined,
+            domain:       _catalogFilterDomain    || undefined,
+            accentureRef: _catalogFilterAccRef    || undefined,
+        });
+        const items = catalogData?.data || [];
 
-        area.innerHTML = `<div class="card-grid">${items.map(i => `
-            <div class="card">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">${escapeHtml(i.name)}</div>
-                        <div class="card-subtitle">${escapeHtml(i.id)} · ${escapeHtml(i.type)}</div>
+        // Build project dropdown options
+        const projectOptions = [
+            '<option value="">Tutti i clienti</option>',
+            ...allProjects.map(p =>
+                `<option value="${escapeHtml(p.prefix)}"${_catalogFilterProjectId === p.prefix ? ' selected' : ''}>
+                    ${escapeHtml(p.prefix)} · ${escapeHtml(p.client_name)}
+                </option>`
+            )
+        ].join('');
+
+        // Filter bar
+        const filterBar = `
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;
+                        margin-bottom:20px;padding:16px;background:var(--bg-secondary);
+                        border-radius:8px;border:1px solid var(--border);">
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">🏢 Cliente</label>
+                    <select id="cf-project" onchange="onCatalogFilterChange()"
+                        style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);
+                               background:var(--bg-primary);color:var(--text-primary);font-size:13px;">
+                        ${projectOptions}
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">🏷️ Dominio</label>
+                    <input id="cf-domain" type="text" value="${escapeHtml(_catalogFilterDomain)}"
+                        placeholder="Partial match..." oninput="onCatalogFilterChange()"
+                        style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);
+                               background:var(--bg-primary);color:var(--text-primary);font-size:13px;width:150px;" />
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">👤 Ref. Accenture</label>
+                    <input id="cf-ref" type="text" value="${escapeHtml(_catalogFilterAccRef)}"
+                        placeholder="Partial match..." oninput="onCatalogFilterChange()"
+                        style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);
+                               background:var(--bg-primary);color:var(--text-primary);font-size:13px;width:150px;" />
+                </div>
+                <button class="btn btn-secondary" onclick="resetCatalogFilters()"
+                    style="padding:6px 14px;font-size:13px;align-self:flex-end;">Reset filtri</button>
+            </div>`;
+
+        // Cards
+        const cards = items.length === 0
+            ? `<div class="empty-state"><div class="icon">📋</div><h3>Nessun risultato</h3>
+               <p>Nessuna integrazione trovata con i filtri selezionati.<br>
+               Carica un CSV e compila le info progetto per iniziare.</p></div>`
+            : `<div class="card-grid">${items.map(i => {
+                const proj = i._project || null;
+                return `
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">
+                                ${i.project_id && i.project_id !== 'LEGACY'
+                                    ? `<span style="background:var(--primary);color:#fff;border-radius:4px;
+                                                   padding:2px 7px;font-size:11px;font-weight:700;
+                                                   margin-right:6px;">${escapeHtml(i.project_id)}</span>`
+                                    : ''}
+                                ${escapeHtml(i.name)}
+                            </div>
+                            <div class="card-subtitle">${escapeHtml(i.id)} · ${escapeHtml(i.type)}</div>
+                        </div>
+                        <span class="badge badge-${i.status === 'generated' ? 'success' : 'info'}">${escapeHtml(i.status)}</span>
                     </div>
-                    <span class="badge badge-${i.status === 'generated' ? 'success' : 'info'}">${escapeHtml(i.status)}</span>
-                </div>
-                <div class="card-body">
-                    ${escapeHtml(i.source?.system || '?')} → ${escapeHtml(i.target?.system || '?')}
-                </div>
-                <div class="card-footer">
-                    ${(i.requirements || []).map(r => `<span class="badge badge-primary">${escapeHtml(r)}</span>`).join('')}
-                </div>
-            </div>
-        `).join('')}</div>`;
+                    <div class="card-body">
+                        ${escapeHtml(i.source?.system || '?')} → ${escapeHtml(i.target?.system || '?')}
+                    </div>
+                    ${proj ? `
+                    <div style="padding:6px 0 4px;font-size:12px;color:var(--text-secondary);
+                                border-top:1px solid var(--border);margin-top:8px;line-height:1.6;">
+                        🏢 <strong>${escapeHtml(proj.client_name)}</strong> · ${escapeHtml(proj.domain)}
+                        ${proj.accenture_ref ? `<br>👤 ${escapeHtml(proj.accenture_ref)}` : ''}
+                    </div>` : ''}
+                    <div class="card-footer">
+                        ${(i.requirements || []).map(r => `<span class="badge badge-primary">${escapeHtml(r)}</span>`).join('')}
+                    </div>
+                </div>`;
+            }).join('')}</div>`;
+
+        area.innerHTML = filterBar + cards;
+
     } catch (e) {
-        area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Connection Error</h3><p>${escapeHtml(e.message)}</p></div>`;
+        area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div>
+            <h3>Connection Error</h3><p>${escapeHtml(e.message)}</p></div>`;
     }
+}
+
+function onCatalogFilterChange() {
+    _catalogFilterProjectId = document.getElementById('cf-project')?.value || '';
+    _catalogFilterDomain    = document.getElementById('cf-domain')?.value  || '';
+    _catalogFilterAccRef    = document.getElementById('cf-ref')?.value     || '';
+    clearTimeout(_catalogFilterTimer);
+    _catalogFilterTimer = setTimeout(renderCatalog, 300);
+}
+
+function resetCatalogFilters() {
+    _catalogFilterProjectId = '';
+    _catalogFilterDomain    = '';
+    _catalogFilterAccRef    = '';
+    renderCatalog();
 }
 
 // ── Documents Page ──────────────────────────────────
