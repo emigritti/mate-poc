@@ -34,6 +34,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 import chromadb
@@ -1206,8 +1207,52 @@ async def promote_document_to_kb(doc_id: str, _user: str = Depends(_require_toke
 # ── Catalog ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/catalog/integrations", tags=["catalog"])
-async def get_catalog() -> dict:
-    return {"status": "success", "data": [c.model_dump() for c in catalog.values()]}
+async def get_catalog(
+    project_id: Optional[str] = Query(None, description="Filter by project prefix (exact, case-insensitive)"),
+    domain: Optional[str] = Query(None, description="Filter by project domain (partial match, case-insensitive)"),
+    accenture_ref: Optional[str] = Query(None, description="Filter by Accenture reference (partial match, case-insensitive)"),
+) -> dict:
+    """List catalog entries with optional project-level filtering.
+
+    Each entry is enriched with _project metadata (client_name, domain, accenture_ref)
+    for display in the frontend catalog cards.
+    """
+    items = list(catalog.values())
+
+    if project_id:
+        pid = project_id.upper().strip()
+        items = [i for i in items if i.project_id == pid]
+
+    if domain:
+        low = domain.lower().strip()
+        items = [
+            i for i in items
+            if (p := projects.get(i.project_id)) and low in p.domain.lower()
+        ]
+
+    if accenture_ref:
+        low = accenture_ref.lower().strip()
+        items = [
+            i for i in items
+            if (p := projects.get(i.project_id))
+            and p.accenture_ref
+            and low in p.accenture_ref.lower()
+        ]
+
+    # Enrich with project metadata for frontend display
+    result = []
+    for i in items:
+        d = i.model_dump()
+        proj = projects.get(i.project_id)
+        if proj:
+            d["_project"] = {
+                "client_name": proj.client_name,
+                "domain": proj.domain,
+                "accenture_ref": proj.accenture_ref,
+            }
+        result.append(d)
+
+    return {"status": "success", "data": result}
 
 
 @app.get("/api/v1/catalog/integrations/{id}/functional-spec", tags=["catalog"])
