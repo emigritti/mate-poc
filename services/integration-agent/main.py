@@ -207,6 +207,36 @@ DOCS_MANIFEST: list[dict] = [
         "category": "ADR",
         "description": "Decision to introduce dedicated lightweight LLM settings for tag suggestion (20-token cap, 15s timeout).",
     },
+    {
+        "path": "adr/ADR-021-best-practice-flow.md",
+        "name": "ADR-021 Best Practice Flow",
+        "category": "ADR",
+        "description": "Decision on the Knowledge Base import flow and RAG integration for best-practice reuse in generation.",
+    },
+    {
+        "path": "adr/ADR-022-nginx-gateway.md",
+        "name": "ADR-022 Nginx Gateway",
+        "category": "ADR",
+        "description": "Decision to introduce an Nginx reverse-proxy gateway for centralised port routing across all services.",
+    },
+    {
+        "path": "adr/ADR-023-document-lifecycle-staged-promotion.md",
+        "name": "ADR-023 Document Lifecycle",
+        "category": "ADR",
+        "description": "Decision for staged document promotion: HITL approval → MongoDB → explicit promote → ChromaDB KB.",
+    },
+    {
+        "path": "adr/ADR-024-kb-url-links.md",
+        "name": "ADR-024 KB URL Links",
+        "category": "ADR",
+        "description": "Decision to support HTTP/HTTPS live fetch at generation time for KB documents linked by URL.",
+    },
+    {
+        "path": "adr/ADR-025-project-metadata-upload-modal.md",
+        "name": "ADR-025 Project Metadata & Upload Modal",
+        "category": "ADR",
+        "description": "Decision to introduce client-scoped projects with prefix-based catalog IDs and a mandatory upload modal.",
+    },
     # ── Checklists ────────────────────────────────────────────────────────────
     {
         "path": "code-review/CODE-REVIEW-CHECKLIST.md",
@@ -231,7 +261,7 @@ DOCS_MANIFEST: list[dict] = [
         "path": "test-plan/TEST-PLAN-001-remediation.md",
         "name": "TEST-PLAN-001 Remediation",
         "category": "Test Plan",
-        "description": "v2.0 plan covering 50 unit tests, 10 integration tests, and 16 security tests from Phase 4.",
+        "description": "v2.0 plan covering 195 unit tests across config, security, RAG, HITL, and project-metadata flows.",
     },
     # ── Mappings ──────────────────────────────────────────────────────────────
     {
