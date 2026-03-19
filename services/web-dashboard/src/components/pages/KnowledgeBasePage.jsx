@@ -615,11 +615,13 @@ export default function KnowledgeBasePage() {
             const statsData = await statsRes.json();
             setStats(statsData);
 
-            // Integration docs: graceful fallback if endpoint fails or returns error
+            // Integration docs: graceful fallback if endpoint fails or returns error.
+            // GET /api/v1/documents returns a bare array (response_model=list[Document]),
+            // not the {"status","data":[]} envelope used by other endpoints.
             let intDocs = [];
             if (intDocsRes.ok) {
                 const intData = await intDocsRes.json();
-                intDocs = intData.data || [];
+                intDocs = Array.isArray(intData) ? intData : (intData.data || []);
             }
 
             setUnifiedDocs(normalizeKBDocs(kbDocs, intDocs));
