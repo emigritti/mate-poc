@@ -22,6 +22,23 @@ export const API = {
       return fetch(`${AGENT}/api/v1/requirements/upload`, { method: 'POST', body: fd });
     },
     list: () => fetch(`${AGENT}/api/v1/requirements`),
+    finalize: (projectId) =>
+      fetch(`${AGENT}/api/v1/requirements/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId }),
+      }),
+  },
+
+  projects: {
+    create: (body) =>
+      fetch(`${AGENT}/api/v1/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    list: () => fetch(`${AGENT}/api/v1/projects`),
+    get: (prefix) => fetch(`${AGENT}/api/v1/projects/${encodeURIComponent(prefix)}`),
   },
 
   agent: {

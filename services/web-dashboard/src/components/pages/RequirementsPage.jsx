@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Upload, CheckCircle, XCircle, Tags, Plus, X, Loader2, FileText, AlertCircle } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
+import ProjectModal from '../ui/ProjectModal.jsx';
 import { API } from '../../api.js';
 
 const MAX_TAGS = 3;
@@ -179,6 +180,8 @@ export default function RequirementsPage() {
   const [uploading, setUploading]       = useState(false);
   const [dragOver, setDragOver]         = useState(false);
   const [error, setError]               = useState(null);
+  // null = no modal; array = upload preview → modal open
+  const [uploadPreview, setUploadPreview] = useState(null);
   const fileInputRef = useRef(null);
 
   // Load existing data on mount and after each successful upload
@@ -195,12 +198,25 @@ export default function RequirementsPage() {
     try {
       const res = await API.requirements.upload(file);
       if (!res.ok) throw new Error('Upload failed');
-      await loadData();
+      const data = await res.json();
+      // ADR-025: upload is now parse-only; show Project Modal before finalize
+      setUploadPreview(data.preview || []);
     } catch (e) {
       setError(e.message);
     } finally {
       setUploading(false);
     }
+  };
+
+  // Called by ProjectModal after project creation + finalize succeed
+  const handleProjectConfirmed = async (_projectId) => {
+    setUploadPreview(null);
+    await loadData();
+  };
+
+  // Called when user cancels the modal (parsed requirements stay on server until next upload)
+  const handleProjectCancel = () => {
+    setUploadPreview(null);
   };
 
   const loadData = async () => {
@@ -228,6 +244,14 @@ export default function RequirementsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      {/* Project Modal — shown after a successful parse-only upload (ADR-025) */}
+      {uploadPreview !== null && (
+        <ProjectModal
+          preview={uploadPreview}
+          onConfirm={handleProjectConfirmed}
+          onCancel={handleProjectCancel}
+        />
+      )}
       {/* Upload zone */}
       <div
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
