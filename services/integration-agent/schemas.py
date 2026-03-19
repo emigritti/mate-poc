@@ -38,6 +38,7 @@ class CatalogEntry(BaseModel):
     requirements: List[str]
     status: str
     tags: List[str] = []          # confirmed tags (max 5)
+    project_id: str = "LEGACY"    # FK to Project.prefix; "LEGACY" for pre-ADR-025 entries
     created_at: str
 
 
@@ -186,3 +187,42 @@ class KBStatsResponse(BaseModel):
     total_chunks: int
     file_types: Dict[str, int]
     all_tags: List[str]
+
+
+# ── Project models (ADR-025) ──────────────────────────────────────────────────
+
+class Project(BaseModel):
+    """A client project that groups one or more CSV upload sessions.
+
+    prefix is the natural unique key (1-3 uppercase alphanumeric chars).
+    It is used as the ID prefix for all CatalogEntries in this project
+    (e.g., prefix="ACM" → entry IDs like "ACM-4F2A1B").
+    """
+    prefix: str                            # e.g., "ACM"
+    client_name: str
+    domain: str
+    description: Optional[str] = None
+    accenture_ref: Optional[str] = None
+    created_at: str
+
+
+class ProjectCreateRequest(BaseModel):
+    """Body for POST /api/v1/projects."""
+    prefix: str = Field(
+        ...,
+        pattern=r"^[A-Z0-9]{1,3}$",
+        description="1-3 uppercase alphanumeric chars. Auto-generated from client initials.",
+    )
+    client_name: str = Field(..., min_length=1, max_length=100)
+    domain: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    accenture_ref: Optional[str] = Field(None, max_length=100)
+
+
+class FinalizeRequirementsRequest(BaseModel):
+    """Body for POST /api/v1/requirements/finalize."""
+    project_id: str = Field(
+        ...,
+        pattern=r"^[A-Z0-9]{1,3}$",
+        description="Prefix of an existing Project. CatalogEntries will use this as ID prefix.",
+    )
