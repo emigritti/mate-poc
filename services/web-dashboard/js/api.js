@@ -41,8 +41,15 @@ const API = {
     },
 
     // ── Catalog & Documents ──
-    async getCatalogEntries() {
-        const resp = await fetch(`${this.AGENT}/api/v1/catalog/integrations`, { headers: this.headers() });
+    async getCatalogEntries({ projectId, domain, accentureRef } = {}) {
+        const params = new URLSearchParams();
+        if (projectId)    params.set('project_id', projectId);
+        if (domain)       params.set('domain', domain);
+        if (accentureRef) params.set('accenture_ref', accentureRef);
+        const qs = params.toString() ? `?${params}` : '';
+        const resp = await fetch(`${this.AGENT}/api/v1/catalog/integrations${qs}`, {
+            headers: this.headers(),
+        });
         return resp.json();
     },
 
@@ -104,6 +111,45 @@ const API = {
 
     async resetAll() {
         const resp = await fetch(`${this.AGENT}/api/v1/admin/reset/all`, { method: 'DELETE', headers: this.headers() });
+        return resp.json();
+    },
+
+    // ── Projects (ADR-025) ──
+    async createProject(data) {
+        const resp = await fetch(`${this.AGENT}/api/v1/projects`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify(data),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return resp.json();
+    },
+
+    async listProjects() {
+        const resp = await fetch(`${this.AGENT}/api/v1/projects`, { headers: this.headers() });
+        return resp.json();
+    },
+
+    async getProject(prefix) {
+        const resp = await fetch(`${this.AGENT}/api/v1/projects/${encodeURIComponent(prefix)}`, {
+            headers: this.headers(),
+        });
+        return resp.json();
+    },
+
+    async finalizeRequirements(projectId) {
+        const resp = await fetch(`${this.AGENT}/api/v1/requirements/finalize`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify({ project_id: projectId }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
         return resp.json();
     },
 
