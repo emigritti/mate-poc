@@ -33,6 +33,7 @@ approvals_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
 documents_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
 kb_documents_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
 llm_settings_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
+projects_col:     motor.motor_asyncio.AsyncIOMotorCollection | None = None
 
 
 async def init_db(retries: int = 20, delay: float = 3.0) -> None:
@@ -42,7 +43,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
     Retries up to `retries` times with `delay` seconds between attempts.
     On failure, collections remain None (degraded mode — no crash).
     """
-    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col
+    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col, projects_col
 
     for attempt in range(1, retries + 1):
         try:
@@ -60,6 +61,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             documents_col    = _db["documents"]
             kb_documents_col = _db["kb_documents"]
             llm_settings_col = _db["llm_settings"]
+            projects_col     = _db["projects"]
 
             # Idempotent index creation
             await catalog_col.create_index("id", unique=True)
@@ -68,6 +70,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             await documents_col.create_index("id", unique=True)
             await kb_documents_col.create_index("id", unique=True)
             await kb_documents_col.create_index("tags")
+            await projects_col.create_index("prefix", unique=True)
 
             logger.info("[DB] MongoDB connected (attempt %d/%d).", attempt, retries)
             return

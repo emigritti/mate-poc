@@ -63,6 +63,7 @@ from schemas import (
     CatalogEntry,
     ConfirmTagsRequest,
     Document,
+    FinalizeRequirementsRequest,
     KBAddUrlRequest,
     KBDocument,
     KBSearchResponse,
@@ -72,6 +73,8 @@ from schemas import (
     KBUploadResponse,
     LogEntry,
     LogLevel,
+    Project,
+    ProjectCreateRequest,
     Requirement,
     RejectRequest,
     SuggestTagsResponse,
@@ -86,6 +89,7 @@ documents: dict[str, Document]     = {}
 approvals: dict[str, Approval]     = {}
 agent_logs: list[LogEntry]         = []
 kb_docs:   dict[str, KBDocument]   = {}   # Knowledge Base document metadata
+projects:  dict[str, Project]      = {}   # keyed by prefix — write-through to MongoDB
 
 # ── LLM runtime overrides (ADR-022) ──────────────────────────────────────────
 # Populated at startup from MongoDB llm_settings collection.
@@ -353,6 +357,14 @@ async def lifespan(app: FastAPI):
         async for doc in db.kb_documents_col.find({}, {"_id": 0}):
             kb_docs[doc["id"]] = KBDocument(**doc)
         logger.info("[DB] Seeded %d KB documents from MongoDB.", len(kb_docs))
+
+    # Seed projects
+    if db.projects_col is not None:
+        async for doc in db.projects_col.find({}):
+            doc.pop("_id", None)
+            p = Project(**doc)
+            projects[p.prefix] = p
+        logger.info("[DB] Seeded %d projects from MongoDB.", len(projects))
 
     prune_task = asyncio.create_task(_prune_logs_loop(), name="log-pruner")
 
