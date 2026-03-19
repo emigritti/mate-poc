@@ -192,7 +192,7 @@ async function showProjectModal(preview) {
         </div>`;
 
     document.body.appendChild(modal);
-    _resolvedProjectId = null;
+    _resolvedProjectId = undefined; // "pending" sentinel — forces check before confirm is enabled
 
     const clientInput  = document.getElementById('pm-client');
     const prefixInput  = document.getElementById('pm-prefix');
@@ -202,17 +202,22 @@ async function showProjectModal(preview) {
 
     function updateConfirmState() {
         const ok = clientInput.value.trim() && domainInput.value.trim() && prefixInput.value.trim();
-        // confirmBtn.disabled is also set by checkPrefix for clash case; only enable if all fields filled
-        if (!ok) confirmBtn.disabled = true;
-        else if (_resolvedProjectId === false) confirmBtn.disabled = true; // clash
-        else confirmBtn.disabled = false;
+        if (!ok) {
+            confirmBtn.disabled = true;                 // required fields not filled
+        } else if (_resolvedProjectId === undefined) {
+            confirmBtn.disabled = true;                 // uniqueness check still in-flight
+        } else if (_resolvedProjectId === false) {
+            confirmBtn.disabled = true;                 // prefix clash — different client
+        } else {
+            confirmBtn.disabled = false;                // null (free) or string (existing match)
+        }
     }
 
     async function checkPrefix() {
         const prefix = prefixInput.value.toUpperCase().trim();
         if (!prefix || !/^[A-Z0-9]{1,3}$/.test(prefix)) {
             prefixStatus.innerHTML = '';
-            _resolvedProjectId = null;
+            _resolvedProjectId = undefined; // no valid prefix → keep button disabled
             updateConfirmState();
             return;
         }
@@ -239,6 +244,7 @@ async function showProjectModal(preview) {
     clientInput.addEventListener('input', () => {
         prefixInput.value = generatePrefix(clientInput.value);
         clearTimeout(_prefixCheckTimer);
+        _resolvedProjectId = undefined; // arm pending sentinel before debounce fires
         _prefixCheckTimer = setTimeout(checkPrefix, 400);
         updateConfirmState();
     });
@@ -246,6 +252,7 @@ async function showProjectModal(preview) {
     prefixInput.addEventListener('input', () => {
         prefixInput.value = prefixInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
         clearTimeout(_prefixCheckTimer);
+        _resolvedProjectId = undefined; // arm pending sentinel before debounce fires
         _prefixCheckTimer = setTimeout(checkPrefix, 400);
         updateConfirmState();
     });
@@ -435,7 +442,7 @@ let _catalogFilterProjectId = '';
 let _catalogFilterDomain    = '';
 let _catalogFilterAccRef    = '';
 let _prefixCheckTimer       = null;
-let _resolvedProjectId      = null;  // set when existing project confirmed in modal
+let _resolvedProjectId      = undefined; // undefined=pending, null=free, false=clash, string=existing-match
 let _catalogFilterTimer     = null;
 
 function renderAgentWorkspace() {
