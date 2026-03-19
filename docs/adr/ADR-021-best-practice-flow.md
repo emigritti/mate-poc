@@ -64,32 +64,40 @@ Nuovo step nel flusso `run_agentic_rag_flow()`:
 3. `build_prompt()` riceve `kb_context` → iniettato come sezione
    `BEST PRACTICES REFERENCE` nel meta-prompt
 
-### 5. API Endpoints (7)
+### 5. API Endpoints (8)
 
-| Metodo   | Path                              | Auth | Descrizione              |
-|----------|-----------------------------------|------|--------------------------|
-| `POST`   | `/api/v1/kb/upload`               | ✓    | Upload + parse + tag     |
-| `GET`    | `/api/v1/kb/documents`            | —    | Lista documenti KB       |
-| `GET`    | `/api/v1/kb/documents/{id}`       | —    | Dettaglio singolo        |
-| `DELETE` | `/api/v1/kb/documents/{id}`       | ✓    | Cancella doc + chunks    |
-| `PUT`    | `/api/v1/kb/documents/{id}/tags`  | ✓    | Aggiorna tag             |
-| `GET`    | `/api/v1/kb/search?q=...&n=...`   | —    | Ricerca semantica        |
-| `GET`    | `/api/v1/kb/stats`                | —    | Statistiche KB           |
+| Metodo   | Path                              | Auth | Descrizione                    |
+|----------|-----------------------------------|------|--------------------------------|
+| `POST`   | `/api/v1/kb/upload`               | ✓    | Upload + parse + tag           |
+| `POST`   | `/api/v1/kb/add-url`              | ✓    | Registra URL HTTP/HTTPS (ADR-024) |
+| `GET`    | `/api/v1/kb/documents`            | —    | Lista documenti KB             |
+| `GET`    | `/api/v1/kb/documents/{id}`       | —    | Dettaglio singolo              |
+| `DELETE` | `/api/v1/kb/documents/{id}`       | ✓    | Cancella doc + chunks (o URL)  |
+| `PUT`    | `/api/v1/kb/documents/{id}/tags`  | ✓    | Aggiorna tag                   |
+| `GET`    | `/api/v1/kb/search?q=...&n=...`   | —    | Ricerca semantica (file only)  |
+| `GET`    | `/api/v1/kb/stats`                | —    | Statistiche KB                 |
 
 ### 6. Configurazione (ADR-016 compliant)
 
-| Setting            | Env var             | Default      |
-|--------------------|---------------------|--------------|
-| `kb_max_file_bytes`| `KB_MAX_FILE_BYTES` | `10_485_760` |
-| `kb_chunk_size`    | `KB_CHUNK_SIZE`     | `1000`       |
-| `kb_chunk_overlap` | `KB_CHUNK_OVERLAP`  | `200`        |
-| `kb_max_rag_chars` | `KB_MAX_RAG_CHARS`  | `2000`       |
+| Setting                        | Env var                          | Default      |
+|--------------------------------|----------------------------------|--------------|
+| `kb_max_file_bytes`            | `KB_MAX_FILE_BYTES`              | `10_485_760` |
+| `kb_chunk_size`                | `KB_CHUNK_SIZE`                  | `1000`       |
+| `kb_chunk_overlap`             | `KB_CHUNK_OVERLAP`               | `200`        |
+| `kb_max_rag_chars`             | `KB_MAX_RAG_CHARS`               | `2000`       |
+| `kb_url_fetch_timeout_seconds` | `KB_URL_FETCH_TIMEOUT_SECONDS`   | `10`         |
+| `kb_url_max_chars_per_source`  | `KB_URL_MAX_CHARS_PER_SOURCE`    | `1000`       |
+
+Le ultime due impostazioni sono introdotte in ADR-024 (KB URL Links).
 
 ### 7. Frontend
 
-Pagina `KnowledgeBasePage.jsx` con: upload drag & drop multi-formato, tabella
-documenti con azioni (preview, edit tag, delete), ricerca semantica, statistiche.
+Pagina `KnowledgeBasePage.jsx` con: pannello a due tab (Upload File / Add URL),
+tabella documenti unificata (file + URL + integration docs promossi) con badge
+`📤 Caricato` / `🔗 Link` / `⚙️ Integrazione`, ricerca semantica, statistiche.
 Inserita nella sidebar come step 2 del workflow (tra Requirements e API Systems).
+
+Il supporto per l'aggiunta di URL è descritto in ADR-024.
 
 ## Alternatives Considered
 
@@ -115,10 +123,11 @@ Inserita nella sidebar come step 2 del workflow (tra Requirements e API Systems)
 
 - `test_document_parser.py`: 22 test per parsing, chunking, type detection.
 - `test_kb_endpoints.py`: 10 test per endpoint API (validazione input, 404/415/413/422).
-- Suite completa: **152 test passed** (0 regressioni).
+- Suite completa: **171 test passed** (0 regressioni — include ADR-019 through ADR-024).
 
 ## References
 
 - ADR-016: Secret Management via Pydantic Settings (env-var pattern)
 - ADR-019: RAG Tag-Filtering with HITL Tag Confirmation Gate
 - ADR-020: Tag LLM Tuning — Dedicated Lightweight Parameters
+- ADR-024: KB URL Links — HTTP/HTTPS Live Fetch at Generation Time (extends this ADR)

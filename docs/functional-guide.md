@@ -69,13 +69,19 @@ The Integration Agent:
 - Parses each row into a `Requirement` object.
 - Groups requirements by `source_system → target_system` pair.
 
-**Step 1b — Upload Best-Practice Documents (optional but recommended)**
+**Step 1b — Enrich the Knowledge Base (optional but recommended)**
 
-Before triggering the agent, architects can upload existing integration design documents (PDF, DOCX, XLSX, PPTX, or Markdown) to the **Knowledge Base** via the dedicated section in the sidebar.
+Before triggering the agent, architects can populate the **Knowledge Base** via the dedicated section in the sidebar. Two input types are supported:
 
-These documents are chunked, embedded, and stored in a dedicated ChromaDB collection (`knowledge_base`). When the agent generates a new integration document, it queries the knowledge base alongside the approved-examples RAG store — injecting the most relevant best-practice content into the prompt.
+1. **File Upload** — Upload existing integration design documents (PDF, DOCX, XLSX, PPTX, or Markdown). Files are chunked, embedded, and stored in the ChromaDB `knowledge_base` collection. The auto-tagger suggests up to 3 tags via LLM.
 
-This is optional: if the Knowledge Base is empty, the agent relies solely on past approved documents from the `approved_integrations` ChromaDB collection.
+2. **URL Link** — Register any HTTP/HTTPS URL (e.g., a Salsify API reference, an Akeneo integration guide). The URL is stored as a KB entry with user-assigned tags. At generation time, the agent fetches the URL content live and injects it alongside file-based KB context.
+
+When the agent generates a new integration document, it queries the knowledge base alongside the approved-examples RAG store — injecting the most relevant best-practice content into the prompt as a `BEST PRACTICES REFERENCE` section.
+
+**Tag matching controls injection**: only KB entries (file or URL) whose tags overlap with the integration's confirmed tags are retrieved. This ensures that a Salsify URL is only injected when generating a Salsify integration, not for unrelated integrations.
+
+This step is optional: if the Knowledge Base is empty, the agent relies solely on past approved documents from the `approved_integrations` ChromaDB collection.
 
 ### Step 2 — Trigger the Agent
 
@@ -92,15 +98,21 @@ For each `(source, target)` pair, the agent executes:
 
 ```
 1. Create CatalogEntry → MongoDB
-2. Query ChromaDB for similar past approved examples (RAG retrieval)
-3. Build the LLM prompt:
+2. Query ChromaDB "approved_integrations" for similar past approved examples (RAG retrieval)
+   → tag-filtered first, similarity fallback
+3. Query ChromaDB "knowledge_base" for relevant best-practice file chunks (KB retrieval)
+   → tag-filtered first, similarity fallback
+4. Fetch live content from tag-matched KB URL entries (URL KB retrieval)
+   → HTTP GET per URL; timeout 10s; failed URLs inject "[URL unavailable: ...]"
+5. Build the LLM prompt:
       meta-prompt instructions
     + functional design template (injected as structure)
-    + past approved examples (if found)
+    + past approved examples (if found)       → "PAST APPROVED EXAMPLES"
+    + KB file chunks + URL content (if found) → "BEST PRACTICES REFERENCE"
     + current requirements
-4. Call Ollama → generate Markdown document
-5. Validate output (structural guard + XSS sanitization)
-6. Store document as PENDING in MongoDB → awaits human review
+6. Call Ollama → generate Markdown document
+7. Validate output (structural guard + XSS sanitization)
+8. Store document as PENDING in MongoDB → awaits human review
 ```
 
 ### Step 4 — Human Review (HITL)

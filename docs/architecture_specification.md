@@ -47,7 +47,7 @@ The **Functional Integration Mate** is an AI-powered platform that automates the
 2. **Functional Specifications** — LLM-generated business-level documents (template-driven)
 3. **Technical Design Documents** — LLM-generated implementation-level blueprints *(planned)*
 4. **Agentic Execution Engine** — AI agent that autonomously orchestrates documentation generation with RAG and HITL
-5. **Knowledge Base** — Multi-format document library (PDF, DOCX, XLSX, PPTX, MD) enabling best-practice injection into the RAG prompt via a dedicated ChromaDB collection
+5. **Knowledge Base** — Multi-format document library (PDF, DOCX, XLSX, PPTX, MD) and registered HTTP/HTTPS URL links enabling best-practice injection into the RAG prompt; file chunks are stored in ChromaDB, URL content is fetched live at generation time (ADR-024)
 6. **LLM Settings** — Admin-configurable runtime overrides for model parameters (temperature, token limits, timeout, RAG context size), persisted in MongoDB and effective without restart
 7. **Admin Tools** — Project Docs browser (curated markdown viewer for ADRs, checklists, guides) and Reset Tools for full system reset including LLM override clearing
 
@@ -1008,9 +1008,13 @@ graph TB
 
 ```
 mongodb://mate-mongodb:27017/integration_mate
-  ├── catalog_entries       { id, name, type, source, target, status, requirements[] }
+  ├── catalog_entries       { id, name, type, source, target, status, tags[], requirements[] }
   ├── approvals             { id, integration_id, doc_type, content, status, generated_at, feedback? }
-  ├── documents             { id, integration_id, doc_type, content, generated_at }
+  ├── documents             { id, integration_id, doc_type, content, generated_at, kb_status: "staged"|"promoted" }
+  ├── kb_documents          { id, filename, file_type, file_size_bytes, tags[], chunk_count,
+  │                           content_preview, uploaded_at,
+  │                           source_type: "file"|"url",   ← ADR-024
+  │                           url: string|null }           ← populated for source_type="url"
   └── llm_settings          { _id: "current", overrides for temperature/max_tokens/timeout/rag_context_size }
 ```
 
@@ -1091,11 +1095,18 @@ All endpoints are served by `mate-integration-agent` on port `3003` (internal). 
 | `/api/v1/admin/llm-settings/reset` | POST | Token | Reset all LLM parameters to design defaults |
 | `/api/v1/admin/docs` | GET | — | Retrieve curated project documentation manifest |
 | `/api/v1/admin/docs/{path}` | GET | — | Retrieve markdown content of a specific project document |
-| `/api/v1/kb/documents` | GET | — | List all Knowledge Base documents |
-| `/api/v1/kb/upload` | POST | Token | Upload a document to the Knowledge Base |
-| `/api/v1/kb/documents/{id}` | DELETE | Token | Remove a Knowledge Base document |
-| `/api/v1/kb/search` | GET | — | Semantic search over the Knowledge Base |
-| `/api/v1/kb/stats` | GET | — | Knowledge Base statistics |
+| `/api/v1/kb/upload` | POST | Token | Upload + parse + auto-tag a file to the Knowledge Base |
+| `/api/v1/kb/add-url` | POST | Token | Register an HTTP/HTTPS URL as a KB reference link (ADR-024) |
+| `/api/v1/kb/documents` | GET | — | List all Knowledge Base documents (files + URLs) |
+| `/api/v1/kb/documents/{id}` | GET | — | Get a single Knowledge Base document by ID |
+| `/api/v1/kb/documents/{id}` | DELETE | Token | Remove a Knowledge Base document (file or URL) |
+| `/api/v1/kb/documents/{id}/tags` | PUT | Token | Update tags on a Knowledge Base document |
+| `/api/v1/kb/search` | GET | — | Semantic search over Knowledge Base file chunks |
+| `/api/v1/kb/stats` | GET | — | Knowledge Base statistics (counts, types, tags) |
+| `/api/v1/documents` | GET | — | List all generated and approved documents |
+| `/api/v1/documents/{id}/promote-to-kb` | POST | Token | Promote an approved document into the RAG store (ADR-023) |
+| `/api/v1/catalog/integrations/{id}/suggest-tags` | GET | — | LLM-suggested tags for an integration (ADR-019) |
+| `/api/v1/catalog/integrations/{id}/confirm-tags` | POST | Token | Confirm tags for an integration (ADR-019) |
 
 **Auth model:** Optional Bearer token. If `API_KEY` env var is set, mutating endpoints (`trigger`, `cancel`, `approve`, `reject`, `reset/*`) require `Authorization: Bearer <key>` with `hmac.compare_digest()` constant-time comparison. If unset, endpoints log a warning and allow through (dev/PoC mode).
 
@@ -1213,6 +1224,8 @@ graph TB
 | Frontend | Textarea injection | Content set via `.value`, not `innerHTML` | A03 |
 | Secrets | No hardcoded values | `pydantic-settings` from env vars / `.env` | A02 |
 | Prompt | Injection prevention | `str.replace()` — not `str.format()` | A03 |
+| KB URL fetch | SSRF prevention | Block private/loopback IP ranges; `http/https` scheme only | A10 |
+| KB URL content | XSS via fetched HTML | `bleach.clean(tags=[], strip=True)` before prompt injection | A03 |
 
 ### 11.3 Data Classification
 
@@ -1646,10 +1659,12 @@ gantt
 | ADR-016 | Secret management via Pydantic Settings | Accepted | |
 | ADR-017 | Frontend XSS mitigation (`escapeHtml()`) | Accepted | |
 | ADR-018 | CORS standardization (env-var allowlist) | Accepted | |
-| ADR-019 | RAG Tag Filtering | Approved | Filter ChromaDB queries by confirmed integration tags to improve context relevance |
-| ADR-020 | Tag LLM Tuning | Approved | Dedicated lightweight LLM settings for tag suggestion (20-token cap, 15s timeout, temperature=0) |
-| ADR-021 | Best Practice Knowledge Base | Approved | Multi-format document ingestion pipeline (PyMuPDF, python-docx, openpyxl, python-pptx) with ChromaDB knowledge_base collection |
-| ADR-022 | LLM Runtime Settings | Approved | MongoDB-persisted admin-configurable LLM parameter overrides applied without container restart |
+| ADR-019 | RAG Tag Filtering | Accepted | Filter ChromaDB queries by confirmed integration tags to improve context relevance |
+| ADR-020 | Tag LLM Tuning | Accepted | Dedicated lightweight LLM settings for tag suggestion (20-token cap, 15s timeout, temperature=0) |
+| ADR-021 | Best Practice Knowledge Base | Accepted | Multi-format document ingestion pipeline (PyMuPDF, python-docx, openpyxl, python-pptx) with ChromaDB knowledge_base collection |
+| ADR-022 | Nginx Reverse-Proxy Gateway | Accepted | Single nginx entry point on port 8080; routes `/agent/`, `/plm/`, `/pim/` to backends; security headers |
+| ADR-023 | Document Lifecycle: Staged Promotion | Accepted | Decouples HITL approval from ChromaDB RAG promotion; explicit `promote-to-kb` action |
+| ADR-024 | KB URL Links: Live Fetch | Accepted | HTTP/HTTPS URL entries in KB fetched live at generation time; SSRF guard on private IP ranges |
 
 ---
 

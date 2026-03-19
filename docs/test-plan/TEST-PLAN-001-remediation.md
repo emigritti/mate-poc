@@ -1,13 +1,13 @@
 # TEST-PLAN-001 — Integration Mate PoC: Remediation Test Plan
 
-| Field            | Value                                                           |
-|------------------|-----------------------------------------------------------------|
-| **Version**      | 2.0                                                             |
-| **Date**         | 2026-03-06                                                      |
-| **Author**       | AI-assisted (Claude Code)                                       |
-| **Status**       | Active                                                          |
-| **ADRs covered** | ADR-012, ADR-013, ADR-014, ADR-015, ADR-016, ADR-017, ADR-018  |
-| **CLAUDE.md ref**| §6 (Testing Strategy), §7 (Unit Tests), §10 (Security)         |
+| Field            | Value                                                                                    |
+|------------------|------------------------------------------------------------------------------------------|
+| **Version**      | 3.0                                                                                      |
+| **Date**         | 2026-03-19                                                                               |
+| **Author**       | AI-assisted (Claude Code)                                                                |
+| **Status**       | Active                                                                                   |
+| **ADRs covered** | ADR-012 through ADR-024                                                                  |
+| **CLAUDE.md ref**| §6 (Testing Strategy), §7 (Unit Tests), §10 (Security)                                  |
 
 ---
 
@@ -17,6 +17,7 @@
 |---------|------------|---------|
 | 1.0     | 2026-03-06 | Initial test plan (Phase 1+3 remediation) |
 | 2.0     | 2026-03-06 | Added Phase 4 (security review) findings: F-01..F-10 remediation tests; ADR-017 (XSS), ADR-018 (CORS); fixed SEC-003 reference; added SEC-011..SEC-015 |
+| 3.0     | 2026-03-19 | Updated test count to 171 (added KB, RAG, tag, LLM settings, lifecycle test files); added IT-011 (KB URL happy path); added SEC-017 (SSRF guard); updated OWASP A10 mitigation; ADRs covered extended to ADR-024 |
 
 ---
 
@@ -61,15 +62,28 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-| File                          | Module under test         | Tests | Priority |
-|-------------------------------|---------------------------|-------|----------|
-| `test_config.py`              | `config.py`               | 5     | HIGH     |
-| `test_output_guard.py`        | `output_guard.py`         | 14    | CRITICAL |
-| `test_prompt_builder.py`      | `prompt_builder.py`       | 10    | HIGH     |
-| `test_requirements_upload.py` | `main.py` (endpoints)     | 10    | HIGH     |
-| `test_agent_flow.py`          | `main.py` (flow logic)    | 13    | HIGH     |
+| File                            | Module under test                  | Tests | Priority |
+|---------------------------------|------------------------------------|-------|----------|
+| `test_config.py`                | `config.py`                        | 10    | HIGH     |
+| `test_output_guard.py`          | `output_guard.py`                  | 14    | CRITICAL |
+| `test_prompt_builder.py`        | `prompt_builder.py`                | 13    | HIGH     |
+| `test_requirements_upload.py`   | `main.py` (upload endpoints)       | 10    | HIGH     |
+| `test_agent_flow.py`            | `main.py` (agent flow + trigger)   | 23    | HIGH     |
+| `test_document_parser.py`       | `document_parser.py`               | 22    | HIGH     |
+| `test_kb_endpoints.py`          | `main.py` (KB endpoints)           | 10    | HIGH     |
+| `test_confirm_tags.py`          | `main.py` (tag confirmation)       | 6     | HIGH     |
+| `test_suggest_tags_endpoint.py` | `main.py` (tag suggestion)         | 4     | MEDIUM   |
+| `test_tag_suggestion.py`        | `main.py` (LLM tag suggest)        | 9     | MEDIUM   |
+| `test_rag_filtering.py`         | `main.py` (RAG tag filter)         | 6     | HIGH     |
+| `test_llm_settings.py`          | `main.py` (LLM settings admin)     | 7     | MEDIUM   |
+| `test_log_agent.py`             | `main.py` (agent logger)           | 16    | MEDIUM   |
+| `test_log_schemas.py`           | `schemas.py` (log models)          | 4     | LOW      |
+| `test_project_docs.py`          | `main.py` (admin docs endpoint)    | 7     | LOW      |
+| `test_trigger_gate.py`          | `main.py` (trigger pre-conditions) | 2     | HIGH     |
+| `test_upload_creates_catalog.py`| `main.py` (catalog creation)       | 2     | HIGH     |
+| `test_schemas.py`               | `schemas.py`                       | 6     | MEDIUM   |
 
-**Total: ~52 unit test cases** (up from 49; 3 tests fixed, 3 new tests added)
+**Total: 171 unit test cases** (all passing as of 2026-03-19)
 
 All tests must:
 - Run without real infrastructure (MongoDB, ChromaDB, Ollama mocked)
@@ -102,6 +116,7 @@ Require the full Docker Compose stack (`docker-compose up`).
 | IT-008  | MinIO with `S3_ACCESS_KEY` env override | MinIO starts with non-default credentials |
 | IT-009  | Upload CSV with `<script>` in Description; view requirements page | Dashboard table shows literal `<script>` text, no alert |
 | IT-010  | CORS preflight from `http://localhost:8080` to PLM mock | 200, explicit origin header returned (not wildcard) |
+| IT-011  | Add KB URL `https://docs.example.com/api` with tag `salsify`; trigger generation with `salsify`-tagged integration | URL content appears in agent logs under `[KB-URL]`; generation completes successfully |
 
 ---
 
@@ -126,6 +141,7 @@ Require the full Docker Compose stack (`docker-compose up`).
 | SEC-014 | CORS wildcard + credentials (Fetch spec) | Code review: no `allow_origins=["*"]` + `allow_credentials=True` | ✅ Fixed (F-07) |
 | SEC-015 | Template injection via `{...}` in system name | Unit test: `test_system_name_with_format_specifiers_does_not_raise` | ✅ Fixed (F-09) |
 | SEC-016 | API key timing attack | Code review: `hmac.compare_digest()` used | ✅ Fixed (F-10) |
+| SEC-017 | SSRF via KB URL registration | Unit/manual: `POST /api/v1/kb/add-url {"url":"http://127.0.0.1/admin"}` → expect 400; private ranges blocked before fetch | ✅ ADR-024 |
 
 ---
 
@@ -133,7 +149,7 @@ Require the full Docker Compose stack (`docker-compose up`).
 
 A phase is considered **DONE** only when all of the following pass:
 
-- [ ] All unit tests pass (`pytest tests/ -v` exits 0) — **52 tests expected**
+- [ ] All unit tests pass (`pytest tests/ -v` exits 0) — **171 tests expected**
 - [ ] No `CRITICAL` or `HIGH` security finding unmitigated
 - [ ] All IT-00x integration tests pass on a fresh `docker-compose up --build`
 - [ ] All SEC-00x security tests verified
@@ -156,7 +172,7 @@ A phase is considered **DONE** only when all of the following pass:
 | A07      | Auth & Session Failures          | JWT validation; `hmac.compare_digest()` constant-time (F-10)  |
 | A08      | Software Integrity Failures      | Structural guard on LLM output; HITL approval gate            |
 | A09      | Security Logging Failures        | `logger.warning` on auth failure, LLM error, guard rejection  |
-| A10      | Server-Side Request Forgery      | No user-controlled URLs in LLM calls                          |
+| A10      | Server-Side Request Forgery      | KB URL add-url endpoint blocks private/loopback IP ranges (ADR-024); `http/https` scheme enforced |
 
 ---
 
@@ -254,3 +270,7 @@ docker-compose down -v --rmi local
 | F-08 CORS methods/headers  | ADR-018 | SEC-014, CORS-004              | ✅ Fixed |
 | F-09 Template injection    | ADR-014 | test_prompt_builder.py (SEC-015)| ✅ Fixed |
 | F-10 Timing attack         | ADR-016 | SEC-016 (code review)          | ✅ Fixed |
+| KB file import             | ADR-021 | test_document_parser.py, test_kb_endpoints.py | ✅ Done  |
+| KB URL links               | ADR-024 | SEC-017 (manual + code review) | ✅ Done  |
+| RAG tag filtering          | ADR-019 | test_rag_filtering.py, test_confirm_tags.py | ✅ Done  |
+| Doc lifecycle (staged)     | ADR-023 | test_agent_flow.py             | ✅ Done  |
