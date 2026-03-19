@@ -16,6 +16,14 @@ function generatePrefix(clientName) {
 
 const PREFIX_RE = /^[A-Z0-9]{1,3}$/;
 
+// Handles both string detail ("message") and Pydantic array detail ([{msg:...}])
+function extractDetail(d, fallback) {
+  if (!d) return fallback;
+  if (Array.isArray(d.detail))
+    return d.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+  return d.detail || fallback;
+}
+
 // ── Field component ───────────────────────────────────────────────────────────
 function Field({ label, required, icon: Icon, children }) {
   return (
@@ -144,19 +152,18 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
           description: description.trim() || undefined,
           accenture_ref: accentureRef.trim() || undefined,
         });
+        const projData = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const d = await res.json().catch(() => ({}));
-          throw new Error(d.detail || `Errore creazione progetto (${res.status})`);
+          throw new Error(extractDetail(projData, `Errore creazione progetto (${res.status})`));
         }
-        const proj = await res.json();
-        projectId = proj.prefix;
+        projectId = projData.prefix;
       }
 
       // Finalize: create CatalogEntries with prefix IDs
       const finRes = await API.requirements.finalize(projectId);
+      const finData = await finRes.json().catch(() => ({}));
       if (!finRes.ok) {
-        const d = await finRes.json().catch(() => ({}));
-        throw new Error(d.detail || `Errore finalizzazione (${finRes.status})`);
+        throw new Error(extractDetail(finData, `Errore finalizzazione (${finRes.status})`));
       }
 
       await onConfirm(projectId);
