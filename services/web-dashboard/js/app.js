@@ -79,9 +79,10 @@ async function uploadCsv() {
     res.innerHTML = '<span style="color:var(--info)">Uploading and parsing...</span>';
     try {
         const data = await API.uploadRequirements(fileInput.files[0]);
-        res.innerHTML = `<span style="color:var(--success)">✅ Successfully parsed ${data.total_parsed || 0} requirements.</span>`;
+        res.innerHTML = `<span style="color:var(--info)">✔ Parsed ${escapeHtml(String(data.total_parsed || 0))} requirements. Compila le informazioni progetto per continuare.</span>`;
         loadRequirementsList();
-        fetchAndShowTagConfirmation();
+        // Show project modal — tag confirmation runs inside modal after finalize
+        showProjectModal(data.preview || []);
     } catch (e) {
         res.innerHTML = `<span style="color:var(--error)">❌ Error: ${escapeHtml(e.message)}</span>`;
     }
@@ -108,6 +109,188 @@ async function loadRequirementsList() {
             </tr>`).join('')}</tbody>
         </table>`;
     } catch (e) { list.innerHTML = `<div class="empty-state"><p>${escapeHtml(e.message)}</p></div>`; }
+}
+
+// ── Project Modal (ADR-025) ───────────────────────────────────────────────────
+
+async function showProjectModal(preview) {
+    document.getElementById('projectModal')?.remove();
+
+    const integrationLines = (preview || []).map(p =>
+        `<li><span class="badge badge-primary">${escapeHtml(p.source)}</span> → <span class="badge badge-info" style="background:var(--info)">${escapeHtml(p.target)}</span></li>`
+    ).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'projectModal';
+    modal.style.cssText = `
+        position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;
+        display:flex;align-items:center;justify-content:center;`;
+    modal.innerHTML = `
+        <div style="background:var(--bg-secondary);border-radius:12px;padding:32px;width:480px;
+                    max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+            <h3 style="margin:0 0 8px;color:var(--text-primary)">📋 Informazioni Progetto</h3>
+            <p style="margin:0 0 20px;color:var(--text-secondary);font-size:14px;">
+                Rilevate <strong>${escapeHtml(String((preview || []).length))}</strong> integration pair(s):
+                <ul style="margin:4px 0 0 16px;padding:0;">${integrationLines}</ul>
+            </p>
+            <div style="display:flex;flex-direction:column;gap:14px;">
+                <div>
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">
+                        Nome Cliente <span style="color:var(--error)">*</span>
+                    </label>
+                    <input id="pm-client" type="text" placeholder="Acme Corp"
+                        style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;
+                               border:1px solid var(--border);background:var(--bg-primary);
+                               color:var(--text-primary);font-size:14px;" />
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">
+                        Dominio Integrazione <span style="color:var(--error)">*</span>
+                    </label>
+                    <input id="pm-domain" type="text" placeholder="Fashion Retail"
+                        style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;
+                               border:1px solid var(--border);background:var(--bg-primary);
+                               color:var(--text-primary);font-size:14px;" />
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">
+                        Prefisso
+                        <span style="color:var(--text-secondary);font-size:11px;">(auto-generato · max 3 car. · A-Z0-9)</span>
+                    </label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input id="pm-prefix" type="text" maxlength="3" placeholder="ACM"
+                            style="width:80px;padding:8px 12px;border-radius:6px;
+                                   border:1px solid var(--border);background:var(--bg-primary);
+                                   color:var(--text-primary);font-size:14px;font-weight:700;
+                                   text-transform:uppercase;" />
+                        <span id="pm-prefix-status" style="font-size:13px;flex:1;"></span>
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">
+                        Descrizione <span style="font-size:11px;">(opzionale)</span>
+                    </label>
+                    <input id="pm-desc" type="text" placeholder="Opzionale"
+                        style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;
+                               border:1px solid var(--border);background:var(--bg-primary);
+                               color:var(--text-primary);font-size:14px;" />
+                </div>
+                <div>
+                    <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">
+                        Riferimento Accenture <span style="font-size:11px;">(opzionale)</span>
+                    </label>
+                    <input id="pm-ref" type="text" placeholder="Mario Rossi"
+                        style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;
+                               border:1px solid var(--border);background:var(--bg-primary);
+                               color:var(--text-primary);font-size:14px;" />
+                </div>
+            </div>
+            <div style="margin-top:24px;display:flex;justify-content:flex-end;gap:12px;">
+                <button id="pm-cancel" class="btn btn-secondary">Annulla</button>
+                <button id="pm-confirm" class="btn btn-primary" disabled>Conferma →</button>
+            </div>
+        </div>`;
+
+    document.body.appendChild(modal);
+    _resolvedProjectId = null;
+
+    const clientInput  = document.getElementById('pm-client');
+    const prefixInput  = document.getElementById('pm-prefix');
+    const domainInput  = document.getElementById('pm-domain');
+    const prefixStatus = document.getElementById('pm-prefix-status');
+    const confirmBtn   = document.getElementById('pm-confirm');
+
+    function updateConfirmState() {
+        const ok = clientInput.value.trim() && domainInput.value.trim() && prefixInput.value.trim();
+        // confirmBtn.disabled is also set by checkPrefix for clash case; only enable if all fields filled
+        if (!ok) confirmBtn.disabled = true;
+        else if (_resolvedProjectId === false) confirmBtn.disabled = true; // clash
+        else confirmBtn.disabled = false;
+    }
+
+    async function checkPrefix() {
+        const prefix = prefixInput.value.toUpperCase().trim();
+        if (!prefix || !/^[A-Z0-9]{1,3}$/.test(prefix)) {
+            prefixStatus.innerHTML = '';
+            _resolvedProjectId = null;
+            updateConfirmState();
+            return;
+        }
+        try {
+            const data = await API.getProject(prefix);
+            const found = data?.data;
+            if (!found) throw new Error('not found');
+            const clientName = clientInput.value.trim();
+            if (found.client_name.toLowerCase() === clientName.toLowerCase()) {
+                prefixStatus.innerHTML = `<span style="color:var(--success)">✅ <strong>${escapeHtml(found.client_name)}</strong> esiste già. I documenti saranno aggiunti al progetto <strong>${escapeHtml(prefix)}</strong>.</span>`;
+                _resolvedProjectId = prefix;  // existing project, skip POST
+            } else {
+                prefixStatus.innerHTML = `<span style="color:var(--error)">❌ Prefisso già usato da <strong>${escapeHtml(found.client_name)}</strong>. Modifica il prefisso.</span>`;
+                _resolvedProjectId = false;  // clash — block confirm
+            }
+        } catch (_) {
+            // 404 or network error → prefix is free
+            prefixStatus.innerHTML = '';
+            _resolvedProjectId = null;
+        }
+        updateConfirmState();
+    }
+
+    clientInput.addEventListener('input', () => {
+        prefixInput.value = generatePrefix(clientInput.value);
+        clearTimeout(_prefixCheckTimer);
+        _prefixCheckTimer = setTimeout(checkPrefix, 400);
+        updateConfirmState();
+    });
+
+    prefixInput.addEventListener('input', () => {
+        prefixInput.value = prefixInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        clearTimeout(_prefixCheckTimer);
+        _prefixCheckTimer = setTimeout(checkPrefix, 400);
+        updateConfirmState();
+    });
+
+    domainInput.addEventListener('input', updateConfirmState);
+
+    document.getElementById('pm-cancel').addEventListener('click', () => modal.remove());
+
+    document.getElementById('pm-confirm').addEventListener('click', async () => {
+        const prefix       = prefixInput.value.toUpperCase().trim();
+        const clientName   = clientInput.value.trim();
+        const domain       = domainInput.value.trim();
+        const description  = document.getElementById('pm-desc').value.trim() || null;
+        const accentureRef = document.getElementById('pm-ref').value.trim() || null;
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Salvataggio...';
+
+        try {
+            // If prefix is free (_resolvedProjectId is null), create the project
+            if (_resolvedProjectId === null) {
+                await API.createProject({
+                    prefix,
+                    client_name: clientName,
+                    domain,
+                    description,
+                    accenture_ref: accentureRef,
+                });
+            }
+            const finalizeData = await API.finalizeRequirements(prefix);
+            modal.remove();
+            const res = document.getElementById('uploadResult');
+            if (res) {
+                res.innerHTML = `<span style="color:var(--success)">✅ ${escapeHtml(String(finalizeData.integrations_created))} integrazione/i create sotto <strong>${escapeHtml(prefix)}</strong> · ${escapeHtml(clientName)}.</span>`;
+            }
+            loadRequirementsList();
+            fetchAndShowTagConfirmation();
+        } catch (err) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Conferma →';
+            prefixStatus.innerHTML = `<span style="color:var(--error)">❌ ${escapeHtml(err.message)}</span>`;
+        }
+    });
+
+    setTimeout(() => clientInput.focus(), 50);
 }
 
 // ── Tag Confirmation ─────────────────────────────────
@@ -246,6 +429,14 @@ let agentPollInterval = null;
 let _cachedLogs     = [];    // log lines from last successful poll — survives navigation
 let _logsOffset     = 0;     // first visible index in _cachedLogs (set by clearAgentLogs)
 let _isAgentRunning = false; // agent running state — survives navigation
+
+// ── Catalog filter + project modal state (ADR-025) ───────────────────────────
+let _catalogFilterProjectId = '';
+let _catalogFilterDomain    = '';
+let _catalogFilterAccRef    = '';
+let _prefixCheckTimer       = null;
+let _resolvedProjectId      = null;  // set when existing project confirmed in modal
+let _catalogFilterTimer     = null;
 
 function renderAgentWorkspace() {
     const area = document.getElementById('contentArea');
@@ -654,3 +845,22 @@ function escapeHtml(str) {
 }
 
 function truncate(str, len) { return (str || '').length > len ? str.substring(0, len) + '...' : str || ''; }
+
+// ── Project helpers (ADR-025) ─────────────────────────────────────────────────
+
+/**
+ * Auto-generate a 1-3 char uppercase prefix from a client name.
+ * "Acme Corp" → "AC" | "Global Fashion Group" → "GFG" | "Salsify" → "SAL"
+ */
+function generatePrefix(clientName) {
+    const clean = clientName.trim();
+    if (!clean) return '';
+    const words = clean.split(/\s+/).filter(Boolean);
+    let prefix;
+    if (words.length === 1) {
+        prefix = words[0].replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 3);
+    } else {
+        prefix = words.map(w => w[0]).join('').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 3);
+    }
+    return prefix;
+}
