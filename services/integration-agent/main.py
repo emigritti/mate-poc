@@ -29,10 +29,12 @@ import json
 import logging
 import os
 import re
+import secrets
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import chromadb
 import httpx
@@ -61,6 +63,7 @@ from schemas import (
     CatalogEntry,
     ConfirmTagsRequest,
     Document,
+    KBAddUrlRequest,
     KBDocument,
     KBSearchResponse,
     KBSearchResult,
@@ -614,6 +617,48 @@ async def _query_kb_context(
     return ""
 
 
+def _extract_text_from_html(html: str) -> str:
+    """Strip HTML tags and collapse whitespace to produce plain text."""
+    import bleach
+    plain = bleach.clean(html, tags=[], strip=True)
+    return " ".join(plain.split())
+
+
+async def _fetch_url_kb_context(tags: list[str]) -> str:
+    """Fetch live content from KB URL entries whose tags overlap with the given tags.
+
+    Returns a concatenated string of fetched content, one block per URL.
+    Unavailable URLs are represented as '[URL unavailable: <url>]' so the LLM
+    is aware of the missing source (per design decision, not silently skipped).
+    """
+    matched = [
+        doc for doc in kb_docs.values()
+        if doc.source_type == "url"
+        and doc.tags
+        and any(t in doc.tags for t in tags)
+    ]
+    if not matched:
+        return ""
+
+    parts: list[str] = []
+    max_per = settings.kb_url_max_chars_per_source
+    timeout = settings.kb_url_fetch_timeout_seconds
+
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        for doc in matched:
+            try:
+                resp = await client.get(doc.url)
+                resp.raise_for_status()
+                text = _extract_text_from_html(resp.text)[:max_per]
+                parts.append(f"[Source: {doc.url}]\n{text}")
+                log_agent(f"[KB-URL] Fetched {len(text)} chars from {doc.url}")
+            except Exception as exc:
+                logger.warning("[KB-URL] Fetch failed for %s: %s", doc.url, exc)
+                parts.append(f"[URL unavailable: {doc.url}]")
+
+    return "\n\n".join(parts)
+
+
 async def _suggest_kb_tags_via_llm(text_preview: str, filename: str) -> list[str]:
     """Call LLM to suggest tags for a KB document.
 
@@ -691,6 +736,12 @@ async def run_agentic_rag_flow() -> None:
             log_agent(f"[KB-RAG] KB context chars: {len(kb_context)}")
         else:
             log_agent("[KB-RAG] No KB best practices found.")
+
+        # 2b. Fetch live URL KB entries (tag-filtered, fetched at generation time)
+        url_context = await _fetch_url_kb_context(entry.tags)
+        if url_context:
+            log_agent(f"[KB-URL] URL context chars: {len(url_context)}")
+            kb_context = (kb_context + "\n\n" + url_context).strip() if kb_context else url_context
 
         # 3. Build prompt from meta-prompt template (G-09)
         prompt = build_prompt(
@@ -1606,6 +1657,72 @@ async def kb_list_documents() -> dict:
     }
 
 
+@app.post("/api/v1/kb/add-url", tags=["knowledge-base"])
+async def kb_add_url(
+    body: KBAddUrlRequest,
+    _token: str = Depends(_require_token),
+) -> dict:
+    """
+    Register an HTTP/HTTPS URL as a Knowledge Base reference entry.
+
+    The URL's content is NOT fetched here — it is fetched live at generation
+    time for any integration whose tags overlap with this entry's tags.
+
+    Security: private IP ranges and non-HTTP schemes are rejected (SSRF guard).
+    """
+    # --- URL validation ---
+    url_str = str(body.url).strip()
+    if not url_str.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="URL must use http:// or https:// scheme.")
+
+    parsed = urlparse(url_str)
+    hostname = (parsed.hostname or "").lower()
+
+    # SSRF guard: block private/loopback ranges
+    _BLOCKED_PREFIXES = ("127.", "10.", "192.168.", "0.0.0.0")
+    _BLOCKED_NAMES = {"localhost", "::1", "0.0.0.0"}
+    is_blocked = hostname in _BLOCKED_NAMES or any(hostname.startswith(p) for p in _BLOCKED_PREFIXES)
+    # 172.16.0.0/12 range (172.16.x.x – 172.31.x.x)
+    if hostname.startswith("172."):
+        try:
+            second_octet = int(hostname.split(".")[1])
+            if 16 <= second_octet <= 31:
+                is_blocked = True
+        except (IndexError, ValueError):
+            pass
+    if is_blocked:
+        raise HTTPException(status_code=400, detail="Private or loopback URLs are not allowed.")
+
+    # Validate and clean tags
+    clean_tags = [t.strip()[:50] for t in body.tags if t.strip()]
+    if not clean_tags:
+        raise HTTPException(status_code=422, detail="At least one non-empty tag is required.")
+
+    display_title = (body.title or "").strip() or hostname or url_str
+
+    doc_id = "KB-" + secrets.token_hex(4)
+    kb_doc = KBDocument(
+        id=doc_id,
+        filename=display_title,
+        file_type="url",
+        file_size_bytes=0,
+        tags=clean_tags,
+        chunk_count=0,
+        content_preview="",
+        uploaded_at=_now_iso(),
+        source_type="url",
+        url=url_str,
+    )
+
+    # Persist to MongoDB and in-memory cache
+    if db.kb_documents_col is not None:
+        await db.kb_documents_col.replace_one({"id": doc_id}, kb_doc.model_dump(), upsert=True)
+    kb_docs[doc_id] = kb_doc
+
+    log_agent(f"[KB] URL registered as {doc_id}: {url_str} (tags: {clean_tags})")
+    return {"status": "success", "data": kb_doc.model_dump()}
+
+
 @app.get("/api/v1/kb/documents/{id}", tags=["knowledge-base"])
 async def kb_get_document(id: str) -> dict:
     """Return a single Knowledge Base document by ID."""
@@ -1627,8 +1744,8 @@ async def kb_delete_document(
 
     kb_doc = kb_docs[id]
 
-    # Remove chunks from ChromaDB
-    if kb_collection is not None:
+    # Remove chunks from ChromaDB (file entries only — URL entries have no chunks)
+    if kb_collection is not None and kb_doc.source_type == "file" and kb_doc.chunk_count > 0:
         try:
             chunk_ids = [f"{id}-chunk-{i}" for i in range(kb_doc.chunk_count)]
             kb_collection.delete(ids=chunk_ids)

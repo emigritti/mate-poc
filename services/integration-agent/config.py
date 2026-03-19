@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     kb_chunk_size: int = 1000              # chars per chunk — override via KB_CHUNK_SIZE
     kb_chunk_overlap: int = 200            # overlap chars — override via KB_CHUNK_OVERLAP
     kb_max_rag_chars: int = 2000           # max KB context in prompt — override via KB_MAX_RAG_CHARS
+    # URL KB entries — content fetched live at generation time
+    kb_url_fetch_timeout_seconds: int = 10     # per-URL HTTP timeout — override via KB_URL_FETCH_TIMEOUT_SECONDS
+    kb_url_max_chars_per_source: int = 1000    # max chars per fetched URL — override via KB_URL_MAX_CHARS_PER_SOURCE
 
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.

@@ -103,15 +103,22 @@ class SuggestTagsResponse(BaseModel):
 # ── Knowledge Base models ─────────────────────────────────────────────────────
 
 class KBDocument(BaseModel):
-    """Metadata record for a Knowledge Base document stored in MongoDB."""
+    """Metadata record for a Knowledge Base document stored in MongoDB.
+
+    source_type distinguishes file uploads ("file") from registered HTTP/HTTPS
+    URLs ("url"). URL entries have chunk_count=0 and no ChromaDB data — their
+    content is fetched live at generation time.
+    """
     id: str
     filename: str
-    file_type: str                  # "pdf", "docx", "xlsx", "pptx", "md"
+    file_type: str                  # "pdf", "docx", "xlsx", "pptx", "md", "url"
     file_size_bytes: int
     tags: List[str] = []
     chunk_count: int
-    content_preview: str            # first ~500 chars of extracted text
+    content_preview: str            # first ~500 chars of extracted text (empty for URLs)
     uploaded_at: str
+    source_type: Literal["file", "url"] = "file"
+    url: Optional[str] = None       # populated for source_type="url" entries only
 
 
 class KBUploadResponse(BaseModel):
@@ -121,6 +128,23 @@ class KBUploadResponse(BaseModel):
     file_type: str
     chunks_created: int
     auto_tags: List[str]
+
+
+class KBAddUrlRequest(BaseModel):
+    """Body for POST /api/v1/kb/add-url."""
+    url: str = Field(
+        description="HTTP or HTTPS URL to register as a KB reference link.",
+    )
+    title: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Optional display name. Defaults to the URL hostname.",
+    )
+    tags: List[str] = Field(
+        min_length=1,
+        max_length=10,
+        description="Tags used to filter this URL during generation (1–10 items).",
+    )
 
 
 class KBUpdateTagsRequest(BaseModel):

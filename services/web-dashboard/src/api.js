@@ -102,6 +102,11 @@ export const API = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tags }),
     }),
+    addUrl: ({ url, title, tags }) => fetch(`${AGENT}/api/v1/kb/add-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, title, tags }),
+    }),
     search: (q, n = 5) => fetch(`${AGENT}/api/v1/kb/search?q=${encodeURIComponent(q)}&n=${n}`),
     stats: () => fetch(`${AGENT}/api/v1/kb/stats`),
   },

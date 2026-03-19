@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
     Upload, Trash2, Search, Tag, FileText, X, Loader2,
     AlertCircle, CheckCircle, Eye, BookOpen, BarChart3,
-    FileSpreadsheet, FileType, Presentation, Cpu,
+    FileSpreadsheet, FileType, Presentation, Cpu, Link,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
@@ -54,9 +54,10 @@ function normalizeKBDocs(kbList = [], intList = []) {
         name: d.filename,
         tags: d.tags || [],
         date: d.uploaded_at,
-        source: 'uploaded',
+        source: d.file_type === 'url' ? 'url' : 'uploaded',
         previewText: d.content_preview || '',
         chunkCount: d.chunk_count,
+        url: d.url || null,
         _kbDoc: d,             // kept for delete / tag-edit actions
     }));
     const integration = intList
@@ -390,21 +391,37 @@ function UnifiedDocumentsPanel({ docs, onDelete, deletingId, onPreview, onEditTa
                                 {/* Nome */}
                                 <td className="px-4 py-3">
                                     <div className="flex items-center gap-2">
-                                        {doc.source === 'uploaded'
-                                            ? <FileText size={15} className="text-slate-400 flex-shrink-0" />
-                                            : <Cpu size={15} className="text-blue-400 flex-shrink-0" />
+                                        {doc.source === 'url'
+                                            ? <Link size={15} className="text-cyan-500 flex-shrink-0" />
+                                            : doc.source === 'uploaded'
+                                                ? <FileText size={15} className="text-slate-400 flex-shrink-0" />
+                                                : <Cpu size={15} className="text-blue-400 flex-shrink-0" />
                                         }
-                                        <p className="font-medium text-slate-900 max-w-[220px] truncate" title={doc.name}>
-                                            {doc.name}
-                                        </p>
+                                        {doc.source === 'url' && doc.url
+                                            ? <a
+                                                href={doc.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-medium text-cyan-700 hover:underline max-w-[220px] truncate"
+                                                title={doc.url}
+                                                onClick={e => e.stopPropagation()}
+                                              >
+                                                {doc.name}
+                                              </a>
+                                            : <p className="font-medium text-slate-900 max-w-[220px] truncate" title={doc.name}>
+                                                {doc.name}
+                                              </p>
+                                        }
                                     </div>
                                 </td>
 
                                 {/* Tipo */}
                                 <td className="px-4 py-3">
-                                    {doc.source === 'uploaded'
-                                        ? <Badge variant="slate">📤 Caricato</Badge>
-                                        : <Badge variant="info">⚙️ Integrazione</Badge>
+                                    {doc.source === 'url'
+                                        ? <Badge variant="info">🔗 Link</Badge>
+                                        : doc.source === 'uploaded'
+                                            ? <Badge variant="slate">📤 Caricato</Badge>
+                                            : <Badge variant="info">⚙️ Integrazione</Badge>
                                     }
                                 </td>
 
@@ -440,8 +457,8 @@ function UnifiedDocumentsPanel({ docs, onDelete, deletingId, onPreview, onEditTa
                                             <Eye size={14} />
                                         </button>
 
-                                        {/* Edit tags — uploaded only */}
-                                        {doc.source === 'uploaded' && (
+                                        {/* Edit tags — uploaded and url entries */}
+                                        {(doc.source === 'uploaded' || doc.source === 'url') && (
                                             <button
                                                 onClick={() => onEditTags(doc._kbDoc)}
                                                 className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors"
@@ -451,8 +468,8 @@ function UnifiedDocumentsPanel({ docs, onDelete, deletingId, onPreview, onEditTa
                                             </button>
                                         )}
 
-                                        {/* Delete — uploaded only */}
-                                        {doc.source === 'uploaded' && (
+                                        {/* Delete — uploaded and url entries */}
+                                        {(doc.source === 'uploaded' || doc.source === 'url') && (
                                             <button
                                                 onClick={() => onDelete(doc.id)}
                                                 disabled={deletingId === doc.id}
@@ -477,6 +494,96 @@ function UnifiedDocumentsPanel({ docs, onDelete, deletingId, onPreview, onEditTa
 }
 
 
+// ── Add URL Form ─────────────────────────────────────────────────────────────
+
+function AddUrlForm({ onAdded, onError }) {
+    const [url, setUrl] = useState('');
+    const [title, setTitle] = useState('');
+    const [tagsInput, setTagsInput] = useState('');
+    const [adding, setAdding] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        const cleanUrl = url.trim();
+        const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
+        if (!cleanUrl) return;
+        if (tags.length === 0) { onError('At least one tag is required.'); return; }
+        setAdding(true);
+        try {
+            const res = await API.kb.addUrl({
+                url: cleanUrl,
+                title: title.trim() || null,
+                tags,
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                throw new Error(d.detail || `Failed (${res.status})`);
+            }
+            setUrl(''); setTitle(''); setTagsInput('');
+            onAdded();
+        } catch (err) {
+            onError(err.message);
+        } finally {
+            setAdding(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-3">
+                <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                        URL <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                        type="url"
+                        placeholder="https://docs.example.com/api-reference"
+                        value={url}
+                        onChange={e => setUrl(e.target.value)}
+                        required
+                        className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                        Title <span className="text-slate-400">(optional)</span>
+                    </label>
+                    <input
+                        type="text"
+                        placeholder="e.g. Salsify Integration Guide"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
+                        maxLength={200}
+                        className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                        Tags <span className="text-rose-500">*</span>
+                        <span className="text-slate-400 font-normal ml-1">(comma-separated)</span>
+                    </label>
+                    <input
+                        type="text"
+                        placeholder="salsify, api, integration"
+                        value={tagsInput}
+                        onChange={e => setTagsInput(e.target.value)}
+                        className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+                    />
+                </div>
+            </div>
+            <button
+                type="submit"
+                disabled={adding || !url.trim()}
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700 disabled:opacity-50 transition-colors"
+            >
+                {adding ? <Loader2 size={14} className="animate-spin" /> : <Link size={14} />}
+                {adding ? 'Adding…' : 'Add to KB'}
+            </button>
+        </form>
+    );
+}
+
+
 // ── Main Page ───────────────────────────────────────────────────────────────
 
 export default function KnowledgeBasePage() {
@@ -489,6 +596,7 @@ export default function KnowledgeBasePage() {
     const [editingDoc, setEditingDoc] = useState(null);
     const [previewDoc, setPreviewDoc] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
+    const [activeTab, setActiveTab] = useState('file');
     const fileInputRef = useRef(null);
 
     useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -585,44 +693,85 @@ export default function KnowledgeBasePage() {
                 </div>
             )}
 
-            {/* Upload zone */}
-            <div
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all cursor-pointer select-none ${dragOver
-                        ? 'border-indigo-400 bg-indigo-50'
-                        : 'border-slate-300 hover:border-indigo-300 hover:bg-slate-50/80'
-                    }`}
-            >
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={ACCEPTED_EXTENSIONS}
-                    className="hidden"
-                    onChange={e => handleFile(e.target.files[0])}
-                />
-                {uploading ? (
-                    <div className="flex flex-col items-center gap-3 text-indigo-600">
-                        <Loader2 size={32} className="animate-spin" />
-                        <p className="font-medium" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                            Uploading, parsing and tagging…
-                        </p>
+            {/* Add to KB — tabbed: Upload File / Add URL */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                {/* Tab switcher */}
+                <div className="flex border-b border-slate-200">
+                    {[
+                        { id: 'file', label: 'Upload File', icon: Upload },
+                        { id: 'url',  label: 'Add URL',     icon: Link   },
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                                activeTab === tab.id
+                                    ? 'border-indigo-500 text-indigo-600'
+                                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                            }`}
+                        >
+                            <tab.icon size={14} />
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* File upload pane */}
+                {activeTab === 'file' && (
+                    <div
+                        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`p-10 text-center transition-all cursor-pointer select-none ${dragOver
+                            ? 'bg-indigo-50'
+                            : 'hover:bg-slate-50/80'
+                        }`}
+                    >
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept={ACCEPTED_EXTENSIONS}
+                            className="hidden"
+                            onChange={e => handleFile(e.target.files[0])}
+                        />
+                        {uploading ? (
+                            <div className="flex flex-col items-center gap-3 text-indigo-600">
+                                <Loader2 size={32} className="animate-spin" />
+                                <p className="font-medium" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                                    Uploading, parsing and tagging…
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                                    <Upload size={24} className="text-indigo-500" />
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-slate-700" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                                        Drop your best-practice document here
+                                    </p>
+                                    <p className="text-sm text-slate-400 mt-1">
+                                        Supports PDF, Word, Excel, PowerPoint, Markdown
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                ) : (
-                    <div className="flex flex-col items-center gap-3">
-                        <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                            <Upload size={24} className="text-indigo-500" />
-                        </div>
-                        <div>
-                            <p className="font-semibold text-slate-700" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                                Drop your best-practice document here
-                            </p>
-                            <p className="text-sm text-slate-400 mt-1">
-                                Supports PDF, Word, Excel, PowerPoint, Markdown
-                            </p>
-                        </div>
+                )}
+
+                {/* Add URL pane */}
+                {activeTab === 'url' && (
+                    <div className="p-6">
+                        <p className="text-xs text-slate-500 mb-4">
+                            Register an HTTP/HTTPS URL (e.g. API docs, integration specs).
+                            Its content will be fetched live during document generation
+                            for integrations whose tags match.
+                        </p>
+                        <AddUrlForm
+                            onAdded={() => loadData()}
+                            onError={msg => setError(msg)}
+                        />
                     </div>
                 )}
             </div>
