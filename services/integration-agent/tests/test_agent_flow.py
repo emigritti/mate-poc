@@ -492,7 +492,7 @@ class TestDocumentLifecycle:
         )
         agent_main.documents["INT-PROMOTE-functional"] = doc
         try:
-            with patch("main.collection") as mock_col:
+            with patch("state.collection") as mock_col:
                 mock_col.upsert = MagicMock()
                 response = client.post("/api/v1/documents/INT-PROMOTE-functional/promote-to-kb")
                 assert response.status_code == 200
@@ -518,9 +518,10 @@ class TestDocumentLifecycle:
         )
         agent_main.documents["INT-503-functional"] = doc
         try:
-            with patch("main.collection", None):
+            with patch("state.collection", None):
                 response = client.post("/api/v1/documents/INT-503-functional/promote-to-kb")
             assert response.status_code == 503
             assert "unavailable" in response.json().get("detail", "").lower()
         finally:
             agent_main.documents.pop("INT-503-functional", None)
+

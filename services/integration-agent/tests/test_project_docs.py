@@ -34,11 +34,11 @@ def test_list_docs_all_categories_present(client):
 
 def test_get_doc_returns_content(client, tmp_path, monkeypatch):
     """GET /api/v1/admin/docs/{path} returns file content when file exists."""
-    import main
+    import routers.admin as admin_mod
     fake_docs = tmp_path
     fake_file = fake_docs / "README.md"
     fake_file.write_text("# Hello", encoding="utf-8")
-    monkeypatch.setattr(main, "DOCS_ROOT", fake_docs)
+    monkeypatch.setattr(admin_mod, "DOCS_ROOT", fake_docs)
 
     res = client.get("/api/v1/admin/docs/README.md")
     assert res.status_code == 200
@@ -50,8 +50,8 @@ def test_get_doc_returns_content(client, tmp_path, monkeypatch):
 
 def test_get_doc_404_when_missing(client, tmp_path, monkeypatch):
     """GET /api/v1/admin/docs/{path} returns 404 when file does not exist."""
-    import main
-    monkeypatch.setattr(main, "DOCS_ROOT", tmp_path)
+    import routers.admin as admin_mod
+    monkeypatch.setattr(admin_mod, "DOCS_ROOT", tmp_path)
     res = client.get("/api/v1/admin/docs/README.md")
     assert res.status_code == 404
 
@@ -70,8 +70,8 @@ def test_get_doc_path_traversal_blocked(client, tmp_path, monkeypatch):
     paths (e.g. ../../etc/passwd.md) are blocked with 404 before any filesystem
     access occurs.
     """
-    import main
-    monkeypatch.setattr(main, "DOCS_ROOT", tmp_path)
+    import routers.admin as admin_mod
+    monkeypatch.setattr(admin_mod, "DOCS_ROOT", tmp_path)
     res = client.get("/api/v1/admin/docs/%2e%2e%2fetc%2fpasswd.md")
     assert res.status_code == 404
     assert "not found" in res.json()["detail"].lower()

@@ -1,45 +1,46 @@
-"""Tests for RAG filtering helper functions (Task 8)."""
+"""Tests for RAG filtering helper functions (Task 8).
+
+Updated for R15 refactoring: functions moved to services.rag_service
+and now take collection as a parameter instead of using a global.
+"""
 import pytest
 from unittest.mock import MagicMock
 import asyncio
 
 
 def test_build_rag_context_no_truncation():
-    from main import _build_rag_context
+    from services.rag_service import build_rag_context
     docs = ["short doc A", "short doc B"]
-    result = _build_rag_context(docs)
+    result = build_rag_context(docs)
     assert "short doc A" in result
     assert "short doc B" in result
 
 
 def test_build_rag_context_truncation():
-    from main import _build_rag_context
-    import main
-    original = main.settings.ollama_rag_max_chars
-    main.settings.ollama_rag_max_chars = 10
+    from services.rag_service import build_rag_context
+    from config import settings
+    original = settings.ollama_rag_max_chars
+    settings.ollama_rag_max_chars = 10
     try:
-        result = _build_rag_context(["a" * 20, "b" * 20])
+        result = build_rag_context(["a" * 20, "b" * 20])
         assert len(result) == 10
     finally:
-        main.settings.ollama_rag_max_chars = original
+        settings.ollama_rag_max_chars = original
 
 
 def test_query_rag_tag_filtered_hit():
-    from main import _query_rag_with_tags
-    import main
+    from services.rag_service import query_rag_with_tags
 
     mock_collection = MagicMock()
     mock_collection.query.return_value = {"documents": [["example doc"]]}
-    main.collection = mock_collection
 
-    result, source = asyncio.run(_query_rag_with_tags("sync products", ["Sync"]))
+    result, source = asyncio.run(query_rag_with_tags("sync products", ["Sync"], mock_collection))
     assert source == "tag_filtered"
     assert "example doc" in result
 
 
 def test_query_rag_tag_miss_fallback():
-    from main import _query_rag_with_tags
-    import main
+    from services.rag_service import query_rag_with_tags
 
     def mock_query(**kwargs):
         if "where" in kwargs:
@@ -48,35 +49,26 @@ def test_query_rag_tag_miss_fallback():
 
     mock_collection = MagicMock()
     mock_collection.query.side_effect = lambda **kwargs: mock_query(**kwargs)
-    main.collection = mock_collection
 
-    result, source = asyncio.run(_query_rag_with_tags("sync products", ["Sync"]))
+    result, source = asyncio.run(query_rag_with_tags("sync products", ["Sync"], mock_collection))
     assert source == "similarity_fallback"
     assert "fallback doc" in result
 
 
 def test_query_rag_no_collection():
-    from main import _query_rag_with_tags
-    import main
+    from services.rag_service import query_rag_with_tags
 
-    original = main.collection
-    main.collection = None
-    try:
-        result, source = asyncio.run(_query_rag_with_tags("sync products", ["Sync"]))
-        assert result == ""
-        assert source == "none"
-    finally:
-        main.collection = original
+    result, source = asyncio.run(query_rag_with_tags("sync products", ["Sync"], None))
+    assert result == ""
+    assert source == "none"
 
 
 def test_query_rag_no_tags_uses_similarity():
-    from main import _query_rag_with_tags
-    import main
+    from services.rag_service import query_rag_with_tags
 
     mock_collection = MagicMock()
     mock_collection.query.return_value = {"documents": [["similarity doc"]]}
-    main.collection = mock_collection
 
-    result, source = asyncio.run(_query_rag_with_tags("sync products", []))
+    result, source = asyncio.run(query_rag_with_tags("sync products", [], mock_collection))
     # No tags → skip tag-filtered step → go straight to similarity
     assert source == "similarity_fallback"

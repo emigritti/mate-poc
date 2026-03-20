@@ -1,0 +1,39 @@
+"""
+Shared In-Memory State — centralized application state.
+
+Extracted from main.py (R15).
+All in-memory data structures that were module-level globals in main.py
+are now consolidated here, imported by routers and services.
+
+Write-through to MongoDB is handled by the callers (routers).
+"""
+
+import asyncio
+
+from schemas import (
+    Approval,
+    CatalogEntry,
+    Document,
+    KBDocument,
+    LogEntry,
+    Project,
+    Requirement,
+)
+
+# ── In-memory state (write-through to MongoDB) ────────────────────────────────
+parsed_requirements: list[Requirement] = []
+catalog:   dict[str, CatalogEntry] = {}
+documents: dict[str, Document]     = {}
+approvals: dict[str, Approval]     = {}
+agent_logs: list[LogEntry]         = []
+kb_docs:   dict[str, KBDocument]   = {}
+projects:  dict[str, Project]      = {}
+
+# ── Task registry — prevents concurrent agent runs (F-09) ─────────────────────
+agent_lock = asyncio.Lock()
+running_tasks: dict[str, asyncio.Task] = {}
+
+# ── ChromaDB — initialized with retry in lifespan ─────────────────────────────
+chroma_client  = None
+collection     = None
+kb_collection  = None
