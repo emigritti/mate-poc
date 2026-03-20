@@ -17,6 +17,7 @@ import state
 from config import settings
 from schemas import CatalogEntry, FinalizeRequirementsRequest, Requirement
 from log_helpers import log_agent
+from utils import _now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,6 @@ _ALLOWED_CSV_MIME = frozenset({
     "text/csv", "application/csv", "text/plain", "application/vnd.ms-excel",
 })
 _CSV_MAX_BYTES = 1_048_576  # 1 MB
-
-
-def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
 
 
 @router.post("/requirements/upload")

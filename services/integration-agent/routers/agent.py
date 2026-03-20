@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import db
 import state
 from auth import require_token
+from utils import _now_iso
 from config import settings
 from log_helpers import log_agent
 from output_guard import LLMOutputValidationError, sanitize_llm_output
@@ -28,10 +29,6 @@ from services.rag_service import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["agent"])
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────

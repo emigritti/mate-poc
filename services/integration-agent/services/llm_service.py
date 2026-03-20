@@ -7,7 +7,7 @@ Provides:
   - generate_with_retry(): wraps generate_with_ollama with configurable retry
 
 ADR-012: httpx.AsyncClient for non-blocking Ollama calls.
-R13: Retry with exponential backoff (3 attempts, 5s/15s/45s).
+R13: Retry with exponential backoff (3 attempts, 5s/15s).
 """
 
 import asyncio

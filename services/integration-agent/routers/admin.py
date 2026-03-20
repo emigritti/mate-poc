@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 import db
 import state
@@ -19,6 +20,27 @@ from services.llm_service import llm_overrides
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
+
+
+# ── LLM Settings Patch schema ─────────────────────────────────────────────────
+
+class _DocLLMPatch(BaseModel):
+    model: str | None = None
+    num_predict: int | None = None
+    timeout_seconds: int | None = None
+    temperature: float | None = None
+    rag_max_chars: int | None = None
+
+
+class _TagLLMPatch(BaseModel):
+    num_predict: int | None = None
+    timeout_seconds: int | None = None
+    temperature: float | None = None
+
+
+class LLMSettingsPatchRequest(BaseModel):
+    doc_llm: _DocLLMPatch | None = None
+    tag_llm: _TagLLMPatch | None = None
 
 # ── Project Docs ──────────────────────────────────────────────────────────────
 DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent.parent.parent.parent / "docs"))
@@ -45,6 +67,7 @@ DOCS_MANIFEST: list[dict] = [
     {"path": "adr/ADR-023-document-lifecycle-staged-promotion.md", "name": "ADR-023 Document Lifecycle", "category": "ADR", "description": "Staged document promotion."},
     {"path": "adr/ADR-024-kb-url-links.md", "name": "ADR-024 KB URL Links", "category": "ADR", "description": "Live URL fetch at generation time."},
     {"path": "adr/ADR-025-project-metadata-upload-modal.md", "name": "ADR-025 Project Metadata", "category": "ADR", "description": "Client-scoped projects."},
+    {"path": "adr/ADR-026-backend-decomposition-r15.md", "name": "ADR-026 Backend Decomposition (R15)", "category": "ADR", "description": "Modular routers, services, shared state."},
     {"path": "code-review/CODE-REVIEW-CHECKLIST.md", "name": "Code Review Checklist", "category": "Checklist", "description": "Architecture/correctness/security gates."},
     {"path": "security-review/SECURITY-REVIEW-CHECKLIST.md", "name": "Security Review Checklist", "category": "Checklist", "description": "OWASP-aligned security checklist."},
     {"path": "unit-test-review/UNIT-TEST-REVIEW-CHECKLIST.md", "name": "Unit Test Review Checklist", "category": "Checklist", "description": "Test quality gates."},
@@ -189,22 +212,16 @@ async def get_llm_settings(_token: str = Depends(require_token)) -> dict:
 
 @router.patch("/admin/llm-settings")
 async def patch_llm_settings(
-    body: dict,
+    body: LLMSettingsPatchRequest,
     _token: str = Depends(require_token),
 ) -> dict:
-    DOC_FIELDS = {"model", "num_predict", "timeout_seconds", "temperature", "rag_max_chars"}
-    TAG_FIELDS = {"tag_num_predict", "tag_timeout_seconds", "tag_temperature"}
+    if body.doc_llm is not None:
+        for k, v in body.doc_llm.model_dump(exclude_none=True).items():
+            llm_overrides[k] = v
 
-    if "doc_llm" in body:
-        for k, v in body["doc_llm"].items():
-            if k in DOC_FIELDS:
-                llm_overrides[k] = v
-
-    if "tag_llm" in body:
-        for k, v in body["tag_llm"].items():
-            flat_key = f"tag_{k}"
-            if flat_key in TAG_FIELDS:
-                llm_overrides[flat_key] = v
+    if body.tag_llm is not None:
+        for k, v in body.tag_llm.model_dump(exclude_none=True).items():
+            llm_overrides[f"tag_{k}"] = v
 
     if db.llm_settings_col is not None:
         await db.llm_settings_col.replace_one(

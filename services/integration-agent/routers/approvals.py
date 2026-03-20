@@ -14,14 +14,11 @@ import state
 from auth import require_token
 from output_guard import sanitize_human_content
 from schemas import ApproveRequest, Document, RejectRequest
+from utils import _now_iso
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["approvals"])
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 @router.get("/approvals/pending")

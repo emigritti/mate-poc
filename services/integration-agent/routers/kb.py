@@ -33,14 +33,11 @@ from schemas import (
     KBUploadResponse,
 )
 from services.tag_service import suggest_kb_tags_via_llm
+from utils import _now_iso
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["knowledge-base"])
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 @router.post("/kb/upload")
