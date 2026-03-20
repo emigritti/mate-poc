@@ -110,3 +110,19 @@ class TestBuildPrompt:
         assert r"\# " not in prompt
         assert r"\## " not in prompt
         assert r"\### " not in prompt
+
+    def test_reviewer_feedback_injected_when_provided(self):
+        prompt = build_prompt(
+            "PLM", "PIM", "Sync data",
+            reviewer_feedback="Missing data mapping table and error handling.",
+        )
+        assert "Missing data mapping table and error handling." in prompt
+        assert "PREVIOUS REJECTION FEEDBACK" in prompt
+
+    def test_reviewer_feedback_absent_when_empty(self):
+        prompt = build_prompt("PLM", "PIM", "Sync data")
+        assert "PREVIOUS REJECTION FEEDBACK" not in prompt
+
+    def test_reviewer_feedback_absent_when_whitespace_only(self):
+        prompt = build_prompt("PLM", "PIM", "Sync data", reviewer_feedback="   \n  ")
+        assert "PREVIOUS REJECTION FEEDBACK" not in prompt
