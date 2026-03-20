@@ -182,7 +182,7 @@ class HybridRetriever:
                 metas = (results.get("metadatas")  or [[]])[0]
 
                 for doc, dist, meta in zip(docs, dists, metas):
-                    score  = max(0.0, 1.0 - dist)   # distance → similarity score
+                    score = 1.0 / (1.0 + dist)   # metric-agnostic distance → similarity score
                     doc_id = (meta or {}).get("doc_id", doc[:50])
                     if doc_id not in seen or seen[doc_id].score < score:
                         seen[doc_id] = ScoredChunk(
@@ -280,9 +280,9 @@ class HybridRetriever:
 
         settings.rag_distance_threshold is a ChromaDB distance (0 = perfect, 2 = worst).
         After ensemble normalisation, scores are in [0, 1].
-        We keep chunks where score >= (1 - threshold).
+        We keep chunks where score >= 1/(1 + threshold).
         """
-        min_score = 1.0 - settings.rag_distance_threshold
+        min_score = 1.0 / (1.0 + settings.rag_distance_threshold)
         filtered = [c for c in chunks if c.score >= min_score]
         if len(filtered) < len(chunks):
             logger.info("[RAG] Threshold (%.2f): %d → %d chunks.", min_score, len(chunks), len(filtered))

@@ -119,12 +119,12 @@ def test_query_chroma_deduplicates_by_doc_id():
     mock_col = MagicMock()
     # Both queries return the same doc_id with different scores
     mock_col.query.side_effect = [
-        _make_chroma_result(["chunk A"], [0.2], ["doc1"]),  # score 0.8
-        _make_chroma_result(["chunk A"], [0.5], ["doc1"]),  # score 0.5
+        _make_chroma_result(["chunk A"], [0.2], ["doc1"]),  # score 1/(1+0.2) ≈ 0.833
+        _make_chroma_result(["chunk A"], [0.5], ["doc1"]),  # score 1/(1+0.5) ≈ 0.667
     ]
     result = r._query_chroma(["query1", "query2"], mock_col, [])
     assert len(result) == 1
-    assert abs(result[0].score - 0.8) < 0.01  # highest score kept
+    assert abs(result[0].score - (1.0 / 1.2)) < 0.01  # highest score kept
 
 
 def test_query_chroma_no_collection_returns_empty():
@@ -160,9 +160,9 @@ def test_apply_threshold_filters_low_score():
     r = HybridRetriever()
     chunks = [
         ScoredChunk(text="relevant", score=0.85, source_label="approved", tags=[]),
-        ScoredChunk(text="irrelevant", score=0.05, source_label="approved", tags=[]),
+        ScoredChunk(text="irrelevant", score=0.3, source_label="approved", tags=[]),
     ]
-    # threshold distance=0.8 means keep score >= 0.2 (1 - 0.8)
+    # threshold distance=0.8 means keep score >= 1/(1+0.8) = 1/1.8 ≈ 0.556
     filtered = r._apply_threshold(chunks)
     texts = [c.text for c in filtered]
     assert "relevant" in texts
