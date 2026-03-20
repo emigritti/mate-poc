@@ -76,7 +76,7 @@ export default function AgentWorkspacePage() {
       stopProgress(true);
       setStatus('done');
     }
-  }, [isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isRunning, startProgress, stopProgress]); // startProgress/stopProgress are stable (useCallback)
 
   // auto-scroll log to bottom
   useEffect(() => {
@@ -107,15 +107,12 @@ export default function AgentWorkspacePage() {
 
   const handleStart = () => {
     setLocalError(null);
-    setStatus('running');
     trigger(undefined, {
       onError: (e) => {
         setLocalError(e.message || 'Failed to start agent');
         setStatus('error');
-        stopProgress(false);
       },
     });
-    startProgress();
   };
 
   const handleStop = () => {
@@ -215,7 +212,7 @@ export default function AgentWorkspacePage() {
             </p>
           ) : (
             <div className="space-y-0.5">
-              {logs.map((log, i) => <LogLine key={i} log={log} />)}
+              {logs.map((log, i) => <LogLine key={`${log.timestamp ?? i}-${i}`} log={log} />)}
               <div ref={logEndRef} />
             </div>
           )}
