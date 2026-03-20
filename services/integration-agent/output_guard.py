@@ -39,7 +39,7 @@ _REQUIRED_PREFIX: str = "# Integration Functional Design"
 # ── Quality thresholds (R14) ────────────────────────────────────────────────────
 _MIN_SECTION_COUNT: int = 5    # at least 5 ## headings expected
 _MAX_NA_RATIO: float = 0.5     # max 50% sections can be n/a
-_MIN_WORD_COUNT: int = 50      # minimum meaningful content
+_MIN_WORD_COUNT: int = 100     # minimum meaningful content
 
 
 # ── Exceptions ─────────────────────────────────────────────────────────────────

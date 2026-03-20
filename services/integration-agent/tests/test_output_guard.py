@@ -129,7 +129,11 @@ def _make_doc(sections: int = 7, na_per_section: bool = False) -> str:
     lines = ["# Integration Functional Design\n"]
     for i in range(1, sections + 1):
         lines.append(f"## {i}. Section Title\n")
-        lines.append("n/a\n" if na_per_section else "Meaningful content here with real information.\n")
+        lines.append(
+            "This section contains meaningful integration details covering data mapping, "
+            "error handling, transformation rules, and the business logic required for this process.\n"
+            if not na_per_section else "n/a\n"
+        )
     return "\n".join(lines)
 
 
