@@ -14,6 +14,8 @@ OWASP A03 / Agentic AI injection mitigations:
 
 import logging
 import bleach
+from dataclasses import dataclass, field
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,11 @@ _ALLOWED_ATTRS: dict[str, list[str]] = {"a": ["href", "title"]}
 # ── Constants ──────────────────────────────────────────────────────────────────
 _MAX_CHARS: int = 50_000
 _REQUIRED_PREFIX: str = "# Integration Functional Design"
+
+# ── Quality thresholds (R14) ────────────────────────────────────────────────────
+_MIN_SECTION_COUNT: int = 5    # at least 5 ## headings expected
+_MAX_NA_RATIO: float = 0.5     # max 50% sections can be n/a
+_MIN_WORD_COUNT: int = 50      # minimum meaningful content
 
 
 # ── Exceptions ─────────────────────────────────────────────────────────────────
@@ -100,6 +107,66 @@ def sanitize_human_content(raw: str) -> str:
     if not raw:
         return ""
     return _apply_bleach_and_truncate(raw)
+
+
+# ── Quality Assessment (R14) ────────────────────────────────────────────────────
+
+@dataclass
+class QualityReport:
+    """Non-destructive quality assessment of an LLM-generated document."""
+    section_count: int
+    na_ratio: float
+    word_count: int
+    quality_score: float
+    passed: bool
+    issues: list[str] = field(default_factory=list)
+
+
+def assess_quality(content: str) -> QualityReport:
+    """
+    Assess LLM output quality without modifying content.
+
+    Signals checked:
+      1. section_count  — number of ## level-2 headings (min: _MIN_SECTION_COUNT)
+      2. na_ratio       — fraction of n/a occurrences vs section_count (max: _MAX_NA_RATIO)
+      3. word_count     — total word count (min: _MIN_WORD_COUNT)
+
+    Call AFTER sanitize_llm_output() — content is already stripped of HTML.
+    Returns a QualityReport with .passed and .issues list (always a list[str], never None).
+    """
+    issues: list[str] = []
+
+    section_count = len(re.findall(r"^## ", content, re.MULTILINE))
+    na_count = len(re.findall(r"\bn/a\b", content, re.IGNORECASE))
+    na_ratio = (na_count / section_count) if section_count > 0 else 1.0
+    word_count = len(content.split())
+
+    if section_count < _MIN_SECTION_COUNT:
+        issues.append(
+            f"Too few sections: {section_count} (expected >= {_MIN_SECTION_COUNT})."
+        )
+    if na_ratio > _MAX_NA_RATIO:
+        issues.append(
+            f"High n/a ratio: {na_ratio:.0%} of sections lack real content."
+        )
+    if word_count < _MIN_WORD_COUNT:
+        issues.append(
+            f"Document too short: {word_count} words (expected >= {_MIN_WORD_COUNT})."
+        )
+
+    section_score = min(1.0, section_count / _MIN_SECTION_COUNT)
+    na_score = max(0.0, 1.0 - na_ratio / _MAX_NA_RATIO) if _MAX_NA_RATIO > 0 else 0.0
+    word_score = min(1.0, word_count / _MIN_WORD_COUNT)
+    quality_score = round((section_score + na_score + word_score) / 3, 2)
+
+    return QualityReport(
+        section_count=section_count,
+        na_ratio=round(na_ratio, 2),
+        word_count=word_count,
+        quality_score=quality_score,
+        passed=len(issues) == 0,
+        issues=issues,
+    )
 
 
 # ── Internal ───────────────────────────────────────────────────────────────────
