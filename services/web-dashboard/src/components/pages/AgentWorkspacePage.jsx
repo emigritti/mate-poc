@@ -62,27 +62,7 @@ export default function AgentWorkspacePage() {
   const progressRef = useRef(null);
   const logEndRef   = useRef(null);
 
-  // cleanup on unmount
-  useEffect(() => () => {
-    clearInterval(progressRef.current);
-  }, []);
-
-  // Sync status and progress bar with isRunning from hook
-  useEffect(() => {
-    if (isRunning && status !== 'running') {
-      setStatus('running');
-      startProgress();
-    } else if (!isRunning && status === 'running') {
-      stopProgress(true);
-      setStatus('done');
-    }
-  }, [isRunning, startProgress, stopProgress]); // startProgress/stopProgress are stable (useCallback)
-
-  // auto-scroll log to bottom
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
-
+  // Declare callbacks BEFORE any useEffect that references them (avoids TDZ ReferenceError)
   const startProgress = useCallback(() => {
     clearInterval(progressRef.current);
     let secs = 0;
@@ -104,6 +84,27 @@ export default function AgentWorkspacePage() {
       setElapsed(0);
     }
   }, []);
+
+  // cleanup on unmount
+  useEffect(() => () => {
+    clearInterval(progressRef.current);
+  }, []);
+
+  // Sync status and progress bar with isRunning from hook
+  useEffect(() => {
+    if (isRunning && status !== 'running') {
+      setStatus('running');
+      startProgress();
+    } else if (!isRunning && status === 'running') {
+      stopProgress(true);
+      setStatus('done');
+    }
+  }, [isRunning, startProgress, stopProgress]);
+
+  // auto-scroll log to bottom
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   const handleStart = () => {
     setLocalError(null);
