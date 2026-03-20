@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle, XCircle, AlertCircle, Loader2, Clock, ChevronRight, RefreshCw } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
-import { API } from '../../api.js';
 import { useApprovals } from '../../hooks/useApprovals';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -15,7 +14,7 @@ export default function ApprovalsPage() {
     reject,
     isRejecting,
     regenerate,
-    isRegenerating: isHookRegenerating,
+    isRegenerating,
   } = useApprovals();
   const queryClient = useQueryClient();
 
@@ -26,7 +25,6 @@ export default function ApprovalsPage() {
   const [error, setError]           = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [rejected, setRejected] = useState([]);         // rejected approvals available for regeneration
-  const [regenerating, setRegenerating] = useState(null); // id currently being regenerated
 
   const loadDocument = (id) => {
     setSelectedId(id);
@@ -77,26 +75,20 @@ export default function ApprovalsPage() {
     );
   };
 
-  const handleRegenerate = async (approvalId) => {
-    setRegenerating(approvalId);
+  const handleRegenerate = (approvalId) => {
     setError(null);
     setSuccessMsg(null);
-    try {
-      const res = await API.approvals.regenerate(approvalId);
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || `Regeneration failed (${res.status})`);
+    regenerate(
+      { id: approvalId },
+      {
+        onSuccess: (data) => {
+          const newId = data.data?.new_approval_id;
+          setSuccessMsg(`Regenerated → new approval ${newId} is PENDING.`);
+          setRejected(prev => prev.filter(a => a.id !== approvalId));
+        },
+        onError: (e) => setError(e.message || 'Regeneration failed'),
       }
-      const data = await res.json();
-      const newId = data.data?.new_approval_id;
-      setSuccessMsg(`Regenerated → new approval ${newId} is PENDING.`);
-      setRejected(prev => prev.filter(a => a.id !== approvalId));
-      queryClient.invalidateQueries({ queryKey: ['approvals', 'pending'] });
-    } catch (e) {
-      setError(e.message || 'Regeneration failed');
-    } finally {
-      setRegenerating(null);
-    }
+    );
   };
 
   const submitting = isApproving || isRejecting;
@@ -184,11 +176,11 @@ export default function ApprovalsPage() {
                   </p>
                   <button
                     onClick={() => handleRegenerate(a.id)}
-                    disabled={regenerating === a.id}
+                    disabled={isRegenerating}
                     className="w-full py-1 bg-rose-600 text-white rounded text-xs font-semibold
                                hover:bg-rose-700 disabled:opacity-50 transition-colors"
                   >
-                    {regenerating === a.id ? 'Regenerating…' : 'Regenerate with Feedback'}
+                    {isRegenerating ? 'Regenerating…' : 'Regenerate with Feedback'}
                   </button>
                 </div>
               ))}

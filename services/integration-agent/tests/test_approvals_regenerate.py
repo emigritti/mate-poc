@@ -108,3 +108,14 @@ class TestRegenerateEndpoint:
         data = res.json()["data"]
         assert "new_approval_id" in data
         assert data["previous_approval_id"] == "APP-R2"
+
+    def test_regenerate_passes_feedback_to_generator(self):
+        _inject_rejected("APP-R3", "INT-003", feedback="Add data mapping table.")
+        with patch(
+            "routers.approvals.generate_integration_doc",
+            new_callable=AsyncMock,
+            return_value=_good_doc(),
+        ) as mock_gen:
+            client.post("/api/v1/approvals/APP-R3/regenerate")
+        call_kwargs = mock_gen.call_args.kwargs
+        assert "Add data mapping table." in call_kwargs.get("reviewer_feedback", "")

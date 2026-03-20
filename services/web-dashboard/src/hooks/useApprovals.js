@@ -39,7 +39,14 @@ export function useApprovals() {
   });
 
   const regenerateMutation = useMutation({
-    mutationFn: ({ id }) => API.approvals.regenerate(id),
+    mutationFn: async ({ id }) => {
+      const res = await API.approvals.regenerate(id);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || `Regeneration failed (${res.status})`);
+      }
+      return res.json();
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: PENDING_KEY }),
   });
 
