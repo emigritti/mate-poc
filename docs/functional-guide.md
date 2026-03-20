@@ -135,8 +135,16 @@ For each `(source, target)` pair, the agent executes:
     + current requirements
 6. Call Ollama → generate Markdown document
 7. Validate output (structural guard + XSS sanitization)
+7a. Assess quality → `QualityReport` logged (warning-only)
 8. Store document as PENDING in MongoDB → awaits human review
 ```
+
+After sanitization, `assess_quality()` evaluates the document against three signals:
+- **Section count** ≥ 5 (`## ` headings)
+- **n/a ratio** < 50% of sections
+- **Word count** ≥ 100
+
+The result is a `QualityReport` logged as `[QUALITY] score X.XX` in the agent log stream. Quality check is **warning-only** — the document always proceeds to the HITL queue regardless of score. Low scores signal to reviewers that content may need regeneration.
 
 ### Step 4 — Human Review (HITL)
 
@@ -228,6 +236,16 @@ Analyst opens editor → reads + edits document
 ```
 
 **Security note:** Even the analyst's edited Markdown goes through `sanitize_human_content()` (bleach HTML sanitization) before persistence — protecting the system from XSS stored via clipboard paste.
+
+#### Regenerate with Feedback
+
+When a reviewer rejects a document and provides written feedback, the feedback is persisted in `Approval.feedback`. Clicking **Regenerate with Feedback** in the UI calls `POST /api/v1/approvals/{id}/regenerate`, which:
+
+1. Injects the rejection feedback into the prompt as a `## PREVIOUS REJECTION FEEDBACK` block (prepended before RAG examples)
+2. Runs the full RAG + LLM pipeline again for the same integration
+3. Creates a new `PENDING` approval with the regenerated content
+
+The original rejected approval remains unchanged. The new approval ID is returned so the reviewer can navigate directly to it.
 
 ---
 
@@ -499,6 +517,7 @@ Three independently unit-testable modules with no FastAPI dependency:
 | `llm_service.py` | `generate_with_ollama` + `generate_with_retry` (R13) |
 | `rag_service.py` | ChromaDB queries, `ContextAssembler`, KB retrieval |
 | `tag_service.py` | LLM-based tag extraction and suggestion |
+| `agent_service.py` | `generate_integration_doc()` — shared by agent flow and regenerate endpoint |
 
 **Layer 3 — Shared State (`state.py`)**
 
@@ -620,6 +639,21 @@ New configuration keys added in `config.py`:
 
 New dependencies: `langchain-text-splitters==0.3.8`, `rank-bm25==0.2.2`, `scikit-learn==1.6.1`.
 
+### 9.2 Generation Quality Pipeline (Phase 3 — R16–R18, ADR-031..033)
+
+Phase 3 (Generation Quality) is now complete. It adds output quality assessment, a HITL feedback-loop regenerate endpoint, and a frontend server-state pilot.
+
+**Output quality assessment (R16, ADR-031)**
+After LLM output is sanitized, `assess_quality()` evaluates three signals (section count ≥ 5, n/a ratio < 50%, word count ≥ 100) and emits a `QualityReport` logged as `[QUALITY] score X.XX`. The check is warning-only — documents always proceed to the HITL queue.
+
+**Feedback loop regenerate (R17, ADR-032)**
+`POST /api/v1/approvals/{id}/regenerate` allows reviewers to inject rejection feedback directly back into the generation pipeline via a `## PREVIOUS REJECTION FEEDBACK` block. The original rejected approval is preserved; a new PENDING approval is created.
+
+**TanStack Query frontend pilot (R18, ADR-033)**
+React Query (TanStack Query) is piloted for the approvals page to replace manual polling with declarative server-state management, improving UI consistency and reducing boilerplate.
+
+Test count: **263 tests** (247 baseline + 7 quality + 3 prompt feedback + 6 regenerate).
+
 ---
 
 ## 10. Security Model — Why and How
@@ -737,7 +771,7 @@ cd services/integration-agent
 python -m pytest tests/ -v
 ```
 
-All 247 tests must pass before any commit (per CLAUDE.md Definition of Done).
+All 263 tests must pass before any commit (per CLAUDE.md Definition of Done).
 
 ---
 

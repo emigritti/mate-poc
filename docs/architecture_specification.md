@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 3.0.0 |
+| **Version** | 3.1.0 |
 | **Date** | 2026-03-20 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19) |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -784,9 +784,22 @@ sequenceDiagram
 | 5. Build Prompt | Agent | Inject meta-prompt + template + RAG | `str.replace()` — no `format()` (prevents KeyError) |
 | 6. LLM Call | Agent | POST to Ollama | 600s timeout; async; error caught → log + skip |
 | 7. Output Guard | Agent | Structural + XSS check | Must start with `# Integration Functional Design` |
+| 7a. Quality Check | Agent | `assess_quality()` evaluates section count, n/a ratio, word count → `QualityReport` logged (warning-only, never rejects) | Advisory gate — low scores signal to reviewers that content may need regeneration |
 | 8. HITL Queue | Agent | Store as PENDING | No automatic write to final store without human |
 | 9. Human Review | Analyst | Edit + Approve/Reject in UI | `sanitize_human_content()` on submit |
 | 10. RAG Learn | Agent | Upsert approved doc → ChromaDB | Feeds future generations with approved patterns |
+
+### Regenerate Flow (R16)
+
+When a reviewer rejects an approval with feedback, `POST /api/v1/approvals/{id}/regenerate` creates a new PENDING approval:
+
+1. Validate approval is REJECTED and has non-empty `feedback`
+2. Look up catalog entry and requirements from state
+3. Call `generate_integration_doc(entry, requirements, reviewer_feedback=feedback)` — reviewer feedback is prepended to the RAG context block as `## PREVIOUS REJECTION FEEDBACK`
+4. Persist new Approval with status PENDING
+5. Return `{ new_approval_id, previous_approval_id }`
+
+---
 
 ### 7.3 Agent Architecture (Production Target)
 
@@ -1799,6 +1812,9 @@ gantt
 | ADR-028 | BM25+Dense Hybrid Retrieval (R8/R12) | Accepted | BM25Plus sparse + ChromaDB dense ensemble (0.6/0.4); `kb_chunks` corpus in `state.py`; multi-dimensional `$or` tag filter |
 | ADR-029 | Retrieval Threshold Filter & TF-IDF Re-rank (R9) | Accepted | Score threshold `1/(1+distance)` drops low-quality chunks; TF-IDF cosine re-rank (scikit-learn) before top-K selection |
 | ADR-030 | ContextAssembler Structured Sections (R10) | Accepted | RAG context split into `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` with token budget enforcement |
+| ADR-031 | Output Quality Checker | Accepted | `assess_quality()` warning-only gate |
+| ADR-032 | Feedback Loop Regenerate | Accepted | HITL rejection feedback loop |
+| ADR-033 | TanStack Query Frontend | Accepted | React Query server-state pilot |
 
 ---
 
