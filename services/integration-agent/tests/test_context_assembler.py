@@ -73,3 +73,16 @@ def test_build_rag_context_still_works():
     result = build_rag_context(["doc A", "doc B"])
     assert "doc A" in result
     assert "doc B" in result
+
+
+def test_context_assembler_both_sections_present():
+    """Both approved and KB sections appear when both source types provided."""
+    from services.rag_service import ContextAssembler
+    ca = ContextAssembler()
+    approved = [_make_chunk("approved integration example", 0.9, "approved")]
+    kb = [_make_chunk("best practice document", 0.8, "kb_file")]
+    result = ca.assemble(approved, kb, [], max_chars=5000)
+    assert "PAST APPROVED EXAMPLES" in result
+    assert "BEST PRACTICE PATTERNS" in result
+    assert "approved integration example" in result
+    assert "best practice document" in result
