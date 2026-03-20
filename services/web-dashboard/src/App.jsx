@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Sidebar from './components/layout/Sidebar.jsx';
 import TopBar from './components/layout/TopBar.jsx';
 import WorkflowStepper from './components/WorkflowStepper.jsx';
@@ -13,6 +14,16 @@ import ResetPage from './components/pages/ResetPage.jsx';
 import ProjectDocsPage from './components/pages/ProjectDocsPage.jsx';
 import LlmSettingsPage from './components/pages/LlmSettingsPage.jsx';
 import { API } from './api.js';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,           // 30s — data stays fresh for 30s before background refetch
+      retry: 1,                    // retry once on failure
+      refetchOnWindowFocus: true,  // refetch when user returns to tab
+    },
+  },
+});
 
 const PAGE_META = {
   requirements: { title: 'Requirements', subtitle: 'Upload and manage integration requirements', step: 1 },
@@ -69,21 +80,23 @@ export default function App() {
   const meta = PAGE_META[currentPage] ?? PAGE_META.requirements;
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
+    <QueryClientProvider client={queryClient}>
+      <div className="flex h-screen bg-slate-50 overflow-hidden">
+        <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
 
-      <div className="flex flex-col flex-1 overflow-hidden">
-        {!meta.hideTopBar && <TopBar title={meta.title} subtitle={meta.subtitle} />}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {!meta.hideTopBar && <TopBar title={meta.title} subtitle={meta.subtitle} />}
 
-        {meta.step !== null && !meta.hideTopBar && <WorkflowStepper activeStep={meta.step} />}
+          {meta.step !== null && !meta.hideTopBar && <WorkflowStepper activeStep={meta.step} />}
 
-        <main
-          key={currentPage}
-          className="flex-1 overflow-y-auto p-6 animate-fade-in"
-        >
-          {renderPage(currentPage)}
-        </main>
+          <main
+            key={currentPage}
+            className="flex-1 overflow-y-auto p-6 animate-fade-in"
+          >
+            {renderPage(currentPage)}
+          </main>
+        </div>
       </div>
-    </div>
+    </QueryClientProvider>
   );
 }

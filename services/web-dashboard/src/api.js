@@ -74,6 +74,11 @@ export const API = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ feedback }),
       }),
+    regenerate: (id) =>
+      fetch(`${AGENT}/api/v1/approvals/${id}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }),
   },
 
   documents: {

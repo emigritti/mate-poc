@@ -1,34 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { CheckCircle, XCircle, AlertCircle, Loader2, Clock, ChevronRight, RefreshCw } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
-import { API } from '../../api.js';
+import { useApprovals } from '../../hooks/useApprovals';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function ApprovalsPage() {
-  const [approvals, setApprovals] = useState([]);
+  const {
+    approvals,
+    isLoading,
+    loadError,
+    approve,
+    isApproving,
+    reject,
+    isRejecting,
+    regenerate,
+    isRegenerating,
+  } = useApprovals();
+  const queryClient = useQueryClient();
+
   const [selectedId, setSelectedId] = useState(null);
   const [content, setContent]       = useState('');
   const [feedback, setFeedback]     = useState('');
   const [rejectMode, setRejectMode] = useState(false);
-  const [loading, setLoading]       = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-
-  useEffect(() => { loadApprovals(); }, []);
-
-  const loadApprovals = async () => {
-    setLoading(true);
-    try {
-      const res  = await API.approvals.pending();
-      const data = await res.json();
-      // Backend returns { status, data: [...] }
-      setApprovals(data.data || []);
-    } catch {
-      setError('Failed to load pending approvals');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [rejected, setRejected] = useState([]);         // rejected approvals available for regeneration
 
   const loadDocument = (id) => {
     setSelectedId(id);
@@ -41,47 +37,61 @@ export default function ApprovalsPage() {
     setContent(approval?.content ?? approval?.document ?? '');
   };
 
-  const handleApprove = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await API.approvals.approve(selectedId, content);
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || `Approval failed (${res.status})`);
+  const handleApprove = () => {
+    if (!selectedId) return;
+    approve(
+      { id: selectedId, content },
+      {
+        onSuccess: () => {
+          setSuccessMsg('Document staged. Use the Documents page to promote to Knowledge Base.');
+          setSelectedId(null);
+          setContent('');
+        },
+        onError: (err) => setError(err.message || 'Approval failed — please try again'),
       }
-      setSuccessMsg('Document staged. Use the Documents page to promote to Knowledge Base.');
-      setApprovals(prev => prev.filter(a => a.id !== selectedId));
-      setSelectedId(null);
-    } catch (e) {
-      setError(e.message || 'Approval failed — please try again');
-    } finally {
-      setSubmitting(false);
-    }
+    );
   };
 
-  const handleReject = async () => {
+  const handleReject = () => {
     if (!feedback.trim()) {
       setError('Please provide rejection feedback before submitting');
       return;
     }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await API.approvals.reject(selectedId, feedback);
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || `Rejection failed (${res.status})`);
+    reject(
+      { id: selectedId, feedback },
+      {
+        onSuccess: () => {
+          setRejected(prev => [
+            ...prev,
+            { ...approvals.find(a => a.id === selectedId), feedback },
+          ]);
+          setSuccessMsg('Document rejected — use "Regenerate with Feedback" to retry.');
+          setSelectedId(null);
+          setRejectMode(false);
+          setFeedback('');
+        },
+        onError: (err) => setError(err.message || 'Rejection failed — please try again'),
       }
-      setSuccessMsg('Document rejected — agent will retry with your feedback');
-      setApprovals(prev => prev.filter(a => a.id !== selectedId));
-      setSelectedId(null);
-    } catch (e) {
-      setError(e.message || 'Rejection failed — please try again');
-    } finally {
-      setSubmitting(false);
-    }
+    );
   };
+
+  const handleRegenerate = (approvalId) => {
+    setError(null);
+    setSuccessMsg(null);
+    regenerate(
+      { id: approvalId },
+      {
+        onSuccess: (data) => {
+          const newId = data.data?.new_approval_id;
+          setSuccessMsg(`Regenerated → new approval ${newId} is PENDING.`);
+          setRejected(prev => prev.filter(a => a.id !== approvalId));
+        },
+        onError: (e) => setError(e.message || 'Regeneration failed'),
+      }
+    );
+  };
+
+  const submitting = isApproving || isRejecting;
 
   return (
     <div className="flex gap-5" style={{ height: 'calc(100vh - 200px)' }}>
@@ -102,17 +112,17 @@ export default function ApprovalsPage() {
               <Badge variant="warning" dot>{approvals.length}</Badge>
             )}
             <button
-              onClick={loadApprovals}
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['approvals', 'pending'] })}
               title="Refresh"
               className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
             >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
 
         <div className="overflow-y-auto flex-1">
-          {loading ? (
+          {isLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 size={20} className="animate-spin text-slate-300" />
             </div>
@@ -148,6 +158,35 @@ export default function ApprovalsPage() {
             ))
           )}
         </div>
+
+        {/* Rejected — available for regeneration */}
+        {rejected.length > 0 && (
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
+              Rejected ({rejected.length})
+            </p>
+            <div className="space-y-1.5">
+              {rejected.map(a => (
+                <div
+                  key={a.id}
+                  className="p-2.5 rounded-lg bg-rose-50 border border-rose-100"
+                >
+                  <p className="text-xs font-medium text-slate-700 truncate mb-1.5">
+                    {a.name || a.id}
+                  </p>
+                  <button
+                    onClick={() => handleRegenerate(a.id)}
+                    disabled={isRegenerating}
+                    className="w-full py-1 bg-rose-600 text-white rounded text-xs font-semibold
+                               hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                  >
+                    {isRegenerating ? 'Regenerating…' : 'Regenerate with Feedback'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right: review panel */}

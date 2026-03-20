@@ -5,15 +5,18 @@ Extracted from main.py (R15).
 """
 
 import logging
+import uuid
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 import db
 import state
 from auth import require_token
-from output_guard import sanitize_human_content
-from schemas import ApproveRequest, Document, RejectRequest
+from output_guard import sanitize_human_content, LLMOutputValidationError
+from schemas import Approval, ApproveRequest, Document, RejectRequest
+from services.agent_service import generate_integration_doc
 from utils import _now_iso
 
 logger = logging.getLogger(__name__)
@@ -98,3 +101,87 @@ async def reject_doc(
         )
 
     return {"status": "success", "message": "Rejected. Feedback stored for agent retry context."}
+
+
+@router.post("/approvals/{id}/regenerate")
+async def regenerate_doc(
+    id: str,
+    _token: str = Depends(require_token),
+) -> dict:
+    """
+    Regenerate a REJECTED document using stored reviewer feedback.
+
+    R16: Creates a new PENDING Approval for the same integration, with the
+    rejection feedback injected into the prompt via build_prompt(reviewer_feedback=...).
+
+    Raises:
+        404: Approval not found.
+        409: Approval is not REJECTED, or has no feedback stored.
+        422: Regenerated output failed the structural output guard.
+        503: LLM unavailable during regeneration.
+    """
+    if id not in state.approvals:
+        raise HTTPException(status_code=404, detail="Approval not found.")
+
+    app_entry = state.approvals[id]
+    if app_entry.status != "REJECTED":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only REJECTED approvals can be regenerated (current: {app_entry.status}).",
+        )
+    if not app_entry.feedback:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot regenerate: no rejection feedback stored for this approval.",
+        )
+
+    entry = state.catalog.get(app_entry.integration_id)
+    if entry is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Catalog entry '{app_entry.integration_id}' not found — cannot regenerate.",
+        )
+    requirements = [r for r in state.parsed_requirements if r.req_id in entry.requirements]
+
+    try:
+        new_content = await generate_integration_doc(
+            entry=entry,
+            requirements=requirements,
+            reviewer_feedback=app_entry.feedback,
+            log_fn=logger.info,
+        )
+    except LLMOutputValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Regenerated output failed structural guard: {exc}",
+        )
+    except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"LLM unavailable during regeneration: {exc}",
+        )
+
+    new_id = f"APP-{uuid.uuid4().hex[:6].upper()}"
+    new_approval = Approval(
+        id=new_id,
+        integration_id=app_entry.integration_id,
+        doc_type=app_entry.doc_type,
+        content=new_content,
+        status="PENDING",
+        generated_at=_now_iso(),
+    )
+    state.approvals[new_id] = new_approval
+    if db.approvals_col is not None:
+        await db.approvals_col.replace_one(
+            {"id": new_id}, new_approval.model_dump(), upsert=True
+        )
+
+    logger.info(
+        "[REGEN] New approval %s created from rejected %s (feedback: %d chars)",
+        new_id, id, len(app_entry.feedback),
+    )
+    return {
+        "status": "success",
+        "message": f"Regenerated from feedback. New approval {new_id} is PENDING.",
+        "data": {"new_approval_id": new_id, "previous_approval_id": id},
+    }

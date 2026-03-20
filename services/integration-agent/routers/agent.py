@@ -7,8 +7,6 @@ Uses generate_with_retry (R13) for LLM calls with exponential backoff.
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
-
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -18,12 +16,9 @@ from auth import require_token
 from utils import _now_iso
 from config import settings
 from log_helpers import log_agent
-from output_guard import LLMOutputValidationError, sanitize_llm_output
-from prompt_builder import build_prompt
+from output_guard import LLMOutputValidationError, assess_quality
 from schemas import Approval, LogEntry
-from services.llm_service import generate_with_retry
-from services.rag_service import ContextAssembler, fetch_url_kb_context
-from services.retriever import ScoredChunk as _SC, hybrid_retriever
+from services.agent_service import generate_integration_doc
 
 router = APIRouter(prefix="/api/v1", tags=["agent"])
 
@@ -58,70 +53,31 @@ async def run_agentic_rag_flow() -> None:
             )
         log_agent(f"Processing entry: {entry.id} ({entry.name}) -- {len(reqs)} reqs.")
 
-        # 1. Multi-query hybrid retrieval (R8 + R9 + R12 + BM25 / Phase 2)
+        # 1–4. RAG retrieval + LLM generation (extracted to agent_service.py for reuse by regenerate endpoint)
         query_text = " ".join(r.description for r in reqs)
-        category   = entry.tags[0] if entry.tags else ""
-
-        log_agent(f"[RAG] Hybrid retrieval for {entry.id} (tags={entry.tags})...")
-        approved_chunks = await hybrid_retriever.retrieve(
-            query_text,
-            entry.tags,
-            state.collection,
-            source=source,
-            target=target,
-            category=category,
-            log_fn=log_agent,
-        )
-
-        kb_scored_chunks = await hybrid_retriever.retrieve(
-            query_text,
-            entry.tags,
-            state.kb_collection,
-            source=source,
-            target=target,
-            category=category,
-            log_fn=log_agent,
-        )
-
-        # 2. Fetch live URL KB entries (tag-filtered)
-        url_raw = await fetch_url_kb_context(
-            entry.tags, state.kb_docs, log_fn=log_agent
-        )
-        url_chunks = ([_SC(text=url_raw, score=0.5, source_label="kb_url")]
-                      if url_raw else [])
-
-        # 3. ContextAssembler: unified context with structured sections (R10)
-        assembler   = ContextAssembler()
-        rag_context = assembler.assemble(
-            approved_chunks,
-            kb_scored_chunks,
-            url_chunks,
-            max_chars=settings.ollama_rag_max_chars,
-        )
-        log_agent(f"[RAG] Assembled context: {len(rag_context)} chars")
-
-        # 4. Build prompt from meta-prompt template (G-09)
-        prompt = build_prompt(
-            source_system=source,
-            target_system=target,
-            formatted_requirements=query_text,
-            rag_context=rag_context,
-            kb_context="",  # now included in rag_context via ContextAssembler
-        )
-        log_agent(f"[LLM] Prompt ready for {entry.id} — {len(prompt)} chars. Calling {settings.ollama_model}...")
-
-        # 4. Call LLM with retry (R13), apply output guard (G-08)
         try:
-            raw = await generate_with_retry(prompt, log_fn=log_agent)
-            func_content = sanitize_llm_output(raw)
+            func_content = await generate_integration_doc(
+                entry=entry,
+                requirements=reqs,
+                reviewer_feedback="",
+                log_fn=log_agent,
+            )
             log_agent(
                 f"[LLM] Spec generated and sanitized for {entry.id} — "
                 f"{len(func_content)} chars."
             )
+            # R14: non-destructive quality assessment
+            quality = assess_quality(func_content)
+            if not quality.passed:
+                log_agent(
+                    f"[QUALITY] Low quality score {quality.quality_score:.2f} for {entry.id}"
+                    f" — {'; '.join(quality.issues)}"
+                )
+            else:
+                log_agent(f"[QUALITY] Quality OK — score {quality.quality_score:.2f} for {entry.id}")
         except LLMOutputValidationError as exc:
-            preview = (raw or "")[:120].replace("\n", " ")
+            preview = (raw if 'raw' in dir() else "")[:120].replace("\n", " ")
             log_agent(f"[GUARD] Output rejected for {entry.id}: {exc}")
-            log_agent(f"[GUARD] Raw preview: {preview!r}")
             func_content = "[LLM_OUTPUT_REJECTED: structural guard failed -- see agent logs]"
         except Exception as exc:
             exc_type = type(exc).__name__
