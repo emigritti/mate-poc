@@ -13,6 +13,8 @@ export default function ApprovalsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [rejected, setRejected] = useState([]);         // rejected approvals available for regeneration
+  const [regenerating, setRegenerating] = useState(null); // id currently being regenerated
 
   useEffect(() => { loadApprovals(); }, []);
 
@@ -75,11 +77,37 @@ export default function ApprovalsPage() {
       }
       setSuccessMsg('Document rejected — agent will retry with your feedback');
       setApprovals(prev => prev.filter(a => a.id !== selectedId));
+      setRejected(prev => [
+        ...prev,
+        { ...approvals.find(a => a.id === selectedId), feedback },
+      ]);
       setSelectedId(null);
     } catch (e) {
       setError(e.message || 'Rejection failed — please try again');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRegenerate = async (approvalId) => {
+    setRegenerating(approvalId);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await API.approvals.regenerate(approvalId);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || `Regeneration failed (${res.status})`);
+      }
+      const data = await res.json();
+      const newId = data.data?.new_approval_id;
+      setSuccessMsg(`Regenerated → new approval ${newId} is PENDING. Refreshing…`);
+      setRejected(prev => prev.filter(a => a.id !== approvalId));
+      await loadApprovals();
+    } catch (e) {
+      setError(e.message || 'Regeneration failed — please try again');
+    } finally {
+      setRegenerating(null);
     }
   };
 
@@ -148,6 +176,35 @@ export default function ApprovalsPage() {
             ))
           )}
         </div>
+
+        {/* Rejected — available for regeneration */}
+        {rejected.length > 0 && (
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-1">
+              Rejected ({rejected.length})
+            </p>
+            <div className="space-y-1.5">
+              {rejected.map(a => (
+                <div
+                  key={a.id}
+                  className="p-2.5 rounded-lg bg-rose-50 border border-rose-100"
+                >
+                  <p className="text-xs font-medium text-slate-700 truncate mb-1.5">
+                    {a.name || a.id}
+                  </p>
+                  <button
+                    onClick={() => handleRegenerate(a.id)}
+                    disabled={regenerating === a.id}
+                    className="w-full py-1 bg-rose-600 text-white rounded text-xs font-semibold
+                               hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                  >
+                    {regenerating === a.id ? 'Regenerating…' : 'Regenerate with Feedback'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right: review panel */}
