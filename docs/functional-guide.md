@@ -307,8 +307,10 @@ bleach is used in two modes:
 
 ### Ollama — LLM Inference
 
+LLM calls live in `services/llm_service.py` (extracted from `main.py` during Phase 1). The core function is `generate_with_ollama`, wrapped by `generate_with_retry` (R13):
+
 ```python
-# services/integration-agent/main.py
+# services/integration-agent/services/llm_service.py
 
 async def generate_with_ollama(prompt: str) -> str:
     async with httpx.AsyncClient() as client:
@@ -323,22 +325,61 @@ async def generate_with_ollama(prompt: str) -> str:
         )
         data = resp.json()
         return data["response"]
+
+async def generate_with_retry(prompt: str) -> str:
+    """R13 — 3 attempts, 5s then 15s backoff before raising."""
+    for attempt in range(3):
+        try:
+            return await generate_with_ollama(prompt)
+        except Exception:
+            if attempt == 2:
+                raise
+            await asyncio.sleep(5 if attempt == 0 else 15)
 ```
 
-The call is fully async. If Ollama returns a 404, the model is not pulled — run `docker exec mate-ollama ollama pull llama3.2:3b`. If it returns a timeout, increase `OLLAMA_TIMEOUT_SECONDS` (large models on CPU can take 5–7 minutes).
+The call is fully async. If Ollama returns a 404, the model is not pulled — run `docker exec mate-ollama ollama pull llama3.2:3b`. If it returns a timeout, increase `OLLAMA_TIMEOUT_SECONDS` (large models on CPU can take 5–7 minutes). Transient Ollama hiccups (network blip, model loading) are handled automatically by the retry wrapper without surfacing an error to the analyst.
 
 ### ChromaDB — RAG Retrieval and Storage
 
-```python
-# Retrieval (during agent flow)
-results = collection.query(
-    query_texts=[concatenated_requirement_descriptions],
-    n_results=2
-)
-past_examples = results["documents"][0]   # list of markdown strings
-rag_context = "\n---\n".join(past_examples)
+Phase 2 replaced the original single-query `collection.query(n_results=2)` call with a multi-stage hybrid pipeline implemented in `services/retriever.py` and `services/rag_service.py`.
 
-# Storage (after HITL approval)
+**Retrieval pipeline (per agent run):**
+
+```
+1. Multi-query expansion (R8)
+      Original query → 4 variants:
+        - 2 deterministic templates ("technical: ...", "business: ...")
+        - 2 LLM-generated rephrasings (technical + business focus)
+      LLM variants degrade gracefully if Ollama is unavailable.
+
+2. BM25 + Dense hybrid retrieval (ADR-027)
+      Each variant queries both:
+        - ChromaDB dense embeddings (cosine similarity)
+        - In-memory BM25Plus index (rank_bm25)
+      Results from both are merged with 0.6 / 0.4 (dense/BM25) weights.
+      BM25 index is rebuilt at startup and on every KB upload or delete.
+
+3. Relevance threshold filter (R9)
+      Scores below the threshold are dropped:
+        score = 1 / (1 + distance)   # converts ChromaDB distance to similarity
+        config key: rag_distance_threshold = 0.8
+
+4. TF-IDF re-rank (R9)
+      Surviving chunks are re-ranked by TF-IDF cosine similarity
+      (scikit-learn TfidfVectorizer) against the original query.
+      Top rag_top_k_chunks (default: 5) are kept.
+
+5. ContextAssembler (R10)
+      Fuses the ranked chunks from both collections into structured
+      prompt sections with a token budget:
+        ## PAST APPROVED EXAMPLES    ← from approved_integrations
+        ## BEST PRACTICE PATTERNS    ← from knowledge_base
+```
+
+Storage after HITL approval is unchanged:
+
+```python
+# After approval, the document is upserted into ChromaDB
 collection.upsert(
     documents=[approved_markdown],
     metadatas=[{"integration_id": entry_id, "type": "functional"}],
@@ -346,7 +387,7 @@ collection.upsert(
 )
 ```
 
-ChromaDB uses its default embedding model to vectorise the text. Future improvement: switch to `nomic-embed-text` via Ollama for domain-specific embeddings.
+ChromaDB uses its default embedding model to vectorise the text. The BM25 index complements dense search particularly well for short, keyword-rich requirement descriptions.
 
 ### MongoDB — Persistence with Write-Through Cache
 
@@ -430,6 +471,41 @@ A single MongoDB document (`_id: "current"`) persists any admin-configured LLM p
 
 When a full system reset is triggered, this document is deleted and `_llm_overrides` is cleared — restoring all LLM parameters to their design-time defaults.
 
+### 7.5 Backend Architecture (Phase 1 — R15, ADR-026)
+
+The original `main.py` (2065-line monolith) was decomposed into a 3-layer architecture to improve testability, maintainability, and domain isolation.
+
+**Layer 1 — Routers (`routers/`)**
+
+Eight `APIRouter` modules, one per domain. Each router owns only its HTTP surface — no cross-imports between routers.
+
+| Module | Responsibility |
+|--------|---------------|
+| `agent.py` | `/agent/trigger`, `/agent/logs`, `/agent/status` |
+| `requirements.py` | CSV upload, parse, finalize |
+| `projects.py` | Project CRUD, prefix uniqueness check |
+| `catalog.py` | Catalog listing and spec retrieval |
+| `approvals.py` | HITL approve / reject |
+| `documents.py` | Generated docs access |
+| `kb.py` | Knowledge base upload, URL registration, delete |
+| `admin.py` | Reset, LLM settings, project-docs browser |
+
+**Layer 2 — Services (`services/`)**
+
+Three independently unit-testable modules with no FastAPI dependency:
+
+| Module | Responsibility |
+|--------|---------------|
+| `llm_service.py` | `generate_with_ollama` + `generate_with_retry` (R13) |
+| `rag_service.py` | ChromaDB queries, `ContextAssembler`, KB retrieval |
+| `tag_service.py` | LLM-based tag extraction and suggestion |
+
+**Layer 3 — Shared State (`state.py`)**
+
+Centralised in-memory globals (`catalog`, `approvals`, `parsed_requirements`, `_agent_lock`, `_llm_overrides`, etc.). All routers and services import from `state` directly — no singleton pattern, no dependency injection container. Simple and explicit for a PoC.
+
+Cross-cutting utilities (`auth.py`, `utils.py`, `log_helpers.py`) are imported where needed without layer restrictions.
+
 ---
 
 ## 8. The Document Template System
@@ -510,6 +586,39 @@ Nth run (N approved examples):
 
 **Why ChromaDB upsert (not insert)?**
 If the same integration is re-generated (e.g., after a reject + re-run), the upsert ensures only the latest approved version exists in the vector store, preventing duplicates that would degrade retrieval quality.
+
+### 9.1 RAG Quality Pipeline (Phase 2 — R8–R12, ADR-027..030)
+
+Phase 2 replaced the single-query retrieval call with a multi-stage pipeline that improves recall and precision at every step.
+
+**Multi-query expansion (R8)**
+Instead of one query string, `services/retriever.py` generates 4 variants: two deterministic rephrases (technical focus, business focus) plus two LLM-generated rephrasings. Running all variants against ChromaDB and BM25 widens recall — surface-form variations of the same concept are more likely to match relevant chunks.
+
+**BM25 + dense hybrid retrieval (ADR-027)**
+A `BM25Plus` index (`rank_bm25`) runs in memory alongside ChromaDB's dense embeddings. Results from both are merged with a 0.6 / 0.4 (dense/BM25) ensemble weight. BM25 is particularly effective for short, keyword-rich requirement descriptions where exact-term matches matter more than semantic proximity.
+
+**Relevance threshold + TF-IDF re-rank (R9)**
+Chunks below the distance threshold (`rag_distance_threshold = 0.8`, using `score = 1 / (1 + distance)`) are discarded before ranking. The survivors are re-ranked by TF-IDF cosine similarity (scikit-learn) against the original query, and only the top `rag_top_k_chunks` (default 5) are passed forward. This combination raises precision without sacrificing recall.
+
+**ContextAssembler (R10)**
+`services/rag_service.py` fuses the ranked chunks from both ChromaDB collections into a structured prompt contribution with a token budget. The output is two labelled sections injected into the LLM prompt: `## PAST APPROVED EXAMPLES` (from `approved_integrations`) and `## BEST PRACTICE PATTERNS` (from `knowledge_base`). Token budgeting prevents prompt truncation on large knowledge bases.
+
+**Semantic chunking for uploads (R11)**
+When a new document is uploaded to the KB, `document_parser.py::semantic_chunk()` uses LangChain's `RecursiveCharacterTextSplitter` with separator priority `["\n## ", "\n### ", "\n\n", "\n", ". ", " "]`. This keeps semantically coherent blocks (sections, paragraphs) together rather than splitting at fixed byte offsets, producing higher-quality embeddings.
+
+**Multi-dimensional tag filter (R12)**
+ChromaDB metadata filters now use `$or` across all confirmed tags for the integration (not just the first tag). A document tagged `[salsify, pim, product-master]` will be retrieved for any of those three tags — significantly improving recall for multi-tag integrations.
+
+New configuration keys added in `config.py`:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `rag_distance_threshold` | `0.8` | Minimum similarity score to keep a chunk |
+| `rag_bm25_weight` | `0.4` | BM25 share in dense/BM25 ensemble |
+| `rag_n_results_per_query` | `3` | ChromaDB results per query variant |
+| `rag_top_k_chunks` | `5` | Final chunks passed to ContextAssembler |
+
+New dependencies: `langchain-text-splitters==0.3.8`, `rank-bm25==0.2.2`, `scikit-learn==1.6.1`.
 
 ---
 
@@ -628,7 +737,7 @@ cd services/integration-agent
 python -m pytest tests/ -v
 ```
 
-All 195 tests must pass before any commit (per CLAUDE.md Definition of Done).
+All 247 tests must pass before any commit (per CLAUDE.md Definition of Done).
 
 ---
 

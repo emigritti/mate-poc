@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 2.3.0 |
-| **Date** | 2026-03-19 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16) |
+| **Version** | 3.0.0 |
+| **Date** | 2026-03-20 |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -20,8 +20,10 @@
 3. [C4 Model — Level 1: System Context](#3-c4-model--level-1-system-context)
 4. [C4 Model — Level 2: Container Diagram](#4-c4-model--level-2-container-diagram)
 5. [C4 Model — Level 2 (zoom): Integration Agent Components](#5-c4-model--level-2-zoom-integration-agent-components)
+   - [5.1 Backend Module Structure (Phase 1 — ADR-026)](#51-backend-module-structure-phase-1--adr-026)
 6. [Component Specification](#6-component-specification)
 7. [Agentic RAG & Integration Framework](#7-agentic-rag--integration-framework)
+   - [7.7 RAG Retriever Pipeline (Phase 2 — ADR-027..030)](#77-rag-retriever-pipeline-phase-2--adr-027030)
 8. [Integration Patterns](#8-integration-patterns)
 9. [Data Architecture](#9-data-architecture)
 10. [API Surface](#10-api-surface)
@@ -210,63 +212,103 @@ The Integration Agent is the core service. Its internal components are:
 graph TB
     subgraph agent_container["Integration Agent Container (mate-integration-agent)"]
 
-        subgraph api["API Layer (FastAPI)"]
-            ep_req["Requirements Endpoints<br/><i>/upload · /requirements</i>"]
-            ep_agent["Agent Control Endpoints<br/><i>/trigger · /cancel · /logs</i>"]
-            ep_catalog["Catalog Endpoints<br/><i>/catalog · /functional-spec</i>"]
-            ep_hitl["HITL Endpoints<br/><i>/approvals · /approve · /reject</i>"]
-            ep_admin["Admin Endpoints<br/><i>/reset/requirements · /mongodb · /chromadb · /all</i>"]
+        subgraph api_layer["API Layer — 8 Domain Routers (routers/)"]
+            r_agent["agent.py<br/><i>/agent/trigger · /cancel · /logs</i>"]
+            r_req["requirements.py<br/><i>/requirements/upload · /finalize</i>"]
+            r_proj["projects.py<br/><i>/projects CRUD</i>"]
+            r_cat["catalog.py<br/><i>/catalog/integrations · /suggest-tags · /confirm-tags</i>"]
+            r_appr["approvals.py<br/><i>/approvals/pending · /approve · /reject</i>"]
+            r_docs["documents.py<br/><i>/documents · /promote-to-kb</i>"]
+            r_kb["kb.py<br/><i>/kb/upload · /add-url · /search · /stats</i>"]
+            r_admin["admin.py<br/><i>/admin/reset · /llm-settings · /docs</i>"]
         end
 
-        subgraph core_components["Core Components"]
-            csv_parser["CSV Parser<br/><i>Validates MIME · size · UTF-8<br/>Groups by source→target pair</i>"]
-            rag_query["RAG Query Engine<br/><i>Queries ChromaDB<br/>n_results=2 similar examples</i>"]
-            prompt_builder["Prompt Builder<br/><i>Loads reusable-meta-prompt.md<br/>Injects functional template<br/>Safe str.replace() substitution</i>"]
-            llm_client["LLM Client<br/><i>httpx.AsyncClient → Ollama<br/>Timeout: 600s · Async stream=false</i>"]
-            output_guard["Output Guard<br/><i>Structural check (heading)<br/>bleach allowlist · Truncate 50k</i>"]
-            hitl_manager["HITL Manager<br/><i>Status machine: PENDING→APPROVED/REJECTED<br/>sanitize_human_content()</i>"]
-            catalog_mgr["Catalog Manager<br/><i>Groups reqs by source|||target<br/>Write-through to MongoDB</i>"]
+        subgraph svc_layer["Services Layer (services/)"]
+            llm_svc["llm_service.py<br/><i>Ollama client · generate_with_retry()<br/>3 attempts · 5s/15s backoff (R13)</i>"]
+            rag_svc["rag_service.py<br/><i>ChromaDB queries · ContextAssembler (R10)<br/>## PAST APPROVED EXAMPLES + ## BEST PRACTICE PATTERNS</i>"]
+            tag_svc["tag_service.py<br/><i>Tag extraction · LLM suggestion<br/>(ADR-019, ADR-020)</i>"]
+            retriever["retriever.py<br/><i>HybridRetriever: BM25+dense ensemble<br/>Multi-query · threshold · TF-IDF re-rank (Phase 2)</i>"]
         end
 
-        subgraph infra_components["Infrastructure Components"]
-            config["Config (Pydantic Settings)<br/><i>Env vars: OLLAMA_HOST, MONGO_URI<br/>CHROMA_HOST, API_KEY, CORS</i>"]
-            db["DB Layer (Motor async)<br/><i>catalog_col · approvals_col<br/>documents_col · write-through cache</i>"]
-            lock["Concurrency Guard<br/><i>asyncio.Lock — prevents<br/>concurrent LLM calls</i>"]
-            logger["Agent Logger<br/><i>In-memory ring buffer<br/>Last 50 lines · real-time poll</i>"]
+        subgraph state_layer["State Layer"]
+            state["state.py<br/><i>Centralized in-memory globals:<br/>catalog · approvals · documents<br/>projects · kb_docs · kb_chunks<br/>agent_logs · _agent_lock</i>"]
+        end
+
+        subgraph cross_cut["Cross-Cutting Utilities"]
+            auth["auth.py<br/><i>API key dependency<br/>hmac.compare_digest()</i>"]
+            config["config.py<br/><i>pydantic-settings<br/>OLLAMA_HOST, MONGO_URI, CHROMA_HOST<br/>RAG thresholds, BM25 weights</i>"]
+            utils["utils.py + log_helpers.py<br/><i>Shared helpers · ring buffer logger</i>"]
+            doc_parser["document_parser.py<br/><i>PDF/DOCX/XLSX/PPTX/MD parsing<br/>semantic_chunk() — R11</i>"]
         end
 
     end
 
-    ep_agent --> csv_parser
-    ep_agent --> lock
-    lock --> rag_query
-    rag_query --> prompt_builder
-    prompt_builder --> llm_client
-    llm_client --> output_guard
-    output_guard --> hitl_manager
-    hitl_manager --> db
-    hitl_manager --> ep_hitl
-    ep_req --> csv_parser
-    ep_catalog --> catalog_mgr
-    catalog_mgr --> db
-    db --> config
+    r_agent --> llm_svc
+    r_agent --> rag_svc
+    rag_svc --> retriever
+    r_cat --> tag_svc
+    r_kb --> doc_parser
+    llm_svc & rag_svc & tag_svc --> state
+    r_agent & r_req & r_proj & r_cat & r_appr & r_docs & r_kb & r_admin --> auth
+    state --> config
 ```
 
 ### Component Responsibilities
 
 | Component | File | Key Behaviour |
 |-----------|------|---------------|
-| **CSV Parser** | `main.py` | MIME/size/encoding guards; groups rows by `source|||target` key |
-| **RAG Query Engine** | `main.py` | `collection.query(n_results=2)` against `approved_integrations` collection |
-| **Prompt Builder** | `prompt_builder.py` | Loads meta-prompt + functional template from mounted volumes; `str.replace()` injection |
-| **LLM Client** | `main.py` | `httpx.AsyncClient.post()` to Ollama `/api/generate`; logs token metrics |
+| **Agent Router** | `routers/agent.py` | Trigger/cancel/logs; asyncio.Lock concurrency guard |
+| **Requirements Router** | `routers/requirements.py` | CSV upload: MIME/size/encoding guards; groups rows by `source|||target` key; finalize creates catalog entries |
+| **Projects Router** | `routers/projects.py` | Project CRUD; idempotent POST; prefix uniqueness check |
+| **Catalog Router** | `routers/catalog.py` | Integration listing with project metadata; tag suggest/confirm (ADR-019) |
+| **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback |
+| **Documents Router** | `routers/documents.py` | Final doc listing; promote-to-kb (ADR-023) |
+| **KB Router** | `routers/kb.py` | File upload + URL registration (ADR-024); tag management; semantic search; stats |
+| **Admin Router** | `routers/admin.py` | Reset tools; LLM settings CRUD (persist to MongoDB); project docs browser |
+| **LLM Service** | `services/llm_service.py` | `generate_with_retry()` — 3 attempts, 5s/15s exponential backoff (R13); Ollama `/api/generate` |
+| **RAG Service** | `services/rag_service.py` | ChromaDB approved_integrations + knowledge_base queries; `ContextAssembler` token-budgeted sections (R10) |
+| **Tag Service** | `services/tag_service.py` | Tag extraction from catalog entry; LLM suggestion with dedicated settings (ADR-020) |
+| **HybridRetriever** | `services/retriever.py` | Multi-query expansion + BM25+dense ensemble + threshold filter + TF-IDF re-rank (Phase 2 / ADR-027..030) |
+| **Document Parser** | `document_parser.py` | PDF/DOCX/XLSX/PPTX/MD parsing; `semantic_chunk()` via LangChain RecursiveCharacterTextSplitter (R11) |
+| **State** | `state.py` | Centralized in-memory globals: all dicts, lock, logs, `kb_chunks` BM25 corpus |
+| **Auth** | `auth.py` | `get_api_key()` FastAPI dependency; `hmac.compare_digest()` constant-time check |
+| **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent; RAG thresholds + BM25 weights |
 | **Output Guard** | `output_guard.py` | Checks `# Integration Functional Design` heading; bleach strip; 50k truncation |
-| **HITL Manager** | `main.py` | Status state machine (`PENDING → APPROVED/REJECTED`); sanitizes reviewer edits |
-| **Catalog Manager** | `main.py` | Write-through: in-memory dict + MongoDB upsert on every mutation |
-| **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent |
-| **DB Layer** | `db.py` | `motor.AsyncIOMotorClient`; init with retry (10×3s); seeds in-memory on startup |
-| **Concurrency Guard** | `main.py` | `asyncio.Lock` — one LLM flow at a time; task cancellable via `/agent/cancel` |
-| **Agent Logger** | `main.py` | Module-level `list[str]`; last 50 entries; polled by dashboard every 2s |
+
+### 5.1 Backend Module Structure (Phase 1 — ADR-026)
+
+Phase 1 (R15) decomposed the original 2065-line `main.py` monolith into a layered module structure. `main.py` is now ~213 lines (app factory, lifespan, router registration only). All business logic is distributed across the directories below.
+
+```
+services/integration-agent/
+├── main.py              (~213 lines — app factory + lifespan + router registration)
+├── state.py             — centralized in-memory globals (catalog, approvals, documents,
+│                          projects, kb_docs, kb_chunks, agent_logs, _agent_lock)
+├── auth.py              — API key auth dependency (hmac.compare_digest)
+├── config.py            — pydantic-settings (env vars + RAG/BM25 parameters)
+├── output_guard.py      — structural guard + bleach sanitization
+├── prompt_builder.py    — meta-prompt + template loading; str.replace() injection
+├── document_parser.py   — PDF/DOCX/XLSX/PPTX/MD parsing + semantic_chunk() (R11)
+├── routers/             — 8 domain APIRouter modules (no cross-imports between routers)
+│   ├── agent.py         — agentic RAG flow (trigger, cancel, logs)
+│   ├── requirements.py  — CSV upload + finalize
+│   ├── projects.py      — project CRUD
+│   ├── catalog.py       — integration catalog queries + tag suggest/confirm
+│   ├── approvals.py     — HITL approve/reject
+│   ├── documents.py     — final docs + KB promotion
+│   ├── kb.py            — Knowledge Base management (files + URLs)
+│   └── admin.py         — reset tools, LLM settings, project docs browser
+└── services/
+    ├── llm_service.py   — Ollama client + generate_with_retry() exponential-backoff (R13)
+    ├── rag_service.py   — ChromaDB queries + ContextAssembler token-budgeted context (R10)
+    ├── tag_service.py   — tag extraction + LLM suggestion (ADR-019, ADR-020)
+    └── retriever.py     — HybridRetriever: BM25+dense ensemble + TF-IDF re-rank (Phase 2)
+```
+
+**Design constraints (ADR-026):**
+- Routers import from `services/` and `state.py` — never from each other.
+- `state.py` holds no business logic — pure data container.
+- `main.py` contains no business logic — only app wiring.
 
 ---
 
@@ -738,7 +780,7 @@ sequenceDiagram
 | 1. Upload | Analyst | POST CSV file | MIME check, 1 MB limit, UTF-8 guard |
 | 2. Trigger | Analyst | POST /agent/trigger | `asyncio.Lock` prevents concurrent runs |
 | 3. Group | Agent | Cluster reqs by source+target | `|||` separator (not hyphen — avoids system name collision) |
-| 4. RAG Query | Agent | Semantic search ChromaDB | n_results=2; falls back to zero-shot if no match |
+| 4. RAG Query | Agent | HybridRetriever — multi-query expansion (4 variants: 2 templates + 2 LLM) + BM25+dense ensemble (weights 0.6/0.4) + threshold filter + TF-IDF cosine re-rank + ContextAssembler (R8–R10) | Falls back to zero-shot if no chunks pass `rag_distance_threshold`; LLM query expansion has fallback to template variants |
 | 5. Build Prompt | Agent | Inject meta-prompt + template + RAG | `str.replace()` — no `format()` (prevents KeyError) |
 | 6. LLM Call | Agent | POST to Ollama | 600s timeout; async; error caught → log + skip |
 | 7. Output Guard | Agent | Structural + XSS check | Must start with `# Integration Functional Design` |
@@ -895,6 +937,79 @@ guardrails:
       action: LOG_WARNING
 ```
 
+### 7.7 RAG Retriever Pipeline (Phase 2 — ADR-027..030)
+
+Phase 2 (R8–R12) replaced the single `collection.query(n_results=2)` call with a multi-stage `HybridRetriever` pipeline implemented in `services/retriever.py`. The pipeline is invoked by `rag_service.py` during every agentic RAG flow.
+
+#### Pipeline Flow
+
+```mermaid
+graph LR
+    INPUT["Integration requirements\n+ source/target context"]
+
+    subgraph expand["R8 — Query Expansion"]
+        QE["expand_queries()\n4 variants:\n· 2 template queries\n· 2 LLM-generated queries\n(fallback to templates on LLM error)"]
+    end
+
+    subgraph retrieve["Dual Retrieval"]
+        CHROMA["ChromaDB dense search\nper query variant\n(multi-dimensional $or tag filter — R12)"]
+        BM25["BM25Plus sparse search\nagainst kb_chunks corpus\n(loaded at startup, rebuilt on KB change)"]
+    end
+
+    subgraph merge["Ensemble Merge"]
+        ENS["Score fusion\ndense weight: 0.6\nBM25 weight: 0.4"]
+    end
+
+    subgraph filter["R9 — Quality Filter"]
+        THR["Threshold filter\nscore = 1/(1+distance)\nkeeps score ≥ 1/(1+rag_distance_threshold)\ndefault threshold: 0.8"]
+        RERANK["TF-IDF cosine re-rank\n(scikit-learn TfidfVectorizer)\nagainst original query"]
+        TOPK["top-K selection\ndefault rag_top_k_chunks=5"]
+    end
+
+    subgraph assemble["R10 — Context Assembly"]
+        CA["ContextAssembler\n## PAST APPROVED EXAMPLES\n## BEST PRACTICE PATTERNS\ntoken budget enforcement"]
+    end
+
+    OUTPUT["Structured RAG context\ninjected into prompt"]
+
+    INPUT --> QE
+    QE --> CHROMA & BM25
+    CHROMA & BM25 --> ENS
+    ENS --> THR --> RERANK --> TOPK --> CA --> OUTPUT
+```
+
+#### Stage Descriptions
+
+| Stage | Implementation | Key Parameters |
+|-------|---------------|----------------|
+| **Query Expansion (R8)** | `expand_queries()` in `retriever.py` — 2 template variants + 2 LLM-generated queries via `llm_service.py`; LLM failure falls back silently to templates | 4 query variants per call |
+| **ChromaDB Dense Search** | `collection.query()` per variant against `approved_integrations` + `knowledge_base` collections; `$or` multi-tag filter (R12) | `rag_n_results_per_query=3` per variant |
+| **BM25 Sparse Search** | `BM25Plus` (rank-bm25) against `kb_chunks` corpus in `state.py`; corpus rebuilt on every KB upload/delete | Corpus seeded from ChromaDB at container startup |
+| **Ensemble Merge** | Reciprocal rank fusion of dense + sparse scores | Dense 0.6 / BM25 0.4 (`rag_bm25_weight`) |
+| **Threshold Filter (R9)** | `score = 1 / (1 + chroma_distance)` — drops chunks below minimum quality | `rag_distance_threshold=0.8` |
+| **TF-IDF Re-rank** | scikit-learn `TfidfVectorizer` cosine similarity against the original (non-expanded) query | Applied after threshold filter |
+| **Top-K Selection** | Returns best-K chunks to ContextAssembler | `rag_top_k_chunks=5` |
+| **ContextAssembler (R10)** | Structures chunks into `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` sections with token budget cap | Configured via `rag_context_size` (LLM settings) |
+
+#### New Config Parameters (Phase 2)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `rag_distance_threshold` | `0.8` | ChromaDB L2 distance ceiling (converted to score internally) |
+| `rag_bm25_weight` | `0.4` | BM25 share in ensemble (dense share = 1 − bm25_weight) |
+| `rag_n_results_per_query` | `3` | ChromaDB results per expanded query variant |
+| `rag_top_k_chunks` | `5` | Maximum chunks passed to ContextAssembler |
+
+#### New Dependencies (Phase 2)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `langchain-text-splitters` | 0.3.8 | `RecursiveCharacterTextSplitter` for `semantic_chunk()` (R11) |
+| `rank-bm25` | 0.2.2 | `BM25Plus` sparse retriever |
+| `scikit-learn` | 1.6.1 | `TfidfVectorizer` for cosine re-ranking |
+
+**ADR references:** ADR-027 (multi-query expansion), ADR-028 (BM25+dense hybrid), ADR-029 (threshold filter + re-rank), ADR-030 (ContextAssembler structured sections).
+
 ---
 
 ## 8. Integration Patterns
@@ -1019,7 +1134,9 @@ mongodb://mate-mongodb:27017/integration_mate
   │                           content_preview, uploaded_at,
   │                           source_type: "file"|"url",   ← ADR-024
   │                           url: string|null }           ← populated for source_type="url"
-  └── llm_settings          { _id: "current", overrides for temperature/max_tokens/timeout/rag_context_size }
+  └── llm_settings          { _id: "current", overrides for temperature/max_tokens/timeout/rag_context_size,
+                              rag_distance_threshold, rag_bm25_weight,
+                              rag_n_results_per_query, rag_top_k_chunks }  ← Phase 2 RAG params (ADR-027..030)
 ```
 
 **Indexing strategy:**
@@ -1051,6 +1168,7 @@ Used exclusively for **RAG retrieval**: when a new integration requires document
 | `documents` | `dict[str, Document]` | Approved final docs | Yes (MongoDB + ChromaDB) |
 | `approvals` | `dict[str, Approval]` | HITL queue items | Yes (MongoDB) |
 | `kb_docs` | `dict[str, KBDocument]` | Knowledge Base entries | Yes (MongoDB) |
+| `kb_chunks` | `dict[str, list[str]]` | BM25 corpus: doc_id → list of text chunks (Phase 2) | No (rebuilt from ChromaDB at startup + on KB change) |
 | `agent_logs` | `list[str]` | Real-time execution log | No (last 50 entries) |
 | `_agent_lock` | `asyncio.Lock` | Concurrency guard | No |
 | `_running_tasks` | `dict[str, asyncio.Task]` | Cancellable tasks | No |
@@ -1676,6 +1794,11 @@ gantt
 | ADR-023 | Document Lifecycle: Staged Promotion | Accepted | Decouples HITL approval from ChromaDB RAG promotion; explicit `promote-to-kb` action |
 | ADR-024 | KB URL Links: Live Fetch | Accepted | HTTP/HTTPS URL entries in KB fetched live at generation time; SSRF guard on private IP ranges |
 | ADR-025 | Project Metadata & Upload Modal | Accepted | `projects` MongoDB collection; upload split into parse-only + finalize; `{prefix}-{hex}` catalog IDs; Project Modal with debounce uniqueness check; Catalog filter bar |
+| ADR-026 | Backend Decomposition (R15) | Accepted | 2065-line `main.py` monolith → layered architecture: `routers/` (8 modules), `services/` (4 modules), `state.py`, `auth.py`, `utils.py`, `log_helpers.py`; `main.py` reduced to ~213 lines |
+| ADR-027 | Multi-Query Expansion for RAG (R8) | Accepted | 4 query variants (2 templates + 2 LLM-generated) per retrieval call; LLM failure falls back to templates |
+| ADR-028 | BM25+Dense Hybrid Retrieval (R8/R12) | Accepted | BM25Plus sparse + ChromaDB dense ensemble (0.6/0.4); `kb_chunks` corpus in `state.py`; multi-dimensional `$or` tag filter |
+| ADR-029 | Retrieval Threshold Filter & TF-IDF Re-rank (R9) | Accepted | Score threshold `1/(1+distance)` drops low-quality chunks; TF-IDF cosine re-rank (scikit-learn) before top-K selection |
+| ADR-030 | ContextAssembler Structured Sections (R10) | Accepted | RAG context split into `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` with token budget enforcement |
 
 ---
 
@@ -1687,7 +1810,7 @@ gantt
 | Security middleware | Passthrough in PoC | Full JWT/RBAC integration |
 | OpenAPI spec reading | Mock Swaggers only | Live spec ingestion for data mapping |
 | Model quality | llama3.2:3b (fast, PoC) | Configurable via `OLLAMA_MODEL` env var |
-| RAG grading | Basic similarity (n=2) | Re-ranking and relevance scoring |
+| RAG grading | HybridRetriever: multi-query + BM25+dense ensemble + TF-IDF re-rank (Phase 2) | Per-session relevance feedback; learned re-ranking |
 | Embedding model | Default ChromaDB embeddings | Switch to `nomic-embed-text` for richer semantics |
 | Audit logging | In-memory ring buffer | PostgreSQL with 7-year retention |
 | Thought chain UI | Basic log terminal | Interactive timeline visualization |
