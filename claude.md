@@ -240,3 +240,5 @@ A task is DONE only if:
 - Code review checklist passed
 - Security review completed (OWASP aligned)
 - No restricted data used
+- Update architecture_specification.md document
+- Update functional-guide.md document
