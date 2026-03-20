@@ -261,7 +261,7 @@ graph TB
 | **Requirements Router** | `routers/requirements.py` | CSV upload: MIME/size/encoding guards; groups rows by `source|||target` key; finalize creates catalog entries |
 | **Projects Router** | `routers/projects.py` | Project CRUD; idempotent POST; prefix uniqueness check |
 | **Catalog Router** | `routers/catalog.py` | Integration listing with project metadata; tag suggest/confirm (ADR-019) |
-| **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback |
+| **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback; regenerate REJECTED doc with feedback injected (ADR-032) |
 | **Documents Router** | `routers/documents.py` | Final doc listing; promote-to-kb (ADR-023) |
 | **KB Router** | `routers/kb.py` | File upload + URL registration (ADR-024); tag management; semantic search; stats |
 | **Admin Router** | `routers/admin.py` | Reset tools; LLM settings CRUD (persist to MongoDB); project docs browser |
@@ -273,7 +273,8 @@ graph TB
 | **State** | `state.py` | Centralized in-memory globals: all dicts, lock, logs, `kb_chunks` BM25 corpus |
 | **Auth** | `auth.py` | `get_api_key()` FastAPI dependency; `hmac.compare_digest()` constant-time check |
 | **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent; RAG thresholds + BM25 weights |
-| **Output Guard** | `output_guard.py` | Checks `# Integration Functional Design` heading; bleach strip; 50k truncation |
+| **Output Guard** | `output_guard.py` | Checks `# Integration Functional Design` heading; bleach strip; 50k truncation; `assess_quality()` → `QualityReport` warning-only gate (ADR-031) |
+| **Agent Service** | `services/agent_service.py` | `generate_integration_doc()` — full RAG+LLM pipeline; shared by agent flow and regenerate endpoint (ADR-032) |
 
 ### 5.1 Backend Module Structure (Phase 1 — ADR-026)
 
@@ -294,15 +295,16 @@ services/integration-agent/
 │   ├── requirements.py  — CSV upload + finalize
 │   ├── projects.py      — project CRUD
 │   ├── catalog.py       — integration catalog queries + tag suggest/confirm
-│   ├── approvals.py     — HITL approve/reject
+│   ├── approvals.py     — HITL approve/reject/regenerate (ADR-032)
 │   ├── documents.py     — final docs + KB promotion
 │   ├── kb.py            — Knowledge Base management (files + URLs)
 │   └── admin.py         — reset tools, LLM settings, project docs browser
 └── services/
-    ├── llm_service.py   — Ollama client + generate_with_retry() exponential-backoff (R13)
-    ├── rag_service.py   — ChromaDB queries + ContextAssembler token-budgeted context (R10)
-    ├── tag_service.py   — tag extraction + LLM suggestion (ADR-019, ADR-020)
-    └── retriever.py     — HybridRetriever: BM25+dense ensemble + TF-IDF re-rank (Phase 2)
+    ├── llm_service.py       — Ollama client + generate_with_retry() exponential-backoff (R13)
+    ├── rag_service.py       — ChromaDB queries + ContextAssembler token-budgeted context (R10)
+    ├── tag_service.py       — tag extraction + LLM suggestion (ADR-019, ADR-020)
+    ├── retriever.py         — HybridRetriever: BM25+dense ensemble + TF-IDF re-rank (Phase 2)
+    └── agent_service.py     — generate_integration_doc(): shared generation pipeline (Phase 3 / ADR-032)
 ```
 
 **Design constraints (ADR-026):**
@@ -1227,6 +1229,7 @@ All endpoints are served by `mate-integration-agent` on port `3003` (internal). 
 | `/api/v1/approvals/pending` | GET | — | List PENDING approvals |
 | `/api/v1/approvals/{id}/approve` | POST | Token | Approve + persist + feed RAG |
 | `/api/v1/approvals/{id}/reject` | POST | Token | Reject with feedback |
+| `/api/v1/approvals/{id}/regenerate` | POST | Token | Regenerate REJECTED doc with reviewer feedback injected into prompt (ADR-032) |
 | `/api/v1/admin/reset/requirements` | DELETE | Token | Clear parsed reqs + logs |
 | `/api/v1/admin/reset/mongodb` | DELETE | Token | Wipe all MongoDB collections |
 | `/api/v1/admin/reset/chromadb` | DELETE | Token | Wipe ChromaDB RAG collection |

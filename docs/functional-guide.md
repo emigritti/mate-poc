@@ -113,7 +113,7 @@ The analyst clicks **"Start Agent Processing"** on the Agent Workspace page. Thi
 - Acquires an `asyncio.Lock` to prevent concurrent runs.
 - Starts `run_agentic_rag_flow()` as a background async task.
 
-The dashboard begins polling `/api/v1/agent/logs` every 2 seconds to display real-time progress in the terminal panel.
+The dashboard polls `/api/v1/agent/logs` via TanStack Query (ADR-033) with adaptive interval: every 3 seconds while the agent is running, slowing to 15 seconds when idle.
 
 ### Step 3 — The Agentic RAG Flow
 
@@ -151,7 +151,7 @@ The result is a `QualityReport` logged as `[QUALITY] score X.XX` in the agent lo
 The analyst navigates to **"HITL Approvals (RAG)"** and sees the generated document in a side-by-side editor. They can:
 - Read and edit the document directly in the Markdown textarea.
 - Click **"Approve & Save to RAG"** → document is persisted to MongoDB and fed into ChromaDB.
-- Click **"Reject (Retry)"** → provide feedback; the document is marked REJECTED (future: agent retry with feedback).
+- Click **"Reject (Retry)"** → provide feedback; the document is marked REJECTED. Use **"Regenerate with Feedback"** (see §5 below) to create a new generation attempt with the feedback injected into the prompt.
 
 ### Step 5 — Catalog & Document Access
 
