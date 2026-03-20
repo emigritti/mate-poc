@@ -18,7 +18,7 @@ from auth import require_token
 from utils import _now_iso
 from config import settings
 from log_helpers import log_agent
-from output_guard import LLMOutputValidationError, sanitize_llm_output
+from output_guard import LLMOutputValidationError, assess_quality, sanitize_llm_output
 from prompt_builder import build_prompt
 from schemas import Approval, LogEntry
 from services.llm_service import generate_with_retry
@@ -118,6 +118,15 @@ async def run_agentic_rag_flow() -> None:
                 f"[LLM] Spec generated and sanitized for {entry.id} — "
                 f"{len(func_content)} chars."
             )
+            # R14: non-destructive quality assessment — logs warning but does not block
+            quality = assess_quality(func_content)
+            if not quality.passed:
+                log_agent(
+                    f"[QUALITY] Low quality score {quality.quality_score:.2f} for {entry.id}"
+                    f" — {'; '.join(quality.issues)}"
+                )
+            else:
+                log_agent(f"[QUALITY] Quality OK — score {quality.quality_score:.2f} for {entry.id}")
         except LLMOutputValidationError as exc:
             preview = (raw or "")[:120].replace("\n", " ")
             log_agent(f"[GUARD] Output rejected for {entry.id}: {exc}")
