@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Play, Square, Terminal, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { API } from '../../api.js';
+import { useAgentLogs } from '../../hooks/useAgentLogs';
 
 const TIMEOUT_SECS = 120; // matches ollama_timeout_seconds default
 
@@ -52,49 +52,31 @@ function ProgressBar({ elapsed, progress }) {
 }
 
 export default function AgentWorkspacePage() {
-  const [running,  setRunning]  = useState(false);
-  const [logs,     setLogs]     = useState([]);
+  const { logs, isRunning, trigger, cancel, triggerError } = useAgentLogs();
+
   const [status,   setStatus]   = useState('idle'); // idle | running | done | error
   const [elapsed,  setElapsed]  = useState(0);
   const [progress, setProgress] = useState(0);
+  const [localError, setLocalError] = useState(null);
 
-  const offsetRef   = useRef(0);
-  const pollingRef  = useRef(null);
   const progressRef = useRef(null);
   const logEndRef   = useRef(null);
 
   // cleanup on unmount
   useEffect(() => () => {
-    clearInterval(pollingRef.current);
     clearInterval(progressRef.current);
   }, []);
 
-  // Restore log state when navigating back to this page while agent is running
-  // or after it has already completed (logs survive navigation).
+  // Sync status and progress bar with isRunning from hook
   useEffect(() => {
-    const restore = async () => {
-      try {
-        const res  = await API.agent.logs(0);
-        const data = await res.json();
-        if (!data.logs?.length) return; // never ran — keep fresh state
-        setLogs(data.logs);
-        offsetRef.current = data.next_offset ?? data.logs.length;
-        if (!data.finished) {
-          // agent still running — resume polling and progress bar
-          setRunning(true);
-          setStatus('running');
-          startPolling();
-          startProgress();
-        } else {
-          setStatus('done');
-          setProgress(100);
-        }
-      } catch {
-        // network error on restore — silently keep fresh state
-      }
-    };
-    restore();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (isRunning && status !== 'running') {
+      setStatus('running');
+      startProgress();
+    } else if (!isRunning && status === 'running') {
+      stopProgress(true);
+      setStatus('done');
+    }
+  }, [isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // auto-scroll log to bottom
   useEffect(() => {
@@ -102,7 +84,10 @@ export default function AgentWorkspacePage() {
   }, [logs]);
 
   const startProgress = useCallback(() => {
+    clearInterval(progressRef.current);
     let secs = 0;
+    setElapsed(0);
+    setProgress(0);
     progressRef.current = setInterval(() => {
       secs += 1;
       setElapsed(secs);
@@ -120,65 +105,28 @@ export default function AgentWorkspacePage() {
     }
   }, []);
 
-  const startPolling = useCallback(() => {
-    pollingRef.current = setInterval(async () => {
-      try {
-        const res  = await API.agent.logs(offsetRef.current);
-        const data = await res.json();
-        if (data.logs?.length > 0) {
-          setLogs(prev => [...prev, ...data.logs]);
-          offsetRef.current = data.next_offset ?? (offsetRef.current + data.logs.length);
-        }
-        if (data.finished) {
-          clearInterval(pollingRef.current);
-          stopProgress(true);
-          setRunning(false);
-          setStatus('done');
-        }
-      } catch {
-        // keep polling through transient network errors
-      }
-    }, 2000);
-  }, [stopProgress]);
-
-  const handleStart = async () => {
-    setLogs([]);
-    offsetRef.current = 0;
-    setElapsed(0);
-    setProgress(0);
+  const handleStart = () => {
+    setLocalError(null);
     setStatus('running');
-    setRunning(true);
-    try {
-      const res = await API.agent.trigger();
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setLogs([{
-          level: 'ERROR',
-          message: d.detail || 'Failed to start agent',
-          timestamp: new Date().toISOString(),
-        }]);
+    trigger(undefined, {
+      onError: (e) => {
+        setLocalError(e.message || 'Failed to start agent');
         setStatus('error');
-        setRunning(false);
         stopProgress(false);
-        return;
-      }
-      startPolling();
-      startProgress();
-    } catch (e) {
-      setLogs([{ level: 'ERROR', message: e.message, timestamp: new Date().toISOString() }]);
-      setStatus('error');
-      setRunning(false);
-      stopProgress(false);
-    }
+      },
+    });
+    startProgress();
   };
 
-  const handleStop = async () => {
-    clearInterval(pollingRef.current);
+  const handleStop = () => {
     stopProgress(false);
-    await API.agent.cancel().catch(() => {});
-    setRunning(false);
     setStatus('idle');
+    cancel(undefined, {
+      onError: (e) => setLocalError(e.message || 'Cancel failed'),
+    });
   };
+
+  const displayError = localError || triggerError;
 
   const statusLabel = {
     idle:    'Ready to start agent processing',
@@ -200,6 +148,9 @@ export default function AgentWorkspacePage() {
               Agent Control
             </h2>
             <p className="text-sm text-slate-500 mt-0.5">{statusLabel}</p>
+            {displayError && (
+              <p className="text-xs text-rose-600 mt-1">{displayError}</p>
+            )}
           </div>
 
           <div className="flex items-center gap-3 flex-shrink-0">
@@ -214,7 +165,7 @@ export default function AgentWorkspacePage() {
               </span>
             )}
 
-            {running ? (
+            {isRunning ? (
               <button
                 onClick={handleStop}
                 className="flex items-center gap-2 px-6 py-3 bg-rose-600 text-white rounded-xl text-sm font-semibold hover:bg-rose-700 transition-colors"
@@ -234,7 +185,7 @@ export default function AgentWorkspacePage() {
           </div>
         </div>
 
-        {running && <ProgressBar elapsed={elapsed} progress={progress} />}
+        {isRunning && <ProgressBar elapsed={elapsed} progress={progress} />}
       </div>
 
       {/* Terminal */}
@@ -258,7 +209,7 @@ export default function AgentWorkspacePage() {
         <div className="p-4 h-[600px] overflow-y-auto terminal-scroll">
           {logs.length === 0 ? (
             <p className="text-slate-600 text-xs font-mono">
-              {running
+              {isRunning
                 ? '▶  Waiting for first log entry…'
                 : '$ Start the agent to see live logs here'}
             </p>
