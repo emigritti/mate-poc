@@ -1,11 +1,11 @@
 ReqID,Source,Target,Category,Description
-REQ-101,ERP,PLM,Product Collection,Sync daily created articles from ERP to PLM, initializing basic technical attributes (SKU, Name, Factory Cost).
-REQ-102,PLM,PIM,Enrichment INIT,When a product is marked 'Ready for Enrichment' in PLM, create a shell product in PIM with tech specs locked.
-REQ-103,DAM,PIM,Image Collection,Automatically link high-res images uploaded to DAM with the corresponding PIM SKU based on filename regex.
-REQ-104,PIM,PIM,Enrichment Workflow (Marketing),Allow Marketing team (Role: MarketingEditor) to edit commercial descriptions, SEO tags, and translate into FR, ES, DE.
-REQ-105,PIM,PIM,Enrichment Workflow (Legal),Require Legal team (Role: LegalApprover) to sign off on material compositions before a product can be published.
-REQ-106,PIM,PIM,Assortment Management,Support dynamic categorization into 'Seasonal Collections' based on launch date and pricing tier rules.
-REQ-107,PIM,PIM,Publish Workflow,Implement Maker-Checker rule: Editor modifies data, Approver must review and 'Approve' to transition status to 'Published'.
-REQ-108,PIM,Google Shopping,Syndication,Export a daily XML feed of 'Published' products containing Google Product Category, GTIN, Image Link, and Price.
-REQ-109,PIM,Amazon Marketplace,Syndication,Push stock levels and commercial data in near real-time via Amazon SP-API for selected assortments.
-REQ-110,PIM,Magento B2B,Export,Nightly full sync of prices, tier prices (B2B), and product structures (Configurable/Simple) to Magento.
+REQ-101,ERP,Salsify,Product Collection,Sync daily created articles from ERP to PLM, initializing basic technical attributes (SKU, Name, Factory Cost).
+REQ-102,PLM,Salsify,Enrichment INIT,When a product is marked 'Ready for Enrichment' in Salsify, create a shell product in Salsify with tech specs locked.
+REQ-103,DAM,Salsify,Image Collection,Automatically link high-res images uploaded to DAM with the corresponding Salsify SKU based on filename regex.
+REQ-104,Salsify,Salsify,Enrichment Workflow (Marketing),Allow Marketing team (Role: MarketingEditor) to edit commercial descriptions, SEO tags, and translate into FR, ES, DE.
+REQ-105,Salsify,Salsify,Enrichment Workflow (Legal),Require Legal team (Role: LegalApprover) to sign off on material compositions before a product can be published.
+REQ-106,Salsify,Salsify,Assortment Management,Support dynamic categorization into 'Seasonal Collections' based on launch date and pricing tier rules.
+REQ-107,Salsify,Salsify,Publish Workflow,Implement Maker-Checker rule: Editor modifies data, Approver must review and 'Approve' to transition status to 'Published'.
+REQ-108,Salsify,Google Shopping,Syndication,Export a daily XML feed of 'Published' products containing Google Product Category, GTIN, Image Link, and Price.
+REQ-109,Salsify,Amazon Marketplace,Syndication,Push stock levels and commercial data in near real-time via Amazon SP-API for selected assortments.
+REQ-110,Salsify,Magento B2B,Export,Nightly full sync of prices, tier prices (B2B), and product structures (Configurable/Simple) to Magento.

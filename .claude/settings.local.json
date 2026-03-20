@@ -75,7 +75,44 @@
       "Bash(python -c \"print\\(list\\(b''\\\\n---\\\\n''\\)\\)\")",
       "Bash(npm run:*)",
       "Skill(commit-commands:commit-push-pr)",
-      "Skill(commit-commands:commit-push-pr:*)"
+      "Skill(commit-commands:commit-push-pr:*)",
+      "Bash(find C:ProjectAgenticmy-functional-integration-mate-poc -type f \\\\\\(-name *.md -o -name *.txt -o -name *.yaml -o -name *.yml -o -name *.json -o -name .env* -o -name *.conf -o -name *.cfg -o -name *.ini \\\\\\))",
+      "Bash(grep -rn \"18\\\\.197\\\\|ollama_host\\\\|OLLAMA_HOST\" C:/Project/Agentic/my-functional-integration-mate-poc --include=*.md --include=*.env --include=*.txt)",
+      "Bash(grep -n \"disk\\\\|path\\\\|storage\\\\|volume\\\\|folder\\\\|directory\\\\|C:\\\\\\\\|/home\\\\|/mnt\\\\|local\\\\|server\" \"C:/Project/Agentic/my-functional-integration-mate-poc/docs/functional-guide.md\")",
+      "Bash(echo \"EXIT_CODE:$?\")",
+      "Bash(\"/mnt/c/Program Files/Docker/Docker/resources/bin/docker\" compose -f \"C:/Project/Agentic/my-functional-integration-mate-poc/docker-compose.yml\" config --quiet)",
+      "Bash(docker-compose -f \"C:/Project/Agentic/my-functional-integration-mate-poc/docker-compose.yml\" config --quiet)",
+      "Skill(commit-commands:commit)",
+      "Skill(commit-commands:commit:*)",
+      "Bash(ls \"C:\\\\Project\\\\Agentic\\\\my-functional-integration-mate-poc\\\\docs\\\\adr\"\" && echo \"---\" && ls \"C:ProjectAgenticmy-functional-integration-mate-pocdocs\"\")",
+      "Bash(find /c/Project/Agentic/my-functional-integration-mate-poc/services/web-dashboard -name *.html -o -name index.html)",
+      "Bash(find /c/Project/Agentic/my-functional-integration-mate-poc/services/web-dashboard -name api* -o -name *api*)",
+      "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
+      "Bash(find /c/Project/Agentic/my-functional-integration-mate-poc/services/web-dashboard -name *.html -type f)",
+      "Bash(find /c/Project/Agentic/my-functional-integration-mate-poc/services/web-dashboard/src -type f \\\\\\(-name *.jsx -o -name *.js -o -name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(grep -rn documents_col /c/Project/Agentic/my-functional-integration-mate-poc/services/integration-agent/ --include=*.py)",
+      "Bash(git push:*)",
+      "Bash(grep -l \"upload_requirements\\\\|get_catalog\\\\|POST.*upload\" /c/Project/Agentic/my-functional-integration-mate-poc/services/integration-agent/tests/*.py)",
+      "Bash(ls -la /c/Project/Agentic/my-functional-integration-mate-poc/services/integration-agent/tests/*.py)",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//c/Project/Agentic/my-functional-integration-mate-poc/docs/**)",
+      "Bash(done)"
+    ]
+  },
+  "hooks": {
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -Command \"Write-Output '--- PROJECT MEMORY ---'; Get-Content 'C:\\Users\\emiliano.gritti\\.claude\\projects\\C--Project-Agentic-my-functional-integration-mate-poc\\memory\\MEMORY.md'; Write-Output '--- END MEMORY ---'\"",
+            "statusMessage": "Re-injecting project memory after compact…"
+          }
+        ]
+      }
     ]
   }
 }

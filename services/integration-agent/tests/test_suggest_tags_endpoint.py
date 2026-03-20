@@ -35,7 +35,7 @@ def seeded_catalog(client):
 
 def test_suggest_tags_returns_category_tags(client, seeded_catalog, monkeypatch):
     monkeypatch.setattr(
-        "main._suggest_tags_via_llm",
+        "routers.catalog.suggest_tags_via_llm",
         AsyncMock(return_value=[]),
     )
     resp = client.get(f"/api/v1/catalog/integrations/{seeded_catalog}/suggest-tags")
@@ -47,7 +47,7 @@ def test_suggest_tags_returns_category_tags(client, seeded_catalog, monkeypatch)
 
 def test_suggest_tags_merges_llm_tags(client, seeded_catalog, monkeypatch):
     monkeypatch.setattr(
-        "main._suggest_tags_via_llm",
+        "routers.catalog.suggest_tags_via_llm",
         AsyncMock(return_value=["Data Sync"]),
     )
     resp = client.get(f"/api/v1/catalog/integrations/{seeded_catalog}/suggest-tags")
@@ -58,7 +58,7 @@ def test_suggest_tags_merges_llm_tags(client, seeded_catalog, monkeypatch):
 
 def test_suggest_tags_no_duplicates(client, seeded_catalog, monkeypatch):
     monkeypatch.setattr(
-        "main._suggest_tags_via_llm",
+        "routers.catalog.suggest_tags_via_llm",
         AsyncMock(return_value=["Product Collection"]),  # duplicate
     )
     resp = client.get(f"/api/v1/catalog/integrations/{seeded_catalog}/suggest-tags")

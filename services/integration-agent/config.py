@@ -67,6 +67,20 @@ class Settings(BaseSettings):
     kb_url_fetch_timeout_seconds: int = 10     # per-URL HTTP timeout — override via KB_URL_FETCH_TIMEOUT_SECONDS
     kb_url_max_chars_per_source: int = 1000    # max chars per fetched URL — override via KB_URL_MAX_CHARS_PER_SOURCE
 
+    # ── RAG Phase 2 (R8, R9) ─────────────────────────────────────────────────
+    # Max ChromaDB distance to keep a chunk (0 = perfect, 2 = worst).
+    # Chunks with distance >= threshold are discarded before re-ranking.
+    rag_distance_threshold: float = 0.8    # override: RAG_DISTANCE_THRESHOLD
+
+    # BM25 weight in ensemble (ChromaDB weight = 1 - this).
+    rag_bm25_weight: float = 0.4           # override: RAG_BM25_WEIGHT
+
+    # ChromaDB n_results per query variant (4 variants × n_results = candidates).
+    rag_n_results_per_query: int = 3       # override: RAG_N_RESULTS_PER_QUERY
+
+    # Final top-K chunks passed to ContextAssembler after re-ranking.
+    rag_top_k_chunks: int = 5              # override: RAG_TOP_K_CHUNKS
+
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.
     # If absent, endpoints log a warning and allow through (dev mode).

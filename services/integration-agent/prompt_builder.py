@@ -106,6 +106,7 @@ def build_prompt(
     formatted_requirements: str,
     rag_context: str = "",
     kb_context: str = "",
+    reviewer_feedback: str = "",          # R16: injected on regeneration from rejection
 ) -> str:
     """
     Populate the meta-prompt template with runtime values.
@@ -116,10 +117,19 @@ def build_prompt(
         formatted_requirements:  Concatenated requirement descriptions.
         rag_context:             Past approved examples from ChromaDB (may be empty).
         kb_context:              Best-practice reference from Knowledge Base (may be empty).
+        reviewer_feedback:       Optional feedback from a previous HITL rejection (may be empty).
+                                 When provided, injected before RAG context as "## PREVIOUS REJECTION FEEDBACK".
 
     Returns:
         A fully populated prompt string ready to be sent to the LLM.
     """
+    # R16: reviewer feedback block — prepended to RAG context when regenerating from rejection
+    feedback_block = (
+        f"## PREVIOUS REJECTION FEEDBACK (address these issues in your output):\n"
+        f"{reviewer_feedback.strip()}\n\n"
+        if reviewer_feedback.strip()
+        else ""
+    )
     rag_block = (
         f"PAST APPROVED EXAMPLES:\n{rag_context}"
         if rag_context.strip()
@@ -130,6 +140,8 @@ def build_prompt(
         if kb_context.strip()
         else ""
     )
+    # Feedback prepended before RAG examples — LLM sees previous issues before examples
+    combined_context = f"{feedback_block}{rag_block}" if feedback_block else rag_block
     # F-09 / CLAUDE.md §10: sequential str.replace() instead of str.format()
     # prevents KeyError/ValueError if the template file contains unknown
     # placeholders or if user-supplied values contain '{...}' patterns.
@@ -137,7 +149,7 @@ def build_prompt(
     result = result.replace("{source_system}", source_system)
     result = result.replace("{target_system}", target_system)
     result = result.replace("{formatted_requirements}", formatted_requirements)
-    result = result.replace("{rag_context}", rag_block)
+    result = result.replace("{rag_context}", combined_context)
     result = result.replace("{kb_context}", kb_block)
     result = result.replace("{document_template}", _FUNCTIONAL_TEMPLATE)
     return result

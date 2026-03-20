@@ -14,6 +14,7 @@ import pytest
 
 from output_guard import (
     LLMOutputValidationError,
+    assess_quality,
     sanitize_human_content,
     sanitize_llm_output,
 )
@@ -119,3 +120,54 @@ class TestSanitizeHumanContent:
         raw = "A" * 60_000
         result = sanitize_human_content(raw)
         assert len(result) <= 50_000
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _make_doc(sections: int = 7, na_per_section: bool = False) -> str:
+    """Helper: build a minimal functional design doc."""
+    lines = ["# Integration Functional Design\n"]
+    for i in range(1, sections + 1):
+        lines.append(f"## {i}. Section Title\n")
+        lines.append(
+            "This section contains meaningful integration details covering data mapping, "
+            "error handling, transformation rules, and the business logic required for this process.\n"
+            if not na_per_section else "n/a\n"
+        )
+    return "\n".join(lines)
+
+
+class TestAssessQuality:
+    def test_good_document_passes(self):
+        report = assess_quality(_make_doc(sections=7))
+        assert report.passed is True
+        assert report.issues == []
+
+    def test_too_few_sections_fails(self):
+        doc = "# Integration Functional Design\n\n## 1. Only\n\nContent here."
+        report = assess_quality(doc)
+        assert report.passed is False
+        assert any("section" in i.lower() for i in report.issues)
+
+    def test_high_na_ratio_fails(self):
+        report = assess_quality(_make_doc(sections=7, na_per_section=True))
+        assert report.passed is False
+        assert any("n/a" in i.lower() for i in report.issues)
+
+    def test_too_short_fails(self):
+        report = assess_quality("# Integration Functional Design\n\n## 1. S\n\nTiny.")
+        assert report.passed is False
+        assert any("short" in i.lower() or "word" in i.lower() for i in report.issues)
+
+    def test_quality_score_range(self):
+        report = assess_quality(_make_doc(sections=7))
+        assert 0.0 <= report.quality_score <= 1.0
+
+    def test_report_fields_present(self):
+        report = assess_quality(_make_doc())
+        for field in ("section_count", "na_ratio", "word_count", "quality_score", "passed", "issues"):
+            assert hasattr(report, field)
+
+    def test_section_count_matches_headings(self):
+        doc = _make_doc(sections=5)
+        assert assess_quality(doc).section_count == 5
