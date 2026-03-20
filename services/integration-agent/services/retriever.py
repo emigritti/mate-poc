@@ -139,16 +139,26 @@ class HybridRetriever:
     # ── Tag Filter (R12) ──────────────────────────────────────────────────────
 
     def _build_chroma_where_filter(self, tags: list[str]) -> dict | None:
-        """Build ChromaDB $or tag filter for multi-dimensional matching (R12).
+        """Always returns None.
 
-        Before (single tag): {"tags_csv": {"$contains": tags[0]}}
-        After  (all tags):   {"$or": [{"tags_csv": {"$contains": t}} for t in tags]}
+        ChromaDB 0.5.x metadata 'where' filters do not support $contains on
+        string fields (only $eq/$ne/$in/$nin and numeric comparators are valid).
+        Tag matching is performed in Python via _tags_match_meta() inside
+        _query_chroma() after results are retrieved.
+        """
+        return None
+
+    @staticmethod
+    def _tags_match_meta(meta: dict | None, tags: list[str]) -> bool:
+        """Return True if any tag appears as a substring in meta['tags_csv'].
+
+        Used as a Python post-filter replacing the unsupported ChromaDB
+        $contains metadata operator (R12 / ADR-019).
         """
         if not tags:
-            return None
-        if len(tags) == 1:
-            return {"tags_csv": {"$contains": tags[0]}}
-        return {"$or": [{"tags_csv": {"$contains": t}} for t in tags]}
+            return True
+        csv = (meta or {}).get("tags_csv", "")
+        return any(t in csv for t in tags)
 
     # ── ChromaDB Query ────────────────────────────────────────────────────────
 
@@ -158,25 +168,27 @@ class HybridRetriever:
         collection,
         tags: list[str],
     ) -> list[ScoredChunk]:
-        """Query ChromaDB with all query variants; deduplicate by doc_id."""
+        """Query ChromaDB with all query variants; deduplicate by doc_id.
+
+        Tag filtering is applied as a Python post-filter via _tags_match_meta()
+        (ChromaDB 0.5.x metadata 'where' does not support $contains on string
+        fields).  When tags are provided, tag-matched chunks are returned;
+        falls back to all results if no chunk matches the requested tags.
+        """
         if not collection:
             return []
 
-        where = self._build_chroma_where_filter(tags)
-        seen: dict[str, ScoredChunk] = {}
+        seen: dict[str, ScoredChunk] = {}           # all results
+        seen_tagged: dict[str, ScoredChunk] = {}    # tag-matched (Python post-filter)
         n = settings.rag_n_results_per_query
 
         for query in queries:
             try:
-                kwargs: dict = {
-                    "query_texts": [query],
-                    "n_results": n,
-                    "include": ["documents", "distances", "metadatas"],
-                }
-                if where:
-                    kwargs["where"] = where
-
-                results = collection.query(**kwargs)
+                results = collection.query(
+                    query_texts=[query],
+                    n_results=n,
+                    include=["documents", "distances", "metadatas"],
+                )
                 docs  = (results.get("documents") or [[]])[0]
                 dists = (results.get("distances")  or [[]])[0]
                 metas = (results.get("metadatas")  or [[]])[0]
@@ -184,17 +196,18 @@ class HybridRetriever:
                 for doc, dist, meta in zip(docs, dists, metas):
                     score = 1.0 / (1.0 + dist)   # metric-agnostic distance → similarity score
                     doc_id = (meta or {}).get("doc_id", doc[:50])
+                    chunk = ScoredChunk(text=doc, score=score, source_label="approved", tags=tags)
                     if doc_id not in seen or seen[doc_id].score < score:
-                        seen[doc_id] = ScoredChunk(
-                            text=doc,
-                            score=score,
-                            source_label="approved",
-                            tags=tags,
-                        )
+                        seen[doc_id] = chunk
+                    if tags and self._tags_match_meta(meta, tags):
+                        if doc_id not in seen_tagged or seen_tagged[doc_id].score < score:
+                            seen_tagged[doc_id] = chunk
+
             except Exception as exc:
                 logger.warning("[RAG] ChromaDB query failed for variant: %s", exc)
 
-        return list(seen.values())
+        # Prefer tag-matched chunks; fall back to all results if none matched.
+        return list(seen_tagged.values()) if (tags and seen_tagged) else list(seen.values())
 
     # ── BM25 Query ────────────────────────────────────────────────────────────
 

@@ -50,17 +50,24 @@ async def query_rag_with_tags(
     if not collection:
         return "", "none"
 
-    # Step 1: tag-filtered query using primary tag
+    # Step 1: tag-filtered query using primary tag.
+    # Python post-filter on tags_csv — ChromaDB 0.5.x metadata 'where' does
+    # not support $contains on string fields (R12 / ADR-019).
     if tags:
         try:
             results = collection.query(
                 query_texts=[query_text],
-                n_results=2,
-                where={"tags_csv": {"$contains": tags[0]}},
+                n_results=10,
+                include=["documents", "metadatas"],
             )
-            docs = (results or {}).get("documents", [[]])[0]
+            all_docs = (results or {}).get("documents", [[]])[0]
+            metas    = (results or {}).get("metadatas",  [[]])[0]
+            docs = [
+                d for d, m in zip(all_docs, metas)
+                if tags[0] in (m or {}).get("tags_csv", "")
+            ]
             if docs:
-                return build_rag_context(docs), "tag_filtered"
+                return build_rag_context(docs[:2]), "tag_filtered"
         except Exception as exc:
             _log(f"[RAG] Tag-filtered query failed: {exc}")
 
@@ -95,19 +102,31 @@ async def query_kb_context(
     if not kb_collection:
         return ""
 
-    # Tag-filtered query first, then similarity fallback
-    for attempt_label, where_filter in [
-        ("tag_filtered", {"tags_csv": {"$contains": tags[0]}} if tags else None),
+    # Tag-filtered query first, then similarity fallback.
+    # Python post-filter on tags_csv — ChromaDB 0.5.x metadata 'where' does
+    # not support $contains on string fields (R12 / ADR-019).
+    for attempt_label, filter_tag in [
+        ("tag_filtered", tags[0] if tags else None),
         ("similarity", None),
     ]:
-        if attempt_label == "tag_filtered" and not tags:
+        if attempt_label == "tag_filtered" and not filter_tag:
             continue
         try:
-            kwargs: dict = {"query_texts": [query_text], "n_results": 3}
-            if where_filter:
-                kwargs["where"] = where_filter
-            results = kb_collection.query(**kwargs)
-            docs = (results or {}).get("documents", [[]])[0]
+            n_results = 15 if filter_tag else 3
+            results = kb_collection.query(
+                query_texts=[query_text],
+                n_results=n_results,
+                include=["documents", "metadatas"],
+            )
+            all_docs = (results or {}).get("documents", [[]])[0]
+            metas    = (results or {}).get("metadatas",  [[]])[0]
+            if filter_tag:
+                docs = [
+                    d for d, m in zip(all_docs, metas)
+                    if filter_tag in (m or {}).get("tags_csv", "")
+                ]
+            else:
+                docs = all_docs
             if docs:
                 raw = "\n---\n".join(docs)
                 max_chars = settings.kb_max_rag_chars

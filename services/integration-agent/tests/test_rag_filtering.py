@@ -32,7 +32,12 @@ def test_query_rag_tag_filtered_hit():
     from services.rag_service import query_rag_with_tags
 
     mock_collection = MagicMock()
-    mock_collection.query.return_value = {"documents": [["example doc"]]}
+    # Include metadatas with tags_csv so the Python post-filter (replacing the
+    # unsupported ChromaDB $contains operator) can match the tag.
+    mock_collection.query.return_value = {
+        "documents": [["example doc"]],
+        "metadatas": [[{"doc_id": "doc1", "tags_csv": "Sync,Export"}]],
+    }
 
     result, source = asyncio.run(query_rag_with_tags("sync products", ["Sync"], mock_collection))
     assert source == "tag_filtered"

@@ -46,7 +46,12 @@ def test_query_kb_context_tag_filtered_hit():
     from services.rag_service import query_kb_context
 
     mock_col = MagicMock()
-    mock_col.query.return_value = {"documents": [["Best practice chunk A"]]}
+    # Include metadatas with tags_csv so the Python post-filter (replacing the
+    # unsupported ChromaDB $contains operator) can match the tag.
+    mock_col.query.return_value = {
+        "documents": [["Best practice chunk A"]],
+        "metadatas": [[{"doc_id": "doc1", "tags_csv": "Sync,Export"}]],
+    }
 
     result = asyncio.run(query_kb_context("sync query", ["Sync"], mock_col))
     assert "Best practice chunk A" in result

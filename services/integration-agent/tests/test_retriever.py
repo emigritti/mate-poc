@@ -5,8 +5,9 @@ Covers:
   - build_bm25_index: empty corpus, corpus with chunks
   - _expand_queries: 2 template variants always present; LLM variants added on success
   - _expand_queries: fallback to templates when LLM fails
-  - _build_chroma_where_filter: single tag, multi-tag $or, no tags
-  - _query_chroma: dedup by doc_id (highest score wins)
+  - _build_chroma_where_filter: always returns None (ChromaDB 0.5.x has no $contains on metadata)
+  - _tags_match_meta: Python post-filter helper for tags_csv substring matching
+  - _query_chroma: dedup by doc_id (highest score wins); prefers tag-matched chunks
   - _query_bm25: returns scored chunks; empty when no index
   - _apply_threshold: filters chunks below threshold
   - _tfidf_rerank: orders by cosine similarity; returns unchanged on error
@@ -20,8 +21,18 @@ import pytest
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _make_chroma_result(docs, distances, doc_ids=None):
-    metas = [{"doc_id": did} for did in (doc_ids or [f"id{i}" for i in range(len(docs))])]
+def _make_chroma_result(docs, distances, doc_ids=None, tags_csv=None):
+    """Build a fake ChromaDB query result.
+
+    tags_csv: optional list of tags_csv strings per document (e.g. ["Sync,Export", None]).
+    """
+    tc = tags_csv or [None] * len(docs)
+    metas = []
+    for i, did in enumerate(doc_ids or [f"id{i}" for i in range(len(docs))]):
+        m: dict = {"doc_id": did}
+        if tc[i]:
+            m["tags_csv"] = tc[i]
+        metas.append(m)
     return {"documents": [docs], "distances": [distances], "metadatas": [metas]}
 
 
@@ -51,21 +62,46 @@ def test_where_filter_no_tags():
     assert r._build_chroma_where_filter([]) is None
 
 
-def test_where_filter_single_tag():
+def test_where_filter_single_tag_returns_none():
+    """ChromaDB 0.5.x does not support $contains on metadata — filter always None."""
     from services.retriever import HybridRetriever
     r = HybridRetriever()
-    result = r._build_chroma_where_filter(["Sync"])
-    assert result == {"tags_csv": {"$contains": "Sync"}}
+    assert r._build_chroma_where_filter(["Sync"]) is None
 
 
-def test_where_filter_multi_tag_uses_or():
+def test_where_filter_multi_tag_returns_none():
+    """Regardless of tag count, filter is None — Python post-filter is used instead."""
     from services.retriever import HybridRetriever
     r = HybridRetriever()
-    result = r._build_chroma_where_filter(["Sync", "Export"])
-    assert result == {"$or": [
-        {"tags_csv": {"$contains": "Sync"}},
-        {"tags_csv": {"$contains": "Export"}},
-    ]}
+    assert r._build_chroma_where_filter(["Sync", "Export"]) is None
+
+
+# ── _tags_match_meta ──────────────────────────────────────────────────────────
+
+def test_tags_match_meta_single_tag_present():
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": "Sync,Export"}, ["Sync"]) is True
+
+
+def test_tags_match_meta_single_tag_absent():
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": "Export,PLM"}, ["Sync"]) is False
+
+
+def test_tags_match_meta_multi_tag_any_match():
+    from services.retriever import HybridRetriever
+    # "Sync" not in csv, "PLM" is — should return True (any match)
+    assert HybridRetriever._tags_match_meta({"tags_csv": "PLM,Export"}, ["Sync", "PLM"]) is True
+
+
+def test_tags_match_meta_no_tags_always_true():
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": "Sync"}, []) is True
+
+
+def test_tags_match_meta_none_meta():
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta(None, ["Sync"]) is False
 
 
 # ── _expand_queries ───────────────────────────────────────────────────────────
@@ -125,6 +161,38 @@ def test_query_chroma_deduplicates_by_doc_id():
     result = r._query_chroma(["query1", "query2"], mock_col, [])
     assert len(result) == 1
     assert abs(result[0].score - (1.0 / 1.2)) < 0.01  # highest score kept
+
+
+def test_query_chroma_prefers_tag_matched_chunks():
+    """Python post-filter returns only tag-matched chunks when available."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+    mock_col = MagicMock()
+    # Two docs: one matches "Sync", one does not
+    mock_col.query.return_value = _make_chroma_result(
+        ["chunk tagged", "chunk untagged"],
+        [0.1, 0.1],
+        ["doc_tagged", "doc_untagged"],
+        tags_csv=["Sync,Export", "PLM"],
+    )
+    result = r._query_chroma(["query"], mock_col, ["Sync"])
+    assert len(result) == 1
+    assert result[0].text == "chunk tagged"
+
+
+def test_query_chroma_falls_back_to_all_when_no_tag_match():
+    """Falls back to all results when no chunk matches the requested tags."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+    mock_col = MagicMock()
+    mock_col.query.return_value = _make_chroma_result(
+        ["chunk A", "chunk B"],
+        [0.2, 0.3],
+        ["doc1", "doc2"],
+        tags_csv=["PLM", "Export"],
+    )
+    result = r._query_chroma(["query"], mock_col, ["Sync"])  # "Sync" not in any doc
+    assert len(result) == 2  # fallback: all results returned
 
 
 def test_query_chroma_no_collection_returns_empty():
