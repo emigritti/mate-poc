@@ -17,6 +17,7 @@ import httpx
 
 from config import settings
 from services.llm_service import llm_overrides
+from services.retriever import ScoredChunk
 
 logger = logging.getLogger(__name__)
 
@@ -168,3 +169,76 @@ async def fetch_url_kb_context(
                 parts.append(f"[URL unavailable: {doc.url}]")
 
     return "\n\n".join(parts)
+
+
+class ContextAssembler:
+    """Unified context fusion from multiple RAG sources (R10 / ADR-029).
+
+    Collects ScoredChunks from approved integrations, KB files, and KB URLs,
+    orders by relevance score, applies a char budget, and formats with source
+    section headers so the LLM can distinguish pattern types.
+
+    Output format:
+        ## PAST APPROVED EXAMPLES (use as style reference):
+        ### Source: approved · score: 0.92
+        [chunk]
+
+        ## BEST PRACTICE PATTERNS (follow these patterns in your output):
+        ### Source: kb_file · score: 0.87
+        [chunk]
+    """
+
+    def assemble(
+        self,
+        approved_chunks: list[ScoredChunk],
+        kb_chunks: list[ScoredChunk],
+        url_chunks: list[ScoredChunk],
+        max_chars: int,
+    ) -> str:
+        """Assemble a structured context string for the LLM prompt.
+
+        Args:
+            approved_chunks: Chunks from approved_integrations ChromaDB collection.
+            kb_chunks:       Chunks from knowledge_base ChromaDB collection.
+            url_chunks:      Chunks from live-fetched URL KB entries.
+            max_chars:       Hard character budget for the assembled context.
+
+        Returns:
+            Formatted context string, or empty string if no chunks provided.
+        """
+        if not approved_chunks and not kb_chunks and not url_chunks:
+            return ""
+
+        # Sort all chunks by score descending within each section
+        approved_sorted = sorted(approved_chunks, key=lambda c: c.score, reverse=True)
+        kb_sorted       = sorted(kb_chunks + url_chunks, key=lambda c: c.score, reverse=True)
+
+        sections: list[str] = []
+        chars_used = 0
+
+        if approved_sorted:
+            header = "## PAST APPROVED EXAMPLES (use as style reference):"
+            section_parts = [header]
+            for chunk in approved_sorted:
+                entry = f"### Source: approved · score: {chunk.score:.2f}\n{chunk.text}"
+                if chars_used + len(entry) > max_chars:
+                    break
+                section_parts.append(entry)
+                chars_used += len(entry)
+            if len(section_parts) > 1:
+                sections.append("\n\n".join(section_parts))
+
+        if kb_sorted and chars_used < max_chars:
+            header = "## BEST PRACTICE PATTERNS (follow these patterns in your output):"
+            section_parts = [header]
+            for chunk in kb_sorted:
+                label = "kb_url" if chunk.source_label == "kb_url" else "kb_file"
+                entry = f"### Source: {label} · score: {chunk.score:.2f}\n{chunk.text}"
+                if chars_used + len(entry) > max_chars:
+                    break
+                section_parts.append(entry)
+                chars_used += len(entry)
+            if len(section_parts) > 1:
+                sections.append("\n\n".join(section_parts))
+
+        return "\n\n".join(sections)

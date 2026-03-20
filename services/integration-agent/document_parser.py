@@ -343,3 +343,51 @@ def chunk_text(
 
     logger.info("[KB] Chunked text into %d chunks (size=%d, overlap=%d).", len(chunks), chunk_size, chunk_overlap)
     return chunks
+
+
+def semantic_chunk(
+    text: str,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
+) -> list[TextChunk]:
+    """Split text into overlapping chunks respecting semantic boundaries (R11).
+
+    Uses LangChain RecursiveCharacterTextSplitter with separator priority:
+      H2 heading → H3 heading → paragraph → newline → sentence → word
+
+    This replaces fixed-size splitting in chunk_text() for new KB uploads.
+    chunk_text() is preserved for backward compatibility.
+
+    ADR-030: Semantic chunking with LangChain RecursiveCharacterTextSplitter.
+    """
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    if not text.strip():
+        return []
+
+    clean = re.sub(r"\n{3,}", "\n\n", text.strip())
+
+    splitter = RecursiveCharacterTextSplitter(
+        separators=["\n## ", "\n### ", "\n\n", "\n", ". ", " "],
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+    )
+
+    lc_chunks = splitter.create_documents([clean])
+
+    result: list[TextChunk] = []
+    for i, doc in enumerate(lc_chunks):
+        stripped = doc.page_content.strip()
+        if stripped:
+            result.append(TextChunk(
+                text=stripped,
+                index=len(result),
+                metadata={"char_start": 0, "char_end": len(stripped)},
+            ))
+
+    logger.info(
+        "[KB] Semantic chunked into %d chunks (size=%d, overlap=%d).",
+        len(result), chunk_size, chunk_overlap,
+    )
+    return result

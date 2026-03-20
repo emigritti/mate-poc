@@ -18,11 +18,12 @@ from auth import require_token
 from config import settings
 from document_parser import (
     DocumentParseError,
-    chunk_text,
     detect_file_type,
     parse_document,
+    semantic_chunk,
 )
 from log_helpers import log_agent
+from services.retriever import hybrid_retriever
 from schemas import (
     KBAddUrlRequest,
     KBDocument,
@@ -68,7 +69,7 @@ async def kb_upload(
     except DocumentParseError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    chunks = chunk_text(
+    chunks = semantic_chunk(
         result.text,
         chunk_size=settings.kb_chunk_size,
         chunk_overlap=settings.kb_chunk_overlap,
@@ -114,6 +115,9 @@ async def kb_upload(
         uploaded_at=_now_iso(),
     )
     state.kb_docs[doc_id] = kb_doc
+    # Update BM25 corpus and rebuild index (Phase 2 / ADR-027)
+    state.kb_chunks[doc_id] = [c.text for c in chunks]
+    hybrid_retriever.build_bm25_index(state.kb_chunks)
     if db.kb_documents_col is not None:
         await db.kb_documents_col.replace_one(
             {"id": doc_id}, kb_doc.model_dump(), upsert=True
@@ -221,6 +225,9 @@ async def kb_delete_document(
         await db.kb_documents_col.delete_one({"id": id})
 
     del state.kb_docs[id]
+    # Remove from BM25 corpus and rebuild index
+    state.kb_chunks.pop(id, None)
+    hybrid_retriever.build_bm25_index(state.kb_chunks)
     return {"status": "success", "message": f"KB document {id} deleted."}
 
 

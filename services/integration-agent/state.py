@@ -29,6 +29,10 @@ agent_logs: list[LogEntry]         = []
 kb_docs:   dict[str, KBDocument]   = {}
 projects:  dict[str, Project]      = {}
 
+# ── BM25 chunk corpus (in-memory, populated from ChromaDB at startup) ─────────
+# key: doc_id (matches kb_docs key), value: list of chunk texts
+kb_chunks: dict[str, list[str]] = {}
+
 # ── Task registry — prevents concurrent agent runs (F-09) ─────────────────────
 agent_lock = asyncio.Lock()
 running_tasks: dict[str, asyncio.Task] = {}

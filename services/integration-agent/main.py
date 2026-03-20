@@ -24,6 +24,7 @@ from config import settings
 from log_helpers import prune_logs
 from schemas import CatalogEntry, Approval, Document, KBDocument, Project
 from services.llm_service import llm_overrides
+from services.retriever import hybrid_retriever
 
 # Import routers
 from routers.requirements import router as requirements_router
@@ -107,6 +108,20 @@ async def lifespan(app: FastAPI):
         async for doc in db.kb_documents_col.find({}, {"_id": 0}):
             state.kb_docs[doc["id"]] = KBDocument(**doc)
         logger.info("[DB] Seeded %d KB documents from MongoDB.", len(state.kb_docs))
+
+    # Load KB chunk texts from ChromaDB and build BM25 index (Phase 2 / ADR-027)
+    if state.kb_collection is not None:
+        try:
+            kb_result = state.kb_collection.get(include=["documents", "metadatas"])
+            docs  = kb_result.get("documents") or []
+            metas = kb_result.get("metadatas") or []
+            for doc_text, meta in zip(docs, metas):
+                doc_id = (meta or {}).get("doc_id", "unknown")
+                state.kb_chunks.setdefault(doc_id, []).append(doc_text)
+            hybrid_retriever.build_bm25_index(state.kb_chunks)
+            logger.info("[BM25] Index built from %d KB chunks at startup.", len(docs))
+        except Exception as exc:
+            logger.warning("[BM25] Failed to build index at startup: %s", exc)
 
     # Seed projects
     if db.projects_col is not None:

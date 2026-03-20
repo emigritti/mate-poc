@@ -22,11 +22,8 @@ from output_guard import LLMOutputValidationError, sanitize_llm_output
 from prompt_builder import build_prompt
 from schemas import Approval, LogEntry
 from services.llm_service import generate_with_retry
-from services.rag_service import (
-    fetch_url_kb_context,
-    query_kb_context,
-    query_rag_with_tags,
-)
+from services.rag_service import ContextAssembler, fetch_url_kb_context
+from services.retriever import ScoredChunk as _SC, hybrid_retriever
 
 router = APIRouter(prefix="/api/v1", tags=["agent"])
 
@@ -61,39 +58,55 @@ async def run_agentic_rag_flow() -> None:
             )
         log_agent(f"Processing entry: {entry.id} ({entry.name}) -- {len(reqs)} reqs.")
 
-        # 1. Agentic RAG: query ChromaDB filtered by confirmed tags
+        # 1. Multi-query hybrid retrieval (R8 + R9 + R12 + BM25 / Phase 2)
         query_text = " ".join(r.description for r in reqs)
-        log_agent(f"[RAG] Querying for {entry.id} with tags={entry.tags}...")
-        rag_context, rag_source = await query_rag_with_tags(
-            query_text, entry.tags, state.collection, log_fn=log_agent
-        )
-        log_agent(f"[RAG] Source: {rag_source} | chars: {len(rag_context)}")
+        category   = entry.tags[0] if entry.tags else ""
 
-        # 2. Query Knowledge Base for best-practice context
-        log_agent(f"[KB-RAG] Querying Knowledge Base for {entry.id}...")
-        kb_context = await query_kb_context(
-            query_text, entry.tags, state.kb_collection, log_fn=log_agent
+        log_agent(f"[RAG] Hybrid retrieval for {entry.id} (tags={entry.tags})...")
+        approved_chunks = await hybrid_retriever.retrieve(
+            query_text,
+            entry.tags,
+            state.collection,
+            source=source,
+            target=target,
+            category=category,
+            log_fn=log_agent,
         )
-        if kb_context:
-            log_agent(f"[KB-RAG] KB context chars: {len(kb_context)}")
-        else:
-            log_agent("[KB-RAG] No KB best practices found.")
 
-        # 2b. Fetch live URL KB entries (tag-filtered, fetched at generation time)
-        url_context = await fetch_url_kb_context(
+        kb_scored_chunks = await hybrid_retriever.retrieve(
+            query_text,
+            entry.tags,
+            state.kb_collection,
+            source=source,
+            target=target,
+            category=category,
+            log_fn=log_agent,
+        )
+
+        # 2. Fetch live URL KB entries (tag-filtered)
+        url_raw = await fetch_url_kb_context(
             entry.tags, state.kb_docs, log_fn=log_agent
         )
-        if url_context:
-            log_agent(f"[KB-URL] URL context chars: {len(url_context)}")
-            kb_context = (kb_context + "\n\n" + url_context).strip() if kb_context else url_context
+        url_chunks = ([_SC(text=url_raw, score=0.5, source_label="kb_url")]
+                      if url_raw else [])
 
-        # 3. Build prompt from meta-prompt template (G-09)
+        # 3. ContextAssembler: unified context with structured sections (R10)
+        assembler   = ContextAssembler()
+        rag_context = assembler.assemble(
+            approved_chunks,
+            kb_scored_chunks,
+            url_chunks,
+            max_chars=settings.ollama_rag_max_chars,
+        )
+        log_agent(f"[RAG] Assembled context: {len(rag_context)} chars")
+
+        # 4. Build prompt from meta-prompt template (G-09)
         prompt = build_prompt(
             source_system=source,
             target_system=target,
             formatted_requirements=query_text,
             rag_context=rag_context,
-            kb_context=kb_context,
+            kb_context="",  # now included in rag_context via ContextAssembler
         )
         log_agent(f"[LLM] Prompt ready for {entry.id} — {len(prompt)} chars. Calling {settings.ollama_model}...")
 
