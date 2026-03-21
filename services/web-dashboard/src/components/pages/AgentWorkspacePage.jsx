@@ -52,12 +52,18 @@ function ProgressBar({ elapsed, progress }) {
 }
 
 export default function AgentWorkspacePage() {
-  const { logs, isRunning, trigger, cancel, triggerError } = useAgentLogs();
+  const { logs, isRunning, trigger, cancel, triggerError, progress: apiProgress } = useAgentLogs();
 
   const [status,   setStatus]   = useState('idle'); // idle | running | done | error
   const [elapsed,  setElapsed]  = useState(0);
   const [progress, setProgress] = useState(0);
   const [localError, setLocalError] = useState(null);
+
+  // Real progress from API
+  const overall     = apiProgress?.overall;
+  const realPercent = overall?.total > 0
+    ? Math.round((overall.done / overall.total) * 100)
+    : 0;
 
   const progressRef = useRef(null);
   const logEndRef   = useRef(null);
@@ -183,7 +189,14 @@ export default function AgentWorkspacePage() {
           </div>
         </div>
 
-        {isRunning && <ProgressBar elapsed={elapsed} progress={progress} />}
+        {isRunning && (
+          <>
+            <ProgressBar elapsed={elapsed} progress={realPercent > 0 ? realPercent : progress} />
+            {overall?.step && (
+              <p className="text-xs text-slate-500 mt-1">{overall.step}</p>
+            )}
+          </>
+        )}
       </div>
 
       {/* Terminal */}

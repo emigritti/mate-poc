@@ -13,7 +13,7 @@ async function fetchLogs() {
   const res = await API.agent.logs(0);
   if (!res.ok) throw new Error(`Failed to fetch logs (${res.status})`);
   const data = await res.json();
-  return { logs: data.logs || [], running: !data.finished };
+  return { logs: data.logs || [], running: !data.finished, progress: data.progress ?? {} };
 }
 
 export function useAgentLogs() {
@@ -41,6 +41,7 @@ export function useAgentLogs() {
   return {
     logs: query.data?.logs ?? [],
     isRunning: query.data?.running ?? false,
+    progress: query.data?.progress ?? {},
     isLoading: query.isLoading,
     error: query.error?.message ?? null,
     trigger: triggerMutation.mutate,
