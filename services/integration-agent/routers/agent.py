@@ -35,6 +35,10 @@ async def run_agentic_rag_flow() -> None:
     total = len(confirmed)
     log_agent(f"Processing {total} TAG_CONFIRMED integration(s)...")
 
+    # R18: initialise progress tracking
+    state.agent_progress = {}
+    state.agent_progress["overall"] = {"step": "Starting", "done": 0, "total": total}
+
     for idx, entry in enumerate(confirmed, start=1):
         source = entry.source.get("system", "Unknown")
         target = entry.target.get("system", "Unknown")
@@ -44,6 +48,13 @@ async def run_agentic_rag_flow() -> None:
             f"[STEP {idx}/{total}] {entry.id} — {source} → {target} "
             f"({len(reqs)} requirement(s), tags: {entry.tags})"
         )
+
+        # R18: update progress for this integration
+        state.agent_progress["overall"] = {
+            "step": f"Processing {idx}/{total}: {entry.id}",
+            "done": idx - 1,
+            "total": total,
+        }
 
         # Update status to PROCESSING
         entry.status = "PROCESSING"
@@ -124,6 +135,12 @@ async def run_agentic_rag_flow() -> None:
                 {"id": entry.id}, entry.model_dump(), upsert=True
             )
 
+    # R18: mark progress as complete
+    state.agent_progress["overall"] = {
+        "step": "Completed",
+        "done": total,
+        "total": total,
+    }
     log_agent("Generation completed. Pending documents are waiting for HITL approval.")
 
 
@@ -207,4 +224,5 @@ async def get_logs(offset: int = 0) -> dict:
         "logs": [e.model_dump(mode="json") for e in capped],
         "next_offset": offset + len(capped),
         "finished": not state.agent_lock.locked(),
+        "progress": state.agent_progress,   # R18: agent progress tracking
     }

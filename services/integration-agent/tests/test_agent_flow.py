@@ -525,3 +525,54 @@ class TestDocumentLifecycle:
         finally:
             agent_main.documents.pop("INT-503-functional", None)
 
+
+# ── Agent progress tracking (R18) ──────────────────────────────────────
+
+
+class TestAgentProgressTracking:
+    def test_logs_response_includes_progress_key(self, client):
+        """GET /agent/logs must include a 'progress' key in the response (R18)."""
+        resp = client.get("/api/v1/agent/logs")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "progress" in data
+        assert isinstance(data["progress"], dict)
+
+    def test_logs_progress_is_empty_dict_when_agent_not_run(self, client):
+        """
+        When no agent run has occurred, agent_progress is {} and the logs
+        response must reflect that (an empty dict, not absent or None).
+        """
+        import state
+
+        original = state.agent_progress.copy()
+        state.agent_progress.clear()
+        try:
+            resp = client.get("/api/v1/agent/logs")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["progress"] == {}
+        finally:
+            state.agent_progress.update(original)
+
+    def test_logs_progress_reflects_state(self, client):
+        """
+        When state.agent_progress is pre-populated, the logs endpoint must
+        return the same value under the 'progress' key.
+        """
+        import state
+
+        original = state.agent_progress.copy()
+        state.agent_progress.clear()
+        state.agent_progress["overall"] = {"step": "Completed", "done": 3, "total": 3}
+        try:
+            resp = client.get("/api/v1/agent/logs")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["progress"]["overall"]["done"] == 3
+            assert data["progress"]["overall"]["total"] == 3
+            assert data["progress"]["overall"]["step"] == "Completed"
+        finally:
+            state.agent_progress.clear()
+            state.agent_progress.update(original)
+

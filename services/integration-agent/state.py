@@ -33,6 +33,12 @@ projects:  dict[str, Project]      = {}
 # key: doc_id (matches kb_docs key), value: list of chunk texts
 kb_chunks: dict[str, list[str]] = {}
 
+# ── Agent progress tracking (R18) ─────────────────────────────────────────────
+# Reset to {} at the start of each run; updated throughout run_agentic_rag_flow.
+# Keys: descriptive step key (e.g. "overall")
+# Value: { "step": str, "done": int, "total": int }
+agent_progress: dict = {}
+
 # ── Task registry — prevents concurrent agent runs (F-09) ─────────────────────
 agent_lock = asyncio.Lock()
 running_tasks: dict[str, asyncio.Task] = {}
