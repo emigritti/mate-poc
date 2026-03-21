@@ -78,7 +78,7 @@ DOCS_MANIFEST: list[dict] = [
     {"path": "code-review/CODE-REVIEW-CHECKLIST.md", "name": "Code Review Checklist", "category": "Checklist", "description": "Architecture/correctness/security gates."},
     {"path": "security-review/SECURITY-REVIEW-CHECKLIST.md", "name": "Security Review Checklist", "category": "Checklist", "description": "OWASP-aligned security checklist."},
     {"path": "unit-test-review/UNIT-TEST-REVIEW-CHECKLIST.md", "name": "Unit Test Review Checklist", "category": "Checklist", "description": "Test quality gates."},
-    {"path": "test-plan/TEST-PLAN-001-remediation.md", "name": "TEST-PLAN-001 Remediation", "category": "Test Plan", "description": "Unit test plan with 247 tests."},
+    {"path": "test-plan/TEST-PLAN-001-remediation.md", "name": "TEST-PLAN-001 Remediation", "category": "Test Plan", "description": "Unit test plan with 274 tests."},
     {"path": "mappings/UNIT-SECURITY-OWASP-MAPPING.md", "name": "OWASP Unit-Test Mapping", "category": "Mapping", "description": "Test-to-OWASP traceability."},
 ]
 

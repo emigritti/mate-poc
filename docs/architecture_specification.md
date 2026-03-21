@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 3.1.0 |
-| **Date** | 2026-03-20 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20) |
+| **Version** | 4.0.0 |
+| **Date** | 2026-03-21 |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20), v3.1.0 (2026-03-20) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -1818,6 +1818,12 @@ gantt
 | ADR-031 | Output Quality Checker | Accepted | `assess_quality()` warning-only gate |
 | ADR-032 | Feedback Loop Regenerate | Accepted | HITL rejection feedback loop |
 | ADR-033 | TanStack Query Frontend | Accepted | React Query server-state pilot |
+| **Phase 4 — UI Polish & Observability** | | | |
+| R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
+| R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |
+| R7 | UI Localization — Italian → English | Implemented | All remaining Italian strings in `UnifiedDocumentsPanel.jsx` and `ProjectModal.jsx` translated to English |
+| R18 | Real-Time Agent Progress Tracking | Implemented | `state.agent_progress` dict added to backend; `/agent/logs` response includes `"progress"` key (0–100); `useAgentLogs.js` exposes `progress`; `AgentWorkspacePage.jsx` renders real step progress bar |
+| R19-MVP | Append-Only MongoDB Audit Event Log | Implemented | `services/event_logger.py` created; `db.events_col` MongoDB collection with 90-day TTL index; audit events (`catalog_entry_created`, `document_approved`, `document_promoted`, `kb_document_uploaded`, `kb_document_deleted`) recorded in `catalog.py`, `approvals.py`, `documents.py` |
 
 ---
 
@@ -1831,7 +1837,7 @@ gantt
 | Model quality | llama3.2:3b (fast, PoC) | Configurable via `OLLAMA_MODEL` env var |
 | RAG grading | HybridRetriever: multi-query + BM25+dense ensemble + TF-IDF re-rank (Phase 2) | Per-session relevance feedback; learned re-ranking |
 | Embedding model | Default ChromaDB embeddings | Switch to `nomic-embed-text` for richer semantics |
-| Audit logging | In-memory ring buffer | PostgreSQL with 7-year retention |
+| Audit logging | MongoDB append-only `events` collection with 90-day TTL (R19-MVP) | PostgreSQL with 7-year retention; structured query API |
 | Thought chain UI | Basic log terminal | Interactive timeline visualization |
 | Multi-agent | Single sequential agent | Parallel agent execution with DAG planning |
 | Real-time updates | REST polling (2s interval) | WebSocket / SSE for dashboard updates |

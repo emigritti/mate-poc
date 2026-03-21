@@ -19,6 +19,7 @@
 10. [Security Model — Why and How](#10-security-model--why-and-how)
 11. [Running the System](#11-running-the-system)
 12. [Admin Tools](#12-admin-tools)
+13. [Phase 4 Polish — What Changed for End Users](#13-phase-4-polish--what-changed-for-end-users)
 
 ---
 
@@ -771,7 +772,7 @@ cd services/integration-agent
 python -m pytest tests/ -v
 ```
 
-All 263 tests must pass before any commit (per CLAUDE.md Definition of Done).
+All 274 tests must pass before any commit (per CLAUDE.md Definition of Done).
 
 ---
 
@@ -801,3 +802,24 @@ An admin page for tuning LLM parameters at runtime without restarting the contai
 Changes are applied **immediately** to the running agent and persisted in MongoDB. The "Reset to Defaults" button restores pydantic-settings values (as defined in `config.py` or overridden by env vars at startup).
 
 **Why this matters:** On slow CPU hardware (e.g., llama3.1:8b at ~3 tokens/s), reducing `num_predict` from 1000 to 200 cuts generation time from ~5 minutes to ~1 minute for testing purposes — without requiring a container rebuild.
+
+---
+
+## 13. Phase 4 Polish — What Changed for End Users
+
+Phase 4 introduced five targeted improvements to UX quality, observability, and code maintainability:
+
+### Real-Time Progress Bar (R18)
+The **Agent Workspace** page now shows a step-by-step progress bar during agent execution. Each major step (requirements load, RAG retrieval, LLM generation, HITL queuing) advances the bar in real time. Progress state is tracked in `state.agent_progress` on the backend and exposed via the `/agent/logs` response `"progress"` field.
+
+### Toast Notifications for KB Actions (R6)
+Adding or removing URLs from the Knowledge Base now triggers **toast notifications** (success/error) via the `sonner` library instead of inline error banners. Notifications appear in the top-right corner and dismiss automatically, keeping the KB page uncluttered.
+
+### Fully English UI (R7)
+All remaining Italian-language strings in the dashboard (`UnifiedDocumentsPanel`, `ProjectModal`) have been translated to English. The UI is now fully localized for English-speaking teams.
+
+### Component Decomposition — KB and Requirements Pages (R4)
+`KnowledgeBasePage.jsx` was a 700+ line monolith. It has been decomposed into focused sub-components under `src/components/kb/`: `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`, `TagEditModal`, `PreviewModal`, and a shared `kbHelpers.js` utility module. Similarly, `TagConfirmPanel` was extracted from `RequirementsPage.jsx` into `src/components/requirements/`. This makes each component independently testable and easier to maintain.
+
+### Audit Event Log — MongoDB (R19-MVP)
+Every significant state-changing action (catalog entry creation, document approval/promotion, KB document upload/delete) is now recorded as an immutable audit event in a dedicated MongoDB `events` collection. Events are retained for 90 days via a TTL index. This provides a lightweight but persistent audit trail for compliance and debugging without requiring a separate logging infrastructure.

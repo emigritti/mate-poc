@@ -2,8 +2,8 @@
 
 | Field            | Value                                                                                    |
 |------------------|------------------------------------------------------------------------------------------|
-| **Version**      | 3.0                                                                                      |
-| **Date**         | 2026-03-19                                                                               |
+| **Version**      | 4.0                                                                                      |
+| **Date**         | 2026-03-21                                                                               |
 | **Author**       | AI-assisted (Claude Code)                                                                |
 | **Status**       | Active                                                                                   |
 | **ADRs covered** | ADR-012 through ADR-024                                                                  |
@@ -18,6 +18,7 @@
 | 1.0     | 2026-03-06 | Initial test plan (Phase 1+3 remediation) |
 | 2.0     | 2026-03-06 | Added Phase 4 (security review) findings: F-01..F-10 remediation tests; ADR-017 (XSS), ADR-018 (CORS); fixed SEC-003 reference; added SEC-011..SEC-015 |
 | 3.0     | 2026-03-19 | Updated test count to 171 (added KB, RAG, tag, LLM settings, lifecycle test files); added IT-011 (KB URL happy path); added SEC-017 (SSRF guard); updated OWASP A10 mitigation; ADRs covered extended to ADR-024 |
+| 4.0     | 2026-03-21 | Updated test count to 274 (Phase 4 polish: R4 sub-component decomposition tests, R18 agent progress tests, R19 event_logger tests); ADRs covered extended to ADR-033 |
 
 ---
 
@@ -149,7 +150,7 @@ Require the full Docker Compose stack (`docker-compose up`).
 
 A phase is considered **DONE** only when all of the following pass:
 
-- [ ] All unit tests pass (`pytest tests/ -v` exits 0) — **171 tests expected**
+- [ ] All unit tests pass (`pytest tests/ -v` exits 0) — **274 tests expected**
 - [ ] No `CRITICAL` or `HIGH` security finding unmitigated
 - [ ] All IT-00x integration tests pass on a fresh `docker-compose up --build`
 - [ ] All SEC-00x security tests verified
