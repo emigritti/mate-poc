@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
 import Sidebar from './components/layout/Sidebar.jsx';
 import TopBar from './components/layout/TopBar.jsx';
 import WorkflowStepper from './components/WorkflowStepper.jsx';
@@ -81,6 +82,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <Toaster position="top-right" richColors closeButton />
       <div className="flex h-screen bg-slate-50 overflow-hidden">
         <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
 
