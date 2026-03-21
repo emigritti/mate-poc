@@ -2,7 +2,7 @@
 Hybrid Retriever — BM25 + ChromaDB dense retrieval with multi-query expansion.
 
 Phase 2 — R8 (multi-query expansion), R9 (threshold + TF-IDF re-rank + BM25),
-           R12 (multi-dimensional $or tag filter).
+           R12 (tag-based result preference via Python post-filter).
 
 ADR-027: BM25 Hybrid Retrieval (rank_bm25 + ensemble scoring).
 ADR-028: Multi-Query Expansion 2+2 (2 template + 2 LLM variants).
@@ -22,6 +22,10 @@ from config import settings
 from services.llm_service import generate_with_ollama, llm_overrides
 
 logger = logging.getLogger(__name__)
+
+# Metadata field used to store comma-separated tags on every ChromaDB document.
+# Defined as a constant to prevent typo-based silent misses in tag filtering.
+TAGS_CSV_FIELD = "tags_csv"
 
 
 @dataclass
@@ -138,27 +142,17 @@ class HybridRetriever:
 
     # ── Tag Filter (R12) ──────────────────────────────────────────────────────
 
-    def _build_chroma_where_filter(self, tags: list[str]) -> dict | None:
-        """Always returns None.
-
-        ChromaDB 0.5.x metadata 'where' filters do not support $contains on
-        string fields (only $eq/$ne/$in/$nin and numeric comparators are valid).
-        Tag matching is performed in Python via _tags_match_meta() inside
-        _query_chroma() after results are retrieved.
-        """
-        return None
-
     @staticmethod
     def _tags_match_meta(meta: dict | None, tags: list[str]) -> bool:
-        """Return True if any tag appears as a substring in meta['tags_csv'].
+        """Return True if any tag appears as a substring in meta[TAGS_CSV_FIELD].
 
         Used as a Python post-filter replacing the unsupported ChromaDB
         $contains metadata operator (R12 / ADR-019).
         """
         if not tags:
             return True
-        csv = (meta or {}).get("tags_csv", "")
-        return any(t in csv for t in tags)
+        tags_str = (meta or {}).get(TAGS_CSV_FIELD, "")
+        return any(t in tags_str for t in tags)
 
     # ── ChromaDB Query ────────────────────────────────────────────────────────
 
@@ -178,8 +172,8 @@ class HybridRetriever:
         if not collection:
             return []
 
-        seen: dict[str, ScoredChunk] = {}           # all results
-        seen_tagged: dict[str, ScoredChunk] = {}    # tag-matched (Python post-filter)
+        seen: dict[str, ScoredChunk] = {}   # all results, deduplicated by doc_id
+        matched_ids: set[str] = set()        # doc_ids whose tags_csv matched (R12)
         n = settings.rag_n_results_per_query
 
         for query in queries:
@@ -196,18 +190,21 @@ class HybridRetriever:
                 for doc, dist, meta in zip(docs, dists, metas):
                     score = 1.0 / (1.0 + dist)   # metric-agnostic distance → similarity score
                     doc_id = (meta or {}).get("doc_id", doc[:50])
-                    chunk = ScoredChunk(text=doc, score=score, source_label="approved", tags=tags)
                     if doc_id not in seen or seen[doc_id].score < score:
-                        seen[doc_id] = chunk
+                        seen[doc_id] = ScoredChunk(
+                            text=doc, score=score, source_label="approved", tags=tags
+                        )
                     if tags and self._tags_match_meta(meta, tags):
-                        if doc_id not in seen_tagged or seen_tagged[doc_id].score < score:
-                            seen_tagged[doc_id] = chunk
+                        matched_ids.add(doc_id)
 
             except Exception as exc:
                 logger.warning("[RAG] ChromaDB query failed for variant: %s", exc)
 
-        # Prefer tag-matched chunks; fall back to all results if none matched.
-        return list(seen_tagged.values()) if (tags and seen_tagged) else list(seen.values())
+        # Prefer tag-matched chunks (membership tracked separately from scores);
+        # fall back to all results when no chunk matches the requested tags.
+        if tags and matched_ids:
+            return [seen[doc_id] for doc_id in matched_ids if doc_id in seen]
+        return list(seen.values())
 
     # ── BM25 Query ────────────────────────────────────────────────────────────
 

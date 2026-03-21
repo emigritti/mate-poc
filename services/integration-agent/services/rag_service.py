@@ -17,9 +17,19 @@ import httpx
 
 from config import settings
 from services.llm_service import llm_overrides
-from services.retriever import ScoredChunk
+from services.retriever import TAGS_CSV_FIELD, ScoredChunk
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_docs_by_tag(all_docs: list[str], metas: list, tag: str) -> list[str]:
+    """Return docs whose ``TAGS_CSV_FIELD`` metadata contains *tag* as a substring.
+
+    Replaces the ChromaDB ``$contains`` metadata operator (not supported in
+    ChromaDB 0.5.x).  ``metas`` is the parallel list returned by
+    ``collection.query(include=["metadatas"])``.
+    """
+    return [d for d, m in zip(all_docs, metas) if tag in (m or {}).get(TAGS_CSV_FIELD, "")]
 
 
 def build_rag_context(docs: list[str]) -> str:
@@ -62,10 +72,7 @@ async def query_rag_with_tags(
             )
             all_docs = (results or {}).get("documents", [[]])[0]
             metas    = (results or {}).get("metadatas",  [[]])[0]
-            docs = [
-                d for d, m in zip(all_docs, metas)
-                if tags[0] in (m or {}).get("tags_csv", "")
-            ]
+            docs     = _filter_docs_by_tag(all_docs, metas, tags[0])
             if docs:
                 return build_rag_context(docs[:2]), "tag_filtered"
         except Exception as exc:
@@ -113,18 +120,16 @@ async def query_kb_context(
             continue
         try:
             n_results = 15 if filter_tag else 3
+            include   = ["documents", "metadatas"] if filter_tag else ["documents"]
             results = kb_collection.query(
                 query_texts=[query_text],
                 n_results=n_results,
-                include=["documents", "metadatas"],
+                include=include,
             )
             all_docs = (results or {}).get("documents", [[]])[0]
-            metas    = (results or {}).get("metadatas",  [[]])[0]
             if filter_tag:
-                docs = [
-                    d for d, m in zip(all_docs, metas)
-                    if filter_tag in (m or {}).get("tags_csv", "")
-                ]
+                metas = (results or {}).get("metadatas", [[]])[0]
+                docs  = _filter_docs_by_tag(all_docs, metas, filter_tag)
             else:
                 docs = all_docs
             if docs:
