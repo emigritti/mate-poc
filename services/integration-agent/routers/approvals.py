@@ -17,6 +17,7 @@ from auth import require_token
 from output_guard import sanitize_human_content, LLMOutputValidationError
 from schemas import Approval, ApproveRequest, Document, RejectRequest
 from services.agent_service import generate_integration_doc
+from services.event_logger import record_event
 from utils import _now_iso
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,8 @@ async def approve_doc(
             {"id": doc_id}, doc.model_dump(), upsert=True
         )
 
+    await record_event("approval.approved", {"integration_id": app_entry.integration_id})
+
     return {"status": "success", "message": "Approved and staged. Use 'Promote to KB' to add to RAG."}
 
 
@@ -99,6 +102,11 @@ async def reject_doc(
         await db.approvals_col.replace_one(
             {"id": id}, state.approvals[id].model_dump(), upsert=True
         )
+
+    await record_event("approval.rejected", {
+        "integration_id": state.approvals[id].integration_id,
+        "reason": body.feedback,
+    })
 
     return {"status": "success", "message": "Rejected. Feedback stored for agent retry context."}
 

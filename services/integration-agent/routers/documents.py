@@ -12,6 +12,7 @@ import db
 import state
 from auth import require_token
 from schemas import Document
+from services.event_logger import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,8 @@ async def promote_document_to_kb(doc_id: str, _user: str = Depends(require_token
             {"id": doc_id},
             {"$set": {"kb_status": "promoted"}},
         )
+
+    await record_event("document.promoted", {"doc_id": doc_id})
 
     return {
         "status": "success",

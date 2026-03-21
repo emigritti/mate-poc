@@ -14,6 +14,7 @@ import state
 from auth import require_token
 from schemas import ConfirmTagsRequest, SuggestTagsResponse
 from services.tag_service import extract_category_tags, suggest_tags_via_llm
+from services.event_logger import record_event
 from log_helpers import log_agent
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,8 @@ async def confirm_tags(
         await db.catalog_col.replace_one(
             {"id": id}, entry.model_dump(), upsert=True
         )
+
+    await record_event("catalog.tags_confirmed", {"integration_id": id, "tags": clean_tags})
 
     return {
         "status": "success",
