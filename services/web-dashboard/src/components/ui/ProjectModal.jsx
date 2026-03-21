@@ -87,10 +87,10 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
           data.client_name?.toLowerCase() === clientName.trim().toLowerCase();
         if (sameClient) {
           setResolvedId(data.prefix); // reuse this project
-          setPrefixBanner({ kind: 'ok', message: `Progetto esistente trovato: "${data.client_name}" — verrà riutilizzato.` });
+          setPrefixBanner({ kind: 'ok', message: `Existing project found: "${data.client_name}" — it will be reused.` });
         } else {
           setResolvedId(false); // clash — different client
-          setPrefixBanner({ kind: 'clash', message: `Prefisso già in uso da un altro cliente: "${data.client_name}". Scegli un prefisso diverso.` });
+          setPrefixBanner({ kind: 'clash', message: `Prefix already in use by another client: "${data.client_name}". Please choose a different prefix.` });
         }
       } else {
         // Unexpected error — treat as free to avoid blocking the user
@@ -154,7 +154,7 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
         });
         const projData = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(extractDetail(projData, `Errore creazione progetto (${res.status})`));
+          throw new Error(extractDetail(projData, `Project creation error (${res.status})`));
         }
         // Backend envelope: {"status":"created","data":{prefix,...}} — prefix is nested under .data
         projectId = projData.data?.prefix;
@@ -164,12 +164,12 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
       const finRes = await API.requirements.finalize(projectId);
       const finData = await finRes.json().catch(() => ({}));
       if (!finRes.ok) {
-        throw new Error(extractDetail(finData, `Errore finalizzazione (${finRes.status})`));
+        throw new Error(extractDetail(finData, `Finalization error (${finRes.status})`));
       }
 
       await onConfirm(projectId);
     } catch (e) {
-      setError(e.message || 'Operazione fallita. Riprova.');
+      setError(e.message || 'Operation failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -185,10 +185,10 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/60">
           <div>
             <h2 className="font-bold text-slate-900 text-base" style={{ fontFamily: 'Outfit, sans-serif' }}>
-              Metadati Progetto
+              Project Metadata
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              {preview.length} requirement{preview.length !== 1 ? 's' : ''} pronti — associa un progetto prima di procedere.
+              {preview.length} requirement{preview.length !== 1 ? 's' : ''} ready — associate a project before proceeding.
             </p>
           </div>
           <button
@@ -203,10 +203,10 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
         <div className="px-6 py-5 space-y-4">
 
           {/* Client name */}
-          <Field label="Nome Cliente" required icon={Building2}>
+          <Field label="Client Name" required icon={Building2}>
             <input
               type="text"
-              placeholder="es. Acme Corp"
+              placeholder="e.g. Acme Corp"
               value={clientName}
               onChange={e => setClientName(e.target.value)}
               className={inputCls}
@@ -214,10 +214,10 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
           </Field>
 
           {/* Domain */}
-          <Field label="Dominio Integrazione" required icon={Globe}>
+          <Field label="Integration Domain" required icon={Globe}>
             <input
               type="text"
-              placeholder="es. Fashion Retail, PLM-PIM"
+              placeholder="e.g. Fashion Retail, PLM-PIM"
               value={domain}
               onChange={e => setDomain(e.target.value)}
               className={inputCls}
@@ -225,11 +225,11 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
           </Field>
 
           {/* Prefix */}
-          <Field label="Prefisso (1–3 caratteri)" required icon={Hash}>
+          <Field label="Prefix (1–3 chars)" required icon={Hash}>
             <div className="space-y-1">
               <input
                 type="text"
-                placeholder="es. ACM"
+                placeholder="e.g. ACM"
                 value={prefix}
                 onChange={handlePrefixChange}
                 maxLength={3}
@@ -239,7 +239,7 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
               {resolvedId === undefined && prefix && PREFIX_RE.test(prefix) && (
                 <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
                   <Loader2 size={11} className="animate-spin" />
-                  Verifica disponibilità…
+                  Checking availability…
                 </div>
               )}
               {prefixBanner?.kind === 'ok' && (
@@ -253,15 +253,15 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
                 </div>
               )}
               <p className="text-xs text-slate-400 px-1">
-                Gli ID integrazioni useranno questo prefisso: <span className="font-mono font-semibold text-slate-600">{prefix || '???'}-4F2A1B</span>
+                Integration IDs will use this prefix: <span className="font-mono font-semibold text-slate-600">{prefix || '???'}-4F2A1B</span>
               </p>
             </div>
           </Field>
 
           {/* Description (optional) */}
-          <Field label="Descrizione" icon={FileText}>
+          <Field label="Description" icon={FileText}>
             <textarea
-              placeholder="Breve descrizione del progetto (opzionale)"
+              placeholder="Brief project description (optional)"
               value={description}
               onChange={e => setDescription(e.target.value)}
               rows={2}
@@ -271,10 +271,10 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
           </Field>
 
           {/* Accenture ref (optional) */}
-          <Field label="Riferimento Accenture" icon={User}>
+          <Field label="Accenture Reference" icon={User}>
             <input
               type="text"
-              placeholder="es. nome referente o codice engagement (opzionale)"
+              placeholder="e.g. contact name or engagement code (optional)"
               value={accentureRef}
               onChange={e => setAccentureRef(e.target.value)}
               maxLength={100}
@@ -296,7 +296,7 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
             onClick={onCancel}
             className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
           >
-            Annulla
+            Cancel
           </button>
           <button
             onClick={handleConfirm}
@@ -304,9 +304,9 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
             className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? (
-              <><Loader2 size={14} className="animate-spin" /> Creazione…</>
+              <><Loader2 size={14} className="animate-spin" /> Creating…</>
             ) : (
-              <><CheckCircle size={14} /> Conferma e Crea Integrazioni</>
+              <><CheckCircle size={14} /> Confirm &amp; Create Integrations</>
             )}
           </button>
         </div>
