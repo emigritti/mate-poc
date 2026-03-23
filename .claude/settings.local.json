@@ -99,7 +99,12 @@
       "Bash(for f:*)",
       "Bash(do echo:*)",
       "Read(//c/Project/Agentic/my-functional-integration-mate-poc/docs/**)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(cmd.exe /c \"docker logs mate-ingestion-platform 2>&1\")",
+      "Bash(/c/Windows/Temp/dlogs.ps1:*)",
+      "Bash(powershell.exe -NoProfile -NonInteractive -File \"C:\\\\Windows\\\\Temp\\\\dlogs.ps1\")",
+      "Bash(/c/Windows/Temp/finddocker.ps1:*)",
+      "Bash(powershell.exe -NoProfile -NonInteractive -File \"C:\\\\Windows\\\\Temp\\\\finddocker.ps1\")"
     ]
   },
   "hooks": {
