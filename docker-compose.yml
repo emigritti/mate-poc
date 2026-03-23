@@ -357,6 +357,9 @@ services:
       # n8n v1+ uses built-in user management (owner account setup on first run).
       # N8N_BASIC_AUTH_ACTIVE is deprecated in v1+ and causes 401 on /rest/settings,
       # breaking the settings store initialization in the frontend.
+      # N8N_SECURE_COOKIE=false required for HTTP (non-HTTPS) access.
+      # For production, set up TLS and remove this override.
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
     volumes:
       - n8n-data:/home/node/.n8n
       - ./workflows/n8n:/home/node/.n8n/workflows:ro
@@ -371,6 +374,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    logging: *default-logging
+
+  n8n-init:
+    image: n8nio/n8n:latest
+    container_name: mate-n8n-init
+    # Imports all workflow JSON files from the mounted workflows directory
+    # into n8n's SQLite DB. Idempotent: re-running updates existing workflows.
+    # Runs after n8n is healthy so the DB is fully initialized before import.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        n8n import:workflow --separate --input=/workflows && \
+        echo "Workflow import complete."
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./workflows/n8n:/workflows:ro
+    depends_on:
+      n8n:
+        condition: service_healthy
+    networks:
+      - integration-mate-net
+    restart: "no"
     logging: *default-logging
 
   # ── Frontend Layer ─────────────────────────────────────
