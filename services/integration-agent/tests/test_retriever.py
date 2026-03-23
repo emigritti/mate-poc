@@ -264,3 +264,72 @@ def test_retrieve_returns_top_k(monkeypatch):
     ))
     assert len(result) <= 5  # top-K default
     assert all(hasattr(c, "score") for c in result)
+
+
+# ── retrieve_summaries (ADR-032 — RAPTOR-lite) ────────────────────────────────
+
+def test_retrieve_summaries_returns_scored_chunks_with_summary_label():
+    """retrieve_summaries returns ScoredChunk list with source_label='summary'."""
+    from services.retriever import HybridRetriever, ScoredChunk
+    r = HybridRetriever()
+
+    mock_col = MagicMock()
+    mock_col.query.return_value = _make_chroma_result(
+        ["Summary of field mapping section.", "Summary of error handling."],
+        [0.1, 0.2],
+        ["sum-1", "sum-2"],
+    )
+
+    result = asyncio.run(r.retrieve_summaries("field mapping PLM PIM", None, mock_col))
+
+    assert len(result) == 2
+    assert all(c.source_label == "summary" for c in result)
+    assert all(isinstance(c, ScoredChunk) for c in result)
+
+
+def test_retrieve_summaries_returns_empty_list_when_collection_is_none():
+    """retrieve_summaries returns [] gracefully when summaries_col is None."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+
+    result = asyncio.run(r.retrieve_summaries("query", None, None))
+
+    assert result == []
+
+
+def test_retrieve_summaries_applies_tag_filter():
+    """retrieve_summaries applies tag post-filtering (same as _tags_match_meta)."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+
+    mock_col = MagicMock()
+    # Only second result has the "Integration" tag
+    mock_col.query.return_value = _make_chroma_result(
+        ["No-tag summary.", "Tagged summary."],
+        [0.05, 0.15],
+        ["sum-1", "sum-2"],
+        tags_csv=["Other", "Integration"],
+    )
+
+    result = asyncio.run(r.retrieve_summaries("query", ["Integration"], mock_col))
+
+    assert len(result) == 1
+    assert result[0].text == "Tagged summary."
+
+
+def test_retrieve_summaries_returns_at_most_top3():
+    """retrieve_summaries returns at most 3 summaries regardless of collection size."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+
+    # 5 results in ChromaDB
+    mock_col = MagicMock()
+    mock_col.query.return_value = _make_chroma_result(
+        [f"Summary {i}." for i in range(5)],
+        [0.1 * i for i in range(5)],
+        [f"sum-{i}" for i in range(5)],
+    )
+
+    result = asyncio.run(r.retrieve_summaries("query", None, mock_col))
+
+    assert len(result) <= 3

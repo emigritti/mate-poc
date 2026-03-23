@@ -24,6 +24,7 @@
 6. [Component Specification](#6-component-specification)
 7. [Agentic RAG & Integration Framework](#7-agentic-rag--integration-framework)
    - [7.7 RAG Retriever Pipeline (Phase 2 — ADR-027..030)](#77-rag-retriever-pipeline-phase-2--adr-027030)
+   - [7.8 Advanced RAG Pipeline — Docling + LLaVA + RAPTOR-lite (Phase 4 — ADR-034..035)](#78-advanced-rag-pipeline--docling--llava--raptor-lite-phase-4--adr-034035)
 8. [Integration Patterns](#8-integration-patterns)
 9. [Data Architecture](#9-data-architecture)
 10. [API Surface](#10-api-surface)
@@ -225,20 +226,22 @@ graph TB
 
         subgraph svc_layer["Services Layer (services/)"]
             llm_svc["llm_service.py<br/><i>Ollama client · generate_with_retry()<br/>3 attempts · 5s/15s backoff (R13)</i>"]
-            rag_svc["rag_service.py<br/><i>ChromaDB queries · ContextAssembler (R10)<br/>## PAST APPROVED EXAMPLES + ## BEST PRACTICE PATTERNS</i>"]
+            rag_svc["rag_service.py<br/><i>ChromaDB queries · ContextAssembler (R10)<br/>## DOCUMENT SUMMARIES + ## PAST APPROVED EXAMPLES<br/>+ ## BEST PRACTICE PATTERNS</i>"]
             tag_svc["tag_service.py<br/><i>Tag extraction · LLM suggestion<br/>(ADR-019, ADR-020)</i>"]
-            retriever["retriever.py<br/><i>HybridRetriever: BM25+dense ensemble<br/>Multi-query · threshold · TF-IDF re-rank (Phase 2)</i>"]
+            retriever["retriever.py<br/><i>HybridRetriever: BM25+dense ensemble<br/>Multi-query · threshold · TF-IDF re-rank (Phase 2)<br/>retrieve_summaries() dense-only (ADR-035)</i>"]
+            vision_svc["vision_service.py<br/><i>caption_figure() → llava:7b via Ollama<br/>Fallback: placeholder on error/disabled (ADR-034)</i>"]
+            summarizer_svc["summarizer_service.py<br/><i>summarize_section() → SummaryChunk<br/>RAPTOR-lite grouping by section_header (ADR-035)</i>"]
         end
 
         subgraph state_layer["State Layer"]
-            state["state.py<br/><i>Centralized in-memory globals:<br/>catalog · approvals · documents<br/>projects · kb_docs · kb_chunks<br/>agent_logs · _agent_lock</i>"]
+            state["state.py<br/><i>Centralized in-memory globals:<br/>catalog · approvals · documents<br/>projects · kb_docs · kb_chunks<br/>summaries_col · agent_logs · _agent_lock</i>"]
         end
 
         subgraph cross_cut["Cross-Cutting Utilities"]
             auth["auth.py<br/><i>API key dependency<br/>hmac.compare_digest()</i>"]
-            config["config.py<br/><i>pydantic-settings<br/>OLLAMA_HOST, MONGO_URI, CHROMA_HOST<br/>RAG thresholds, BM25 weights</i>"]
+            config["config.py<br/><i>pydantic-settings<br/>OLLAMA_HOST, MONGO_URI, CHROMA_HOST<br/>RAG thresholds · BM25 weights<br/>vision_captioning_enabled · raptor_summarization_enabled</i>"]
             utils["utils.py + log_helpers.py<br/><i>Shared helpers · ring buffer logger</i>"]
-            doc_parser["document_parser.py<br/><i>PDF/DOCX/XLSX/PPTX/MD parsing<br/>semantic_chunk() — R11</i>"]
+            doc_parser["document_parser.py<br/><i>parse_with_docling() → DoclingChunk (text/table/figure)<br/>section_header + page_num metadata (ADR-034)<br/>Fallback: semantic_chunk() — R11</i>"]
         end
 
     end
@@ -248,7 +251,9 @@ graph TB
     rag_svc --> retriever
     r_cat --> tag_svc
     r_kb --> doc_parser
-    llm_svc & rag_svc & tag_svc --> state
+    r_kb --> summarizer_svc
+    doc_parser --> vision_svc
+    llm_svc & rag_svc & tag_svc & summarizer_svc --> state
     r_agent & r_req & r_proj & r_cat & r_appr & r_docs & r_kb & r_admin --> auth
     state --> config
 ```
@@ -263,18 +268,20 @@ graph TB
 | **Catalog Router** | `routers/catalog.py` | Integration listing with project metadata; tag suggest/confirm (ADR-019) |
 | **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback; regenerate REJECTED doc with feedback injected (ADR-032) |
 | **Documents Router** | `routers/documents.py` | Final doc listing; promote-to-kb (ADR-023) |
-| **KB Router** | `routers/kb.py` | File upload + URL registration (ADR-024); tag management; semantic search; stats |
+| **KB Router** | `routers/kb.py` | File upload via `parse_with_docling()` (ADR-034); RAPTOR-lite section summarisation → `summaries_col` (ADR-035); URL registration (ADR-024); tag management; semantic search; stats |
 | **Admin Router** | `routers/admin.py` | Reset tools; LLM settings CRUD (persist to MongoDB); project docs browser |
 | **LLM Service** | `services/llm_service.py` | `generate_with_retry()` — 3 attempts, 5s/15s exponential backoff (R13); Ollama `/api/generate` |
-| **RAG Service** | `services/rag_service.py` | ChromaDB approved_integrations + knowledge_base queries; `ContextAssembler` token-budgeted sections (R10) |
+| **RAG Service** | `services/rag_service.py` | ChromaDB approved_integrations + knowledge_base queries; `ContextAssembler` token-budgeted sections: `## DOCUMENT SUMMARIES` + `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` (R10 / ADR-035) |
 | **Tag Service** | `services/tag_service.py` | Tag extraction from catalog entry; LLM suggestion with dedicated settings (ADR-020) |
-| **HybridRetriever** | `services/retriever.py` | Multi-query expansion + BM25+dense ensemble + threshold filter + TF-IDF re-rank (Phase 2 / ADR-027..030) |
-| **Document Parser** | `document_parser.py` | PDF/DOCX/XLSX/PPTX/MD parsing; `semantic_chunk()` via LangChain RecursiveCharacterTextSplitter (R11) |
-| **State** | `state.py` | Centralized in-memory globals: all dicts, lock, logs, `kb_chunks` BM25 corpus |
+| **HybridRetriever** | `services/retriever.py` | Multi-query expansion + BM25+dense ensemble + threshold filter + TF-IDF re-rank (Phase 2 / ADR-027..030); `retrieve_summaries()` dense-only on `summaries_col` (ADR-035) |
+| **Vision Service** | `services/vision_service.py` | `caption_figure(image_bytes)` — calls `llava:7b` via Ollama `/api/chat` with base64 image; placeholder on error or when `vision_captioning_enabled=False` (ADR-034) |
+| **Summarizer Service** | `services/summarizer_service.py` | `summarize_section(chunks, doc_id, tags)` — RAPTOR-lite: groups by `section_header`, summarises sections ≥ 3 chunks via llama3.1:8b; returns `SummaryChunk\|None` (ADR-035) |
+| **Document Parser** | `document_parser.py` | `parse_with_docling()` — layout-aware parsing via IBM Docling: `DoclingChunk` per text/table/figure item with `section_header` + `page_num` (ADR-034); fallback: `semantic_chunk()` via LangChain (R11) |
+| **State** | `state.py` | Centralized in-memory globals: all dicts, lock, logs, `kb_chunks` BM25 corpus, `summaries_col` ChromaDB handle |
 | **Auth** | `auth.py` | `get_api_key()` FastAPI dependency; `hmac.compare_digest()` constant-time check |
-| **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent; RAG thresholds + BM25 weights |
+| **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent; RAG thresholds, BM25 weights, vision/RAPTOR-lite flags |
 | **Output Guard** | `output_guard.py` | Checks `# Integration Functional Design` heading; bleach strip; 50k truncation; `assess_quality()` → `QualityReport` warning-only gate (ADR-031) |
-| **Agent Service** | `services/agent_service.py` | `generate_integration_doc()` — full RAG+LLM pipeline; shared by agent flow and regenerate endpoint (ADR-032) |
+| **Agent Service** | `services/agent_service.py` | `generate_integration_doc()` — full RAG+LLM pipeline with `summary_chunks`; shared by agent flow and regenerate endpoint (ADR-032) |
 
 ### 5.1 Backend Module Structure (Phase 1 — ADR-026)
 
@@ -284,12 +291,13 @@ Phase 1 (R15) decomposed the original 2065-line `main.py` monolith into a layere
 services/integration-agent/
 ├── main.py              (~213 lines — app factory + lifespan + router registration)
 ├── state.py             — centralized in-memory globals (catalog, approvals, documents,
-│                          projects, kb_docs, kb_chunks, agent_logs, _agent_lock)
+│                          projects, kb_docs, kb_chunks, summaries_col, agent_logs, _agent_lock)
 ├── auth.py              — API key auth dependency (hmac.compare_digest)
-├── config.py            — pydantic-settings (env vars + RAG/BM25 parameters)
+├── config.py            — pydantic-settings (env vars + RAG/BM25/vision/RAPTOR parameters)
 ├── output_guard.py      — structural guard + bleach sanitization
 ├── prompt_builder.py    — meta-prompt + template loading; str.replace() injection
-├── document_parser.py   — PDF/DOCX/XLSX/PPTX/MD parsing + semantic_chunk() (R11)
+├── document_parser.py   — parse_with_docling() → DoclingChunk (text/table/figure) (ADR-034)
+│                          Fallback: semantic_chunk() via LangChain (R11)
 ├── routers/             — 8 domain APIRouter modules (no cross-imports between routers)
 │   ├── agent.py         — agentic RAG flow (trigger, cancel, logs)
 │   ├── requirements.py  — CSV upload + finalize
@@ -297,14 +305,16 @@ services/integration-agent/
 │   ├── catalog.py       — integration catalog queries + tag suggest/confirm
 │   ├── approvals.py     — HITL approve/reject/regenerate (ADR-032)
 │   ├── documents.py     — final docs + KB promotion
-│   ├── kb.py            — Knowledge Base management (files + URLs)
+│   ├── kb.py            — Knowledge Base: Docling upload + RAPTOR-lite summarisation + URLs
 │   └── admin.py         — reset tools, LLM settings, project docs browser
 └── services/
     ├── llm_service.py       — Ollama client + generate_with_retry() exponential-backoff (R13)
-    ├── rag_service.py       — ChromaDB queries + ContextAssembler token-budgeted context (R10)
+    ├── rag_service.py       — ContextAssembler: DOCUMENT SUMMARIES + PAST APPROVED + BEST PRACTICE (R10/ADR-035)
     ├── tag_service.py       — tag extraction + LLM suggestion (ADR-019, ADR-020)
-    ├── retriever.py         — HybridRetriever: BM25+dense ensemble + TF-IDF re-rank (Phase 2)
-    └── agent_service.py     — generate_integration_doc(): shared generation pipeline (Phase 3 / ADR-032)
+    ├── retriever.py         — HybridRetriever: BM25+dense + TF-IDF re-rank + retrieve_summaries() (ADR-027..030/ADR-035)
+    ├── vision_service.py    — caption_figure(): llava:7b via Ollama, fallback placeholder (ADR-034)
+    ├── summarizer_service.py — summarize_section(): RAPTOR-lite SummaryChunk via llama3.1:8b (ADR-035)
+    └── agent_service.py     — generate_integration_doc(): RAG + summary_chunks pipeline (ADR-032)
 ```
 
 **Design constraints (ADR-026):**
@@ -1024,6 +1034,59 @@ graph LR
 | `scikit-learn` | 1.6.1 | `TfidfVectorizer` for cosine re-ranking |
 
 **ADR references:** ADR-027 (multi-query expansion), ADR-028 (BM25+dense hybrid), ADR-029 (threshold filter + re-rank), ADR-030 (ContextAssembler structured sections).
+
+---
+
+### 7.8 Advanced RAG Pipeline — Docling + LLaVA + RAPTOR-lite (Phase 4 — ADR-034..035)
+
+Phase 4 addresses two quality gaps in the Phase 2 pipeline: visual content loss (charts/diagrams discarded) and chunk-level retrieval missing section context.
+
+#### 7.8.1 Docling Layout-Aware Parser + LLaVA Vision (ADR-034)
+
+`document_parser.py` gains `parse_with_docling()` as the primary KB upload path:
+
+| Item type | `chunk_type` | Processing |
+|-----------|-------------|------------|
+| `TextItem` | `"text"` | Preserved with `section_header` and `page_num` |
+| `TableItem` | `"table"` | Exported as markdown table |
+| `PictureItem` | `"figure"` | Image bytes → `vision_service.caption_figure()` → LLaVA caption |
+
+`vision_service.caption_figure(image_bytes)` calls `llava:7b` via Ollama `/api/chat` with base64-encoded image. Controlled by `vision_captioning_enabled` (default `True`). Returns `"[FIGURE: no caption available]"` on error or when disabled. Figure captions are included in the BM25 index.
+
+Fallback: if `docling` is not installed, `_docling_fallback()` preserves the legacy `parse_document()` + `semantic_chunk()` path.
+
+#### 7.8.2 RAPTOR-lite Section Summaries (ADR-035)
+
+After Docling parsing, chunks are grouped by `section_header`. Sections with ≥ 3 chunks are summarised by `summarizer_service.summarize_section()` using llama3.1:8b. `SummaryChunk` objects are upserted to `state.summaries_col` (ChromaDB collection `"kb_summaries"`).
+
+At retrieval time, `HybridRetriever.retrieve_summaries()` performs dense-only search on `summaries_col` (no BM25 — summaries benefit more from semantic search than keyword matching). The top-3 results are passed to `ContextAssembler.assemble()` as `summary_chunks` and rendered as the first context section:
+
+```
+## DOCUMENT SUMMARIES (overview context):   ← new, 500-char budget
+## PAST APPROVED EXAMPLES (unchanged)
+## BEST PRACTICE PATTERNS (unchanged)
+```
+
+Total context budget raised to **3000 chars** (`ollama_rag_max_chars`).
+
+#### New Config Parameters (Phase 4)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `vision_captioning_enabled` | `True` | Enable LLaVA figure captioning |
+| `vision_model_name` | `"llava:7b"` | Ollama model for vision |
+| `raptor_summarization_enabled` | `True` | Enable RAPTOR-lite section summaries |
+| `rag_summary_max_chars` | `500` | Char budget for DOCUMENT SUMMARIES section |
+| `ollama_rag_max_chars` | `3000` | Total RAG context budget (raised from 1500) |
+
+#### New Dependencies (Phase 4)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `docling` | ≥ 2.0 | Layout-aware PDF/DOCX parsing |
+| `numpy` | < 2.0 | Pin for chromadb 0.5.x compatibility (`np.float_` removed in NumPy 2.0) |
+
+**ADR references:** ADR-034 (Docling + LLaVA vision parser), ADR-035 (RAPTOR-lite section summaries).
 
 ---
 
@@ -1818,6 +1881,8 @@ gantt
 | ADR-031 | Output Quality Checker | Accepted | `assess_quality()` warning-only gate |
 | ADR-032 | Feedback Loop Regenerate | Accepted | HITL rejection feedback loop |
 | ADR-033 | TanStack Query Frontend | Accepted | React Query server-state pilot |
+| ADR-034 | Docling + LLaVA Vision Parser | Accepted | Layout-aware PDF/DOCX parsing via IBM Docling; `DoclingChunk` with `chunk_type` (text/table/figure), `section_header`, `page_num`; figure captioning via `llava:7b` (local Ollama) |
+| ADR-035 | RAPTOR-lite Section Summaries | Accepted | Section-header grouping of `DoclingChunk`s; sections ≥ 3 chunks summarised via llama3.1:8b; `SummaryChunk` stored in `kb_summaries` ChromaDB collection; dense-only retrieval injected as `## DOCUMENT SUMMARIES` first section |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |

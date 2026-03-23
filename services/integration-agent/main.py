@@ -53,6 +53,9 @@ async def _init_chromadb(retries: int = 20, delay: float = 5.0) -> None:
             state.kb_collection = state.chroma_client.get_or_create_collection(
                 name="knowledge_base"
             )
+            state.summaries_col = state.chroma_client.get_or_create_collection(
+                name="kb_summaries"
+            )
             logger.info("[ChromaDB] Connected (attempt %d/%d).", attempt, retries)
             return
         except Exception as exc:

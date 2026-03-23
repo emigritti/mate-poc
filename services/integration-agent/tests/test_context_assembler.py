@@ -86,3 +86,60 @@ def test_context_assembler_both_sections_present():
     assert "BEST PRACTICE PATTERNS" in result
     assert "approved integration example" in result
     assert "best practice document" in result
+
+
+# ── DOCUMENT SUMMARIES section (ADR-032 — RAPTOR-lite) ───────────────────────
+
+def test_context_assembler_summary_chunks_add_document_summaries_section():
+    """assemble() with summary_chunks adds a '## DOCUMENT SUMMARIES' section first."""
+    from services.rag_service import ContextAssembler
+    ca = ContextAssembler()
+    summaries = [_make_chunk("Field mapping: PLM product_id → PIM sku.", 0.91, "summary")]
+
+    result = ca.assemble([], [], [], max_chars=5000, summary_chunks=summaries)
+
+    assert "DOCUMENT SUMMARIES" in result
+    assert "Field mapping: PLM product_id" in result
+
+
+def test_context_assembler_summary_section_appears_before_approved():
+    """DOCUMENT SUMMARIES section appears before PAST APPROVED EXAMPLES."""
+    from services.rag_service import ContextAssembler
+    ca = ContextAssembler()
+    summaries = [_make_chunk("Section summary text.", 0.91, "summary")]
+    approved  = [_make_chunk("Approved example.", 0.85, "approved")]
+
+    result = ca.assemble(approved, [], [], max_chars=5000, summary_chunks=summaries)
+
+    assert result.index("DOCUMENT SUMMARIES") < result.index("PAST APPROVED EXAMPLES")
+
+
+def test_context_assembler_no_summary_section_when_summary_chunks_empty():
+    """No DOCUMENT SUMMARIES section when summary_chunks is empty or absent."""
+    from services.rag_service import ContextAssembler
+    ca = ContextAssembler()
+    approved = [_make_chunk("Approved example.", 0.85, "approved")]
+
+    result_no_kwarg  = ca.assemble(approved, [], [], max_chars=5000)
+    result_empty_arg = ca.assemble(approved, [], [], max_chars=5000, summary_chunks=[])
+
+    assert "DOCUMENT SUMMARIES" not in result_no_kwarg
+    assert "DOCUMENT SUMMARIES" not in result_empty_arg
+
+
+def test_context_assembler_summary_section_respects_summary_budget():
+    """DOCUMENT SUMMARIES section stops adding chunks when summary budget exceeded."""
+    from services.rag_service import ContextAssembler
+    ca = ContextAssembler()
+    # 3 summaries of 200 chars each; budget of 250 chars → only first fits
+    summaries = [
+        _make_chunk("A" * 200 + f" summary_{i}", 0.9 - i * 0.1, "summary")
+        for i in range(3)
+    ]
+
+    result = ca.assemble([], [], [], max_chars=5000, summary_chunks=summaries, summary_max_chars=250)
+
+    # Count how many "A" * 200 blocks appear
+    summary_section = result.split("## PAST")[0] if "## PAST" in result else result
+    assert summary_section.count("summary_0") == 1   # first fits
+    assert summary_section.count("summary_2") == 0   # third doesn't fit

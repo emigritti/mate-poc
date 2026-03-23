@@ -20,6 +20,7 @@ from document_parser import (
     DocumentParseError,
     detect_file_type,
     parse_document,
+    parse_with_docling,
     semantic_chunk,
 )
 from log_helpers import log_agent
@@ -33,6 +34,7 @@ from schemas import (
     KBUpdateTagsRequest,
     KBUploadResponse,
 )
+from services.summarizer_service import summarize_section
 from services.tag_service import suggest_kb_tags_via_llm
 from utils import _now_iso
 
@@ -64,71 +66,101 @@ async def kb_upload(
             ),
         )
 
+    # Docling layout-aware parsing (ADR-031): extracts text, tables, and figure captions.
+    # Falls back to legacy text parser if Docling is not installed.
     try:
-        result = parse_document(content, filename, file.content_type)
-    except DocumentParseError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        docling_chunks = await parse_with_docling(content, file_type)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Document parsing failed: {exc}")
 
-    chunks = semantic_chunk(
-        result.text,
-        chunk_size=settings.kb_chunk_size,
-        chunk_overlap=settings.kb_chunk_overlap,
-    )
-    if not chunks:
+    if not docling_chunks:
         raise HTTPException(status_code=422, detail="No text could be extracted from the file.")
 
-    auto_tags = await suggest_kb_tags_via_llm(result.text[:1000], filename, log_fn=log_agent)
+    # Auto-tag using first 1000 chars of text content for context
+    preview_text = " ".join(c.text for c in docling_chunks if c.chunk_type == "text")[:1000]
+    auto_tags = await suggest_kb_tags_via_llm(preview_text or docling_chunks[0].text[:1000], filename, log_fn=log_agent)
     log_agent(f"[KB] Auto-tags for '{filename}': {auto_tags}")
 
     doc_id = f"KB-{uuid.uuid4().hex[:8].upper()}"
-    if state.kb_collection is not None:
-        tags_csv = ",".join(auto_tags)
-        try:
-            state.kb_collection.upsert(
-                documents=[c.text for c in chunks],
-                metadatas=[
-                    {
-                        "document_id": doc_id,
-                        "filename": filename,
-                        "chunk_index": c.index,
-                        "tags_csv": tags_csv,
-                    }
-                    for c in chunks
-                ],
-                ids=[f"{doc_id}-chunk-{c.index}" for c in chunks],
-            )
-            logger.info("[KB] Stored %d chunks in ChromaDB for %s.", len(chunks), doc_id)
-        except Exception as exc:
-            logger.warning("[KB] ChromaDB upsert failed for %s: %s", doc_id, exc)
-            raise HTTPException(status_code=500, detail=f"Vector store failed: {exc}")
-    else:
+    if state.kb_collection is None:
         raise HTTPException(status_code=503, detail="ChromaDB is unavailable.")
+
+    tags_csv = ",".join(auto_tags)
+    try:
+        state.kb_collection.upsert(
+            documents=[c.text for c in docling_chunks],
+            metadatas=[
+                {
+                    "document_id": doc_id,
+                    "filename": filename,
+                    "chunk_index": c.index,
+                    "chunk_type": c.chunk_type,
+                    "page_num": c.page_num,
+                    "section_header": c.section_header,
+                    "tags_csv": tags_csv,
+                }
+                for c in docling_chunks
+            ],
+            ids=[f"{doc_id}-chunk-{c.index}" for c in docling_chunks],
+        )
+        logger.info("[KB] Stored %d chunks in ChromaDB for %s.", len(docling_chunks), doc_id)
+    except Exception as exc:
+        logger.warning("[KB] ChromaDB upsert failed for %s: %s", doc_id, exc)
+        raise HTTPException(status_code=500, detail=f"Vector store failed: {exc}")
+
+    # RAPTOR-lite: group chunks by section and generate summaries (ADR-032).
+    # Summaries are stored in summaries_col for multi-granularity retrieval.
+    if state.summaries_col is not None:
+        from itertools import groupby
+        sorted_chunks = sorted(docling_chunks, key=lambda c: c.section_header)
+        for section_header, group_iter in groupby(sorted_chunks, key=lambda c: c.section_header):
+            section_chunks = list(group_iter)
+            summary = await summarize_section(section_chunks, doc_id=doc_id, tags=auto_tags)
+            if summary is not None:
+                summary_id = f"{doc_id}-summary-{abs(hash(section_header)) % 100000}"
+                try:
+                    state.summaries_col.upsert(
+                        documents=[summary.text],
+                        metadatas=[{
+                            "document_id": doc_id,
+                            "filename": filename,
+                            "section_header": summary.section_header,
+                            "tags_csv": tags_csv,
+                        }],
+                        ids=[summary_id],
+                    )
+                    logger.info("[RAPTOR] Summary stored for doc=%s section='%s'.", doc_id, section_header)
+                except Exception as exc:
+                    logger.warning("[RAPTOR] summaries_col upsert failed: %s", exc)
+
+    # Determine file_type from first chunk metadata (Docling knows the real type)
+    detected_file_type = file_type
 
     kb_doc = KBDocument(
         id=doc_id,
         filename=filename,
-        file_type=result.file_type,
+        file_type=detected_file_type,
         file_size_bytes=len(content),
         tags=auto_tags,
-        chunk_count=len(chunks),
-        content_preview=result.text[:500],
+        chunk_count=len(docling_chunks),
+        content_preview=preview_text[:500] or "",
         uploaded_at=_now_iso(),
     )
     state.kb_docs[doc_id] = kb_doc
-    # Update BM25 corpus and rebuild index (Phase 2 / ADR-027)
-    state.kb_chunks[doc_id] = [c.text for c in chunks]
+    # Update BM25 corpus — all chunk types (text, table, figure) are included (ADR-031).
+    state.kb_chunks[doc_id] = [c.text for c in docling_chunks]
     hybrid_retriever.build_bm25_index(state.kb_chunks)
     if db.kb_documents_col is not None:
         await db.kb_documents_col.replace_one(
             {"id": doc_id}, kb_doc.model_dump(), upsert=True
         )
 
-    log_agent(f"[KB] Document '{filename}' imported as {doc_id} ({len(chunks)} chunks).")
+    log_agent(f"[KB] Document '{filename}' imported as {doc_id} ({len(docling_chunks)} chunks).")
     return KBUploadResponse(
         id=doc_id,
         filename=filename,
-        file_type=result.file_type,
-        chunks_created=len(chunks),
+        file_type=detected_file_type,
+        chunks_created=len(docling_chunks),
         auto_tags=auto_tags,
     ).model_dump()
 

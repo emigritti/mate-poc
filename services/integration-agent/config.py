@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     ollama_temperature: float = 0.3
     # RAG context injected into the prompt is truncated to this many chars.
     # Full approved documents (~4800 chars) double the prompt and slow CPU inference.
-    # 1500 chars captures the key patterns without exploding the KV cache.
-    ollama_rag_max_chars: int = 1500
+    # 3000 chars (raised from 1500) to accommodate summaries + chunks + figures (ADR-031/032).
+    ollama_rag_max_chars: int = 3000
 
     # ── Tag Suggestion LLM (lightweight — overrides for tag-only calls) ───────
     # Tag output is a JSON array of ≤2 items (~15 tokens).
@@ -80,6 +80,16 @@ class Settings(BaseSettings):
 
     # Final top-K chunks passed to ContextAssembler after re-ranking.
     rag_top_k_chunks: int = 5              # override: RAG_TOP_K_CHUNKS
+
+    # ── Advanced RAG — Vision + RAPTOR-lite (ADR-031, ADR-032) ──────────────────
+    # Vision captioning: set to False to skip LLaVA calls (figures get placeholder caption).
+    vision_captioning_enabled: bool = True
+    # Ollama model used for image captioning (must support multimodal via /api/chat).
+    vision_model_name: str = "llava:7b"
+    # RAPTOR-lite: set to False to skip section summarization at KB upload time.
+    raptor_summarization_enabled: bool = True
+    # Char budget reserved for DOCUMENT SUMMARIES section in ContextAssembler.
+    rag_summary_max_chars: int = 500
 
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.

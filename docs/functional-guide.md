@@ -655,6 +655,44 @@ React Query (TanStack Query) is piloted for the approvals page to replace manual
 
 Test count: **263 tests** (247 baseline + 7 quality + 3 prompt feedback + 6 regenerate).
 
+### 9.3 Advanced RAG Pipeline — Docling + LLaVA + RAPTOR-lite (Phase 4 — ADR-034..035)
+
+Phase 4 closes two structural gaps in the Phase 2 RAG pipeline:
+
+**Visual content gap — Docling + LLaVA vision (ADR-034)**
+The legacy parser silently discarded charts, architecture diagrams, and data-flow figures. Integration documents use diagrams to convey field mappings and data flows; losing them degraded generated document quality.
+
+`parse_with_docling()` replaces per-format text extractors:
+- **Text items** → `DoclingChunk(chunk_type="text")` with `section_header` and `page_num`
+- **Table items** → `DoclingChunk(chunk_type="table")`, text is the markdown table export
+- **Figure items** → `DoclingChunk(chunk_type="figure")`, text is a LLaVA caption
+
+LLaVA captioning (`vision_service.caption_figure()`) calls `llava:7b` via the local Ollama daemon with base64-encoded image bytes. It is controlled by `vision_captioning_enabled` (default `True`) and returns a placeholder on error. Figure captions are included in the BM25 index so keyword queries (e.g., "field mapping REST endpoint") can match diagram labels. Legacy `parse_document()` and `semantic_chunk()` are preserved unchanged for backward compatibility; Docling falls back to them if the package is not installed.
+
+**Retrieval granularity gap — RAPTOR-lite summaries (ADR-035)**
+Chunk-level retrieval loses section-level context. When the same concept spans many chunks, no single chunk explains the overall picture.
+
+After parsing, chunks are grouped by `section_header`. Sections with ≥ 3 chunks are summarised by `summarize_section()` (llama3.1:8b), producing a `SummaryChunk` upserted to the `kb_summaries` ChromaDB collection. At retrieval time, `HybridRetriever.retrieve_summaries()` performs dense-only search (summaries benefit more from semantic similarity than keyword matching) and returns the top-3 summary chunks. These are injected by `ContextAssembler` as a new **first section** in the prompt:
+
+```
+## DOCUMENT SUMMARIES (overview context):   ← 500-char budget
+## PAST APPROVED EXAMPLES                   ← unchanged
+## BEST PRACTICE PATTERNS                   ← unchanged
+```
+
+Total context budget raised from 1500 → **3000 chars** (`ollama_rag_max_chars`).
+
+Both features are independently disableable via config flags:
+
+| Flag | Default | Effect when disabled |
+|------|---------|---------------------|
+| `vision_captioning_enabled` | `True` | Figure chunks get placeholder caption |
+| `raptor_summarization_enabled` | `True` | Section summaries silently skipped |
+
+New dependencies: `docling>=2.0`, `numpy<2.0` (pin for chromadb 0.5.x compatibility).
+
+Test count: **309 tests** (263 + 35 Phase 4 tests: 5 vision, 7 docling parser, 7 summarizer, 4 kb-upload, 4 retriever, 4 context-assembler, 4 integration).
+
 ---
 
 ## 10. Security Model — Why and How
@@ -772,7 +810,7 @@ cd services/integration-agent
 python -m pytest tests/ -v
 ```
 
-All 274 tests must pass before any commit (per CLAUDE.md Definition of Done).
+All 309 tests must pass before any commit (per CLAUDE.md Definition of Done).
 
 ---
 

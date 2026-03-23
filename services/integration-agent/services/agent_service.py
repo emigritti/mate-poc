@@ -73,10 +73,16 @@ async def generate_integration_doc(
         if url_raw else []
     )
 
+    # RAPTOR-lite: retrieve section-level summaries for overview context (ADR-032).
+    summary_chunks = await hybrid_retriever.retrieve_summaries(
+        query_text, entry.tags, state.summaries_col,
+    )
+
     assembler = ContextAssembler()
     rag_context = assembler.assemble(
         approved_chunks, kb_scored_chunks, url_chunks,
         max_chars=settings.ollama_rag_max_chars,
+        summary_chunks=summary_chunks,
     )
     _log(
         f"[RAG] Assembled context: {len(rag_context)} chars"

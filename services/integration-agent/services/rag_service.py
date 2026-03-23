@@ -218,29 +218,60 @@ class ContextAssembler:
         kb_chunks: list[ScoredChunk],
         url_chunks: list[ScoredChunk],
         max_chars: int,
+        *,
+        summary_chunks: list[ScoredChunk] | None = None,
+        summary_max_chars: int | None = None,
     ) -> str:
         """Assemble a structured context string for the LLM prompt.
 
         Args:
-            approved_chunks: Chunks from approved_integrations ChromaDB collection.
-            kb_chunks:       Chunks from knowledge_base ChromaDB collection.
-            url_chunks:      Chunks from live-fetched URL KB entries.
-            max_chars:       Hard character budget for the assembled context.
+            approved_chunks:    Chunks from approved_integrations ChromaDB collection.
+            kb_chunks:          Chunks from knowledge_base ChromaDB collection.
+            url_chunks:         Chunks from live-fetched URL KB entries.
+            max_chars:          Hard character budget for approved + KB sections.
+            summary_chunks:     RAPTOR-lite document summaries (ADR-032). Inserted
+                                as the first section when provided and non-empty.
+            summary_max_chars:  Char budget for the DOCUMENT SUMMARIES section.
+                                Defaults to settings.rag_summary_max_chars.
 
         Returns:
             Formatted context string, or empty string if no chunks provided.
         """
-        if not approved_chunks and not kb_chunks and not url_chunks:
+        _summary_max = summary_max_chars if summary_max_chars is not None else settings.rag_summary_max_chars
+
+        all_empty = (
+            not approved_chunks
+            and not kb_chunks
+            and not url_chunks
+            and not summary_chunks
+        )
+        if all_empty:
             return ""
+
+        sections: list[str] = []
+        chars_used = 0
+
+        # ── DOCUMENT SUMMARIES (ADR-032 — RAPTOR-lite) — first section ────────
+        if summary_chunks:
+            summary_sorted = sorted(summary_chunks, key=lambda c: c.score, reverse=True)
+            header = "## DOCUMENT SUMMARIES (overview context):"
+            section_parts = [header]
+            summary_chars = 0
+            for chunk in summary_sorted:
+                entry = f"### Source: summary · score: {chunk.score:.2f}\n{chunk.text}"
+                if summary_chars + len(entry) > _summary_max:
+                    break
+                section_parts.append(entry)
+                summary_chars += len(entry)
+                chars_used += len(entry)
+            if len(section_parts) > 1:
+                sections.append("\n\n".join(section_parts))
 
         # Sort all chunks by score descending within each section
         approved_sorted = sorted(approved_chunks, key=lambda c: c.score, reverse=True)
         kb_sorted       = sorted(kb_chunks + url_chunks, key=lambda c: c.score, reverse=True)
 
-        sections: list[str] = []
-        chars_used = 0
-
-        if approved_sorted:
+        if approved_sorted and chars_used < max_chars:
             header = "## PAST APPROVED EXAMPLES (use as style reference):"
             section_parts = [header]
             for chunk in approved_sorted:

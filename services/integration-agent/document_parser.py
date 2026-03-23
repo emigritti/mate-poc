@@ -77,6 +77,21 @@ class TextChunk:
     metadata: dict   # {source_page, ...}
 
 
+@dataclass
+class DoclingChunk:
+    """A single chunk produced by the Docling layout-aware parser (ADR-031).
+
+    chunk_type values: "text", "table", "figure"
+    section_header:    heading text from the nearest parent section in the document.
+    """
+    text: str
+    chunk_type: str    # "text" | "table" | "figure"
+    page_num: int
+    section_header: str
+    index: int
+    metadata: dict
+
+
 # ── Format-specific parsers ───────────────────────────────────────────────────
 
 def _parse_pdf(data: bytes) -> ParseResult:
@@ -391,3 +406,179 @@ def semantic_chunk(
         len(result), chunk_size, chunk_overlap,
     )
     return result
+
+
+# ── Docling layout-aware parser (ADR-031) ─────────────────────────────────────
+
+def _get_page_num(item) -> int:
+    """Extract page number from a Docling item's provenance list."""
+    try:
+        return item.prov[0].page_no
+    except (AttributeError, IndexError):
+        return 0
+
+
+def _is_section_header(item) -> bool:
+    """Return True if the item is a section/heading item."""
+    try:
+        return item.label.value == "section_header"
+    except AttributeError:
+        return False
+
+
+def _is_table_item(item) -> bool:
+    """Return True if the item is a Docling TableItem."""
+    return type(item).__name__ == "TableItem"
+
+
+def _is_picture_item(item) -> bool:
+    """Return True if the item is a Docling PictureItem."""
+    return type(item).__name__ == "PictureItem"
+
+
+def _pil_to_bytes(pil_image) -> bytes:
+    """Convert a PIL image to PNG bytes."""
+    import io as _io
+    buf = _io.BytesIO()
+    pil_image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+async def parse_with_docling(file_bytes: bytes, file_type: str) -> list[DoclingChunk]:
+    """Parse a document using IBM Docling for layout-aware chunking (ADR-031).
+
+    Extracts text, table, and figure chunks with rich metadata:
+      - chunk_type: "text" | "table" | "figure"
+      - page_num: source page number
+      - section_header: nearest parent section heading
+      - index: 0-based sequential index across all chunks
+
+    Falls back to legacy text-only parsing when Docling is not installed.
+    Figure captions are generated via vision_service.caption_figure() (llava:7b).
+    """
+    import asyncio as _asyncio
+    import io as _io
+
+    # Lazy import — allows graceful fallback if Docling is not installed.
+    try:
+        from docling.document_converter import DocumentConverter
+        from docling.datamodel.base_models import DocumentStream
+    except ImportError:
+        logger.warning(
+            "[Docling] Not available — falling back to text-only parser. "
+            "Install with: pip install docling"
+        )
+        return _docling_fallback(file_bytes, file_type)
+
+    # Import vision_service here to avoid circular imports at module level.
+    from services.vision_service import caption_figure
+
+    def _convert():
+        converter = DocumentConverter()
+        stream = DocumentStream(
+            name=f"document.{file_type}",
+            stream=_io.BytesIO(file_bytes),
+        )
+        return converter.convert(stream)
+
+    # Docling conversion is CPU-bound — run in thread pool to avoid blocking.
+    loop = _asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _convert)
+    doc = result.document
+
+    chunks: list[DoclingChunk] = []
+    current_section = ""
+    chunk_idx = 0
+
+    for item, _level in doc.iterate_items():
+        page_num = _get_page_num(item)
+
+        if _is_section_header(item):
+            current_section = getattr(item, "text", "")
+            continue
+
+        if _is_table_item(item):
+            table_md = item.export_to_markdown() or ""
+            if table_md.strip():
+                chunks.append(DoclingChunk(
+                    text=f"[TABLE]\n{table_md.strip()}",
+                    chunk_type="table",
+                    page_num=page_num,
+                    section_header=current_section,
+                    index=chunk_idx,
+                    metadata={},
+                ))
+                chunk_idx += 1
+
+        elif _is_picture_item(item):
+            try:
+                pil_img = item.get_image(doc)
+                img_bytes = _pil_to_bytes(pil_img) if pil_img else None
+            except Exception:
+                img_bytes = None
+
+            caption = await caption_figure(img_bytes) if img_bytes is not None else "[FIGURE: no caption available]"
+            chunks.append(DoclingChunk(
+                text=caption,
+                chunk_type="figure",
+                page_num=page_num,
+                section_header=current_section,
+                index=chunk_idx,
+                metadata={},
+            ))
+            chunk_idx += 1
+
+        else:
+            # Default: treat as text item
+            text = getattr(item, "text", "").strip()
+            if text:
+                chunks.append(DoclingChunk(
+                    text=text,
+                    chunk_type="text",
+                    page_num=page_num,
+                    section_header=current_section,
+                    index=chunk_idx,
+                    metadata={},
+                ))
+                chunk_idx += 1
+
+    logger.info(
+        "[Docling] Parsed %d chunks (%d text, %d table, %d figure) from %s.",
+        len(chunks),
+        sum(1 for c in chunks if c.chunk_type == "text"),
+        sum(1 for c in chunks if c.chunk_type == "table"),
+        sum(1 for c in chunks if c.chunk_type == "figure"),
+        file_type,
+    )
+    return chunks
+
+
+def _docling_fallback(file_bytes: bytes, file_type: str) -> list[DoclingChunk]:
+    """Wrap legacy text parsing into DoclingChunk list when Docling is unavailable."""
+    if file_type == "md":
+        try:
+            text = file_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            text = file_bytes.decode("latin-1", errors="replace")
+        if not text.strip():
+            return []
+        text_chunks = semantic_chunk(text)
+    else:
+        try:
+            parse_result = _PARSERS[file_type](file_bytes)
+            text_chunks = semantic_chunk(parse_result.text)
+        except Exception as exc:
+            logger.warning("[Docling-fallback] Parse failed: %s", exc)
+            return []
+
+    return [
+        DoclingChunk(
+            text=tc.text,
+            chunk_type="text",
+            page_num=0,
+            section_header="",
+            index=i,
+            metadata=tc.metadata,
+        )
+        for i, tc in enumerate(text_chunks)
+    ]

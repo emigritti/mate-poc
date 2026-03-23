@@ -369,6 +369,57 @@ class HybridRetriever:
         _log(f"[RAG] Final: {len(top_k)} chunks after ensemble+threshold+rerank")
         return top_k
 
+    # ── RAPTOR-lite Summary Retrieval (ADR-032) ───────────────────────────────
+
+    async def retrieve_summaries(
+        self,
+        query_text: str,
+        tags: list[str] | None,
+        summaries_col,
+        *,
+        top_k: int = 3,
+    ) -> list[ScoredChunk]:
+        """Retrieve document-level summaries from the RAPTOR-lite summaries collection.
+
+        Dense-only retrieval (no BM25) — summaries are longer, descriptive text
+        that benefits more from semantic embedding than keyword matching.
+
+        Returns at most `top_k` ScoredChunks with source_label='summary'.
+        Returns [] gracefully when summaries_col is None (collection unavailable).
+        Tag filtering reuses _tags_match_meta (same logic as _query_chroma).
+        """
+        if summaries_col is None:
+            return []
+
+        try:
+            raw = summaries_col.query(
+                query_texts=[query_text],
+                n_results=top_k * 2,  # over-fetch to allow for tag filtering
+                include=["documents", "distances", "metadatas"],
+            )
+        except Exception as exc:
+            logger.warning("[RAG] retrieve_summaries query failed: %s", exc)
+            return []
+
+        docs      = (raw.get("documents") or [[]])[0]
+        distances = (raw.get("distances") or [[]])[0]
+        metadatas = (raw.get("metadatas") or [[]])[0]
+
+        results: list[ScoredChunk] = []
+        for text, dist, meta in zip(docs, distances, metadatas):
+            if tags and not self._tags_match_meta(meta, tags):
+                continue
+            score = 1.0 / (1.0 + dist) if dist is not None else 0.0
+            results.append(ScoredChunk(
+                text=text,
+                score=score,
+                source_label="summary",
+                tags=[t.strip() for t in (meta or {}).get(TAGS_CSV_FIELD, "").split(",") if t.strip()],
+            ))
+
+        results.sort(key=lambda c: c.score, reverse=True)
+        return results[:top_k]
+
 
 # ── Module-level singleton ────────────────────────────────────────────────────
 # Initialized at startup in main.py lifespan. Routers import this instance.

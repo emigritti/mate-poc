@@ -47,3 +47,4 @@ running_tasks: dict[str, asyncio.Task] = {}
 chroma_client  = None
 collection     = None
 kb_collection  = None
+summaries_col  = None  # RAPTOR-lite summaries collection (ADR-032)
