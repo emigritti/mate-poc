@@ -357,6 +357,13 @@ services:
       # n8n v1+ uses built-in user management (owner account setup on first run).
       # N8N_BASIC_AUTH_ACTIVE is deprecated in v1+ and causes 401 on /rest/settings,
       # breaking the settings store initialization in the frontend.
+      # N8N_SECURE_COOKIE=false required for HTTP (non-HTTPS) access.
+      # For production deployments set N8N_SECURE_COOKIE=true in .env with TLS.
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
+      # N8N_TRUST_PROXY=true required when running behind nginx reverse proxy.
+      # Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+      # because Express sees X-Forwarded-For but trust proxy is false by default.
+      - N8N_TRUST_PROXY=true
     volumes:
       - n8n-data:/home/node/.n8n
       - ./workflows/n8n:/home/node/.n8n/workflows:ro
@@ -366,11 +373,35 @@ services:
     networks:
       - integration-mate-net
     healthcheck:
-      test: curl -f http://localhost:5678/healthz || exit 1
+      # n8n image (node:alpine) does not include curl — use wget instead.
+      test: wget -q --spider http://localhost:5678/healthz || exit 1
       interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
+
+  n8n-init:
+    image: n8nio/n8n:latest
+    container_name: mate-n8n-init
+    # Imports all workflow JSON files into n8n's SQLite DB.
+    # Idempotent: updates existing workflows without duplicating them.
+    # Depends on service_healthy so DB is fully initialized before import.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        n8n import:workflow --separate --input=/workflows && \
+        echo "Workflow import complete."
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./workflows/n8n:/workflows:ro
+    depends_on:
+      n8n:
+        condition: service_healthy
+    networks:
+      - integration-mate-net
+    restart: "no"
     logging: *default-logging
 
   # ── Frontend Layer ─────────────────────────────────────
