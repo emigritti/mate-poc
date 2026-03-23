@@ -20,6 +20,7 @@
 11. [Running the System](#11-running-the-system)
 12. [Admin Tools](#12-admin-tools)
 13. [Phase 4 Polish — What Changed for End Users](#13-phase-4-polish--what-changed-for-end-users)
+14. [Phase 5 — Multi-Source Ingestion Platform](#14-phase-5--multi-source-ingestion-platform)
 
 ---
 
@@ -100,6 +101,14 @@ Before triggering the agent, architects can populate the **Knowledge Base** via 
 1. **File Upload** — Upload existing integration design documents (PDF, DOCX, XLSX, PPTX, or Markdown). Files are chunked, embedded, and stored in the ChromaDB `knowledge_base` collection. The auto-tagger suggests up to 3 tags via LLM.
 
 2. **URL Link** — Register any HTTP/HTTPS URL (e.g., a Salsify API reference, an Akeneo integration guide). The URL is stored as a KB entry with user-assigned tags. At generation time, the agent fetches the URL content live and injects it alongside file-based KB context.
+
+3. **Batch File Upload** — Upload up to 10 documents in a single `POST /api/v1/kb/batch-upload` request (multipart form, same supported file types). Results are returned per file with partial success: a failure on one file does not abort the others.
+
+4. **Automated Multi-Source Ingestion** (Ingestion Platform — port 4006) — The dedicated Ingestion Platform service continuously populates the KB from three additional source types:
+   - **OpenAPI/Swagger** — fetches specs with ETag caching; normalizes endpoints, schemas, and auth into `CanonicalCapability` chunks; detects breaking changes by comparing operation_id sets.
+   - **HTML Documentation** — Playwright-based crawler + BS4 cleaning + Claude Haiku relevance filter + Claude Sonnet schema-constrained extraction + cross-page reconciliation.
+   - **MCP Servers** — introspects tools, resources, and prompts via the Python MCP SDK; normalizes each into KB chunks.
+   All ingested chunks land in the shared `kb_collection` ChromaDB (same collection used by file uploads) with a `src_*` chunk ID prefix and enriched `source_type` metadata. The RAG retriever needs zero modifications to benefit from this content.
 
 When the agent generates a new integration document, it queries the knowledge base alongside the approved-examples RAG store — injecting the most relevant best-practice content into the prompt as a `BEST PRACTICES REFERENCE` section.
 
@@ -810,7 +819,15 @@ cd services/integration-agent
 python -m pytest tests/ -v
 ```
 
-All 309 tests must pass before any commit (per CLAUDE.md Definition of Done).
+All **314 tests** must pass before any commit (per CLAUDE.md Definition of Done):
+- 309 integration-agent tests (all previous phases)
+- 5 new batch-upload tests (`test_batch_upload.py`)
+
+For the Ingestion Platform service:
+```bash
+cd services/ingestion-platform
+python -m pytest tests/ -v
+```
 
 ---
 
@@ -861,3 +878,78 @@ All remaining Italian-language strings in the dashboard (`UnifiedDocumentsPanel`
 
 ### Audit Event Log — MongoDB (R19-MVP)
 Every significant state-changing action (catalog entry creation, document approval/promotion, KB document upload/delete) is now recorded as an immutable audit event in a dedicated MongoDB `events` collection. Events are retained for 90 days via a TTL index. This provides a lightweight but persistent audit trail for compliance and debugging without requiring a separate logging infrastructure.
+
+---
+
+## 14. Phase 5 — Multi-Source Ingestion Platform
+
+Phase 5 introduces a new independent service (`services/ingestion-platform/`, port 4006) and n8n workflow orchestrator (port 5678) that continuously populate the KB from four new source types without any changes to the existing RAG pipeline.
+
+### Batch File Upload
+
+The existing KB upload endpoint now has a companion: `POST /api/v1/kb/batch-upload` accepts up to 10 files in a single multipart request. Processing is sequential per file (to avoid BM25 index rebuild race conditions), and results are returned per file with **partial success**: if one file fails to parse, the others still succeed. Each result entry contains `filename`, `status` (`"success"` or `"error"`), `chunks_created`, and an optional `error` message.
+
+### Ingestion Platform Architecture
+
+```
+services/ingestion-platform/
+├── api/
+│   ├── main.py                  ← FastAPI app, lifespan, MongoDB init
+│   ├── config.py                ← pydantic-settings (ANTHROPIC_API_KEY optional)
+│   └── routers/
+│       ├── sources.py           ← CRUD source registry (MongoDB `sources` collection)
+│       └── ingest.py            ← POST /api/v1/ingest/{openapi|html|mcp}/{source_id}
+├── collectors/
+│   ├── openapi/                 ← fetcher (ETag) · parser · normalizer · chunker · differ
+│   ├── html/                    ← crawler (Playwright) · cleaner (BS4) · extractor (Claude Haiku) ·
+│   │                               agent_extractor (Claude Sonnet) · normalizer
+│   └── mcp/                     ← inspector (Python MCP SDK) · normalizer
+├── services/
+│   ├── indexing_service.py      ← ChromaDB writer — only DB writer in the service
+│   ├── diff_service.py          ← hash comparison + Claude-powered diff summary
+│   └── claude_service.py        ← Anthropic SDK wrapper (filter/extract/summarize)
+└── models/
+    ├── source.py                ← Source, SourceRun, SourceSnapshot (Pydantic)
+    └── capability.py            ← CanonicalCapability, CanonicalChunk, CapabilityKind
+```
+
+### n8n Workflow Orchestration
+
+Six n8n workflows (importable JSON in `workflows/n8n/`) drive all scheduled and manual ingestion:
+
+| Workflow | Trigger | Action |
+|---|---|---|
+| WF-01 | Cron (every 1h) | Lists stale sources → dispatches WF-02/03/04 per source type |
+| WF-02 | HTTP or WF-01 | OpenAPI: `POST /api/v1/ingest/openapi/{source_id}` |
+| WF-03 | HTTP or WF-01 | HTML: `POST /api/v1/ingest/html/{source_id}` |
+| WF-04 | HTTP or WF-01 | MCP: `POST /api/v1/ingest/mcp/{source_id}` → poll run status |
+| WF-05 | Webhook (React UI) | Validates payload → dispatches typed refresh |
+| WF-06 | Cron (daily) | Queries `changed=true&severity=breaking` runs → logs breaking_change_detected event |
+
+### ChromaDB Integration — Zero Retriever Changes
+
+Ingestion Platform chunks land in the **same `kb_collection`** as file uploads. The only differences are:
+
+| Aspect | File Upload (`routers/kb.py`) | Ingestion Platform |
+|--------|------------------------------|---------------------|
+| Chunk ID prefix | `{doc_id}-chunk-{n}` (e.g., `KB-A1B2-chunk-0`) | `src_{source_code}-chunk-{n}` |
+| Required metadata fields | `document_id`, `filename`, `chunk_index`, `tags_csv`, `section_header`, `chunk_type`, `page_num` | Same fields + `source_type`, `source_code`, `snapshot_id`, `capability_kind`, `low_confidence` |
+| Retriever (`retriever.py`) | Unchanged | Unchanged — new metadata fields are ignored by existing queries |
+
+### Claude API Usage (ADR-037)
+
+The Ingestion Platform is the only component that calls the Anthropic Claude API. It is **not** used for the main RAG generation loop (which remains fully local via Ollama).
+
+| Component | Model | Purpose |
+|---|---|---|
+| `HTMLRelevanceFilter` | claude-haiku-4-5-20251001 | Binary: is this page technically relevant? |
+| `HTMLAgentExtractor` | claude-sonnet-4-6 | Extract endpoints/auth/flows as structured JSON |
+| `DiffService.summarize()` | claude-haiku-4-5-20251001 | Human-readable change summary (max 200 tokens) |
+
+**Graceful degradation:** if `ANTHROPIC_API_KEY` is not set, `ClaudeService` returns `None`; the HTML filter defaults to `True` (include all pages conservatively) and the extractor returns `[]` (no capabilities extracted). The service runs fully without a Claude API key, just with reduced HTML extraction quality.
+
+### Data Governance
+
+- All 3 collector types share the same `CanonicalCapability` model with a `CapabilityKind` enum (ENDPOINT, TOOL, RESOURCE, SCHEMA, AUTH, INTEGRATION_FLOW, GUIDE_STEP, EVENT, OVERVIEW).
+- Capabilities with confidence < 0.7 (from Claude extraction) are **kept** in the KB but tagged `low_confidence=True` in metadata — not silently discarded, to allow human review.
+- Claude output is always validated against Pydantic models before any DB write. Claude never writes to the DB directly — `IndexingService` is the sole ChromaDB writer in the service.

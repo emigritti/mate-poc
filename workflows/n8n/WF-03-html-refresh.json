@@ -1,0 +1,33 @@
+{
+  "name": "WF-03 HTML Refresh",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/ingest/html/={{ $json.source_id }}",
+        "method": "POST",
+        "options": {}
+      },
+      "id": "trigger_ingest",
+      "name": "Trigger HTML Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300]
+    }
+  ],
+  "connections": {
+    "Trigger": {"main": [[{"node": "Trigger HTML Ingest", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "meta": {"instanceId": "integration-mate-poc"},
+  "tags": [{"id": "wf03", "name": "html"}]
+}

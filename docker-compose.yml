@@ -306,6 +306,70 @@ services:
       start_period: 30s
     logging: *default-logging
 
+  # ── Ingestion Platform Layer ───────────────────────────
+
+  ingestion-platform:
+    build:
+      context: ./services/ingestion-platform
+      dockerfile: Dockerfile
+    container_name: mate-ingestion-platform
+    ports:
+      - "4006:4006"
+    environment:
+      - MONGO_URI=mongodb://mate-mongodb:27017
+      - CHROMA_HOST=mate-chromadb
+      - CHROMA_PORT=8000
+      - INTEGRATION_AGENT_URL=http://mate-integration-agent:3003
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
+      # Set ANTHROPIC_API_KEY in .env — required for HTML collector (Phase 4)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # API_KEY: optional, set to enable token-based auth on ingest trigger endpoints
+      - API_KEY=${API_KEY:-}
+    depends_on:
+      mongodb:
+        condition: service_started
+      chromadb:
+        condition: service_started
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:4006/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: mate-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      # Basic auth for n8n UI (change in production)
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-admin}
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./workflows/n8n:/home/node/.n8n/workflows:ro
+    depends_on:
+      ingestion-platform:
+        condition: service_healthy
+    networks:
+      - integration-mate-net
+    healthcheck:
+      test: curl -f http://localhost:5678/healthz || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+
   # ── Frontend Layer ─────────────────────────────────────
 
   # ── Gateway Layer ─────────────────────────────────────
@@ -356,6 +420,7 @@ volumes:
   chroma-data:
   ollama-data:
   minio-data:
+  n8n-data:
 
 # ── Networks ───────────────────────────────────────────
 

@@ -1,0 +1,106 @@
+{
+  "name": "WF-01 Scheduler — Dispatch Stale Sources",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "hours", "minutesInterval": 1}]}
+      },
+      "id": "cron_trigger",
+      "name": "Cron Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/sources",
+        "options": {}
+      },
+      "id": "list_sources",
+      "name": "List Active Sources",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {"value1": "={{ $json.status.state }}", "value2": "active"}
+          ]
+        }
+      },
+      "id": "filter_active",
+      "name": "Filter Active Sources",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {"value1": "={{ $json.source_type }}", "value2": "openapi"}
+          ]
+        }
+      },
+      "id": "is_openapi",
+      "name": "Is OpenAPI?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/ingest/openapi/={{ $json.id }}",
+        "method": "POST",
+        "options": {}
+      },
+      "id": "trigger_openapi",
+      "name": "Trigger OpenAPI Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 100]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/ingest/mcp/={{ $json.id }}",
+        "method": "POST",
+        "options": {}
+      },
+      "id": "trigger_mcp",
+      "name": "Trigger MCP Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/ingest/html/={{ $json.id }}",
+        "method": "POST",
+        "options": {}
+      },
+      "id": "trigger_html",
+      "name": "Trigger HTML Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 500]
+    }
+  ],
+  "connections": {
+    "Cron Every Hour": {"main": [[{"node": "List Active Sources", "type": "main", "index": 0}]]},
+    "List Active Sources": {"main": [[{"node": "Filter Active Sources", "type": "main", "index": 0}]]},
+    "Filter Active Sources": {"main": [[{"node": "Is OpenAPI?", "type": "main", "index": 0}]]},
+    "Is OpenAPI?": {
+      "main": [
+        [{"node": "Trigger OpenAPI Ingest", "type": "main", "index": 0}],
+        [{"node": "Trigger MCP Ingest", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "meta": {"instanceId": "integration-mate-poc"},
+  "tags": [{"id": "wf01", "name": "scheduler"}]
+}

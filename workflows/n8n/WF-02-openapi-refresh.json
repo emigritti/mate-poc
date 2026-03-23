@@ -1,0 +1,88 @@
+{
+  "name": "WF-02 OpenAPI Refresh",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/ingest/openapi/{{ $json.source_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "",
+        "options": {}
+      },
+      "id": "trigger_ingest",
+      "name": "Trigger OpenAPI Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "accepted"
+            }
+          ]
+        }
+      },
+      "id": "check_accepted",
+      "name": "Check Accepted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/runs/{{ $json.run_id }}",
+        "options": {}
+      },
+      "id": "poll_run",
+      "name": "Poll Run Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 200]
+    }
+  ],
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {"node": "Trigger OpenAPI Ingest", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Trigger OpenAPI Ingest": {
+      "main": [
+        [
+          {"node": "Check Accepted", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Check Accepted": {
+      "main": [
+        [
+          {"node": "Poll Run Status", "type": "main", "index": 0}
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "integration-mate-poc"
+  },
+  "tags": [
+    {"createdAt": "2026-03-23", "updatedAt": "2026-03-23", "id": "wf02", "name": "openapi"}
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "name": "WF-06 Breaking Change Notifications (Daily)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "hours", "hoursInterval": 24}]}
+      },
+      "id": "daily_cron",
+      "name": "Daily Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/runs?changed=true&severity=breaking&since_hours=24",
+        "options": {}
+      },
+      "id": "fetch_breaking",
+      "name": "Fetch Breaking Change Runs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {"value1": "={{ $json.length }}", "operation": "larger", "value2": 0}
+          ]
+        }
+      },
+      "id": "has_breaking",
+      "name": "Has Breaking Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-integration-agent:3003/api/v1/events",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"event_type\": \"breaking_change_detected\", \"sources\": {{ $json }} }",
+        "options": {}
+      },
+      "id": "log_event",
+      "name": "Log Breaking Change Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 200]
+    }
+  ],
+  "connections": {
+    "Daily Cron": {"main": [[{"node": "Fetch Breaking Change Runs", "type": "main", "index": 0}]]},
+    "Fetch Breaking Change Runs": {"main": [[{"node": "Has Breaking Changes?", "type": "main", "index": 0}]]},
+    "Has Breaking Changes?": {"main": [[{"node": "Log Breaking Change Event", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "meta": {"instanceId": "integration-mate-poc"},
+  "tags": [{"id": "wf06", "name": "notifications"}]
+}

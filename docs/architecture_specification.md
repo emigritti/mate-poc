@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 4.0.0 |
-| **Date** | 2026-03-21 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20), v3.1.0 (2026-03-20) |
+| **Version** | 5.0.0 |
+| **Date** | 2026-03-23 |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20), v3.1.0 (2026-03-20), v4.0.0 (2026-03-21) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -50,7 +50,8 @@ The **Functional Integration Mate** is an AI-powered platform that automates the
 2. **Functional Specifications** — LLM-generated business-level documents (template-driven)
 3. **Technical Design Documents** — LLM-generated implementation-level blueprints *(planned)*
 4. **Agentic Execution Engine** — AI agent that autonomously orchestrates documentation generation with RAG and HITL
-5. **Knowledge Base** — Multi-format document library (PDF, DOCX, XLSX, PPTX, MD) and registered HTTP/HTTPS URL links enabling best-practice injection into the RAG prompt; file chunks are stored in ChromaDB, URL content is fetched live at generation time (ADR-024)
+5. **Knowledge Base** — Multi-source document library supporting: single file upload (PDF, DOCX, XLSX, PPTX, MD), **batch file upload** (up to 10 files per request), registered HTTP/HTTPS URL links (fetched live at generation time, ADR-024), and automated multi-source ingestion (OpenAPI/Swagger specs, HTML documentation crawl, MCP server introspection) via the dedicated **Ingestion Platform** service (ADR-036)
+6. **Ingestion Platform** — Standalone FastAPI service (port 4006) with n8n workflow orchestrator (port 5678): three specialized collectors (OpenAPI, HTML, MCP), source registry, scheduled refresh, ETag caching, hash-based diff detection, and Claude-powered semantic diff summaries (ADR-037). All ingested chunks land in the shared `kb_collection` ChromaDB under distinct `src_*` ID prefix with enriched `source_type` metadata — zero changes required to the RAG retriever
 6. **LLM Settings** — Admin-configurable runtime overrides for model parameters (temperature, token limits, timeout, RAG context size), persisted in MongoDB and effective without restart
 7. **Admin Tools** — Project Docs browser (curated markdown viewer for ADRs, checklists, guides) and Reset Tools for full system reset including LLM override clearing
 
@@ -72,7 +73,8 @@ The platform focuses strictly on the **Documentation and Cataloging** layer of t
 | In Scope | Out of Scope |
 |---|---|
 | Mocked PLM, PIM, DAM APIs | Real enterprise system connections |
-| Local LLM (Ollama — llama3.2:3b / llama3.1:8b) | Cloud LLM APIs (OpenAI, Anthropic) |
+| Local LLM (Ollama — llama3.2:3b / llama3.1:8b) | Cloud LLM APIs (OpenAI) |
+| Claude API (Anthropic) for HTML semantic extraction + diff summaries (Ingestion Platform only) | Full Claude API integration in generation path |
 | MinIO S3 | AWS S3 / Azure Blob / GCS |
 | Docker Compose (single host) | Kubernetes / ECS / Cloud Run |
 | Bearer token auth (optional, PoC) | OAuth2 / SAML / OIDC provider |
@@ -141,7 +143,7 @@ graph TB
 
 ## 4. C4 Model — Level 2: Container Diagram
 
-The platform is composed of **11 Docker containers** grouped in three logical tiers.
+The platform is composed of **13 Docker containers** grouped in four logical tiers.
 
 ```mermaid
 graph TB
@@ -165,6 +167,11 @@ graph TB
         minio["MinIO (S3-compatible)<br/>:9000 / :9001<br/><i>Object storage for<br/>mock system files</i>"]
     end
 
+    subgraph ingestion_layer["Ingestion Layer"]
+        ingestion["Ingestion Platform<br/><b>Python 3.11 / FastAPI</b><br/>:4006<br/><i>3 collectors (OpenAPI/HTML/MCP)<br/>source registry · diff engine<br/>shared ChromaDB writer</i>"]
+        n8n["n8n Orchestrator<br/><b>n8n:latest</b><br/>:5678<br/><i>6 workflows: scheduler,<br/>3 typed refresh, manual webhook,<br/>breaking-change notify</i>"]
+    end
+
     subgraph mock_layer["Mock Systems Layer"]
         plm["PLM Mock API<br/><b>FastAPI</b><br/>:4001<br/><i>Simulated source system</i>"]
         pim["PIM Mock API<br/><b>FastAPI</b><br/>:4002<br/><i>Simulated target system</i>"]
@@ -184,6 +191,10 @@ graph TB
     pim -- "S3 :9000" --> minio
     dam -- "S3 :9000" --> minio
     catalog_gen -- "HTTP :4003" --> agent
+    n8n -- "HTTP :4006" --> ingestion
+    ingestion -- "HTTP :8000" --> chroma
+    ingestion -- "TCP :27017" --> mongo
+    ingestion -- "Claude API (HTTPS)" --> anthropic["Anthropic API<br/>(Claude Haiku/Sonnet)<br/><i>HTML extraction + diff summaries<br/>(Ingestion Platform only)</i>"]
 ```
 
 ### Container Details
@@ -199,6 +210,8 @@ graph TB
 | `mate-chromadb` | ChromaDB 0.5.3 | `8000 → 8000` | Vector store: RAG retrieval of approved examples |
 | `mate-ollama` | Ollama | `11434 → 11434` | Local LLM inference (llama3.2:3b or llama3.1:8b) |
 | `mate-minio` | MinIO | `9000/9001` | S3-compatible object storage for mock systems |
+| `mate-ingestion-platform` | Python 3.11 / FastAPI | `4006 → 4006` | Multi-source KB ingestion: OpenAPI/HTML/MCP collectors, source registry, diff engine, ChromaDB writer |
+| `mate-n8n` | n8n latest | `5678 → 5678` | Workflow orchestrator: 6 workflows (WF-01..06) driving scheduled and manual ingestion |
 | `mate-plm-mock` | FastAPI | `4001 → 3001` | Simulated PLM system with OpenAPI spec |
 | `mate-pim-mock` | FastAPI | `4002 → 3002` | Simulated PIM system with OpenAPI spec |
 | `mate-dam-mock` | FastAPI | `4005 → 3005` | Simulated DAM system with OpenAPI spec |
@@ -268,7 +281,7 @@ graph TB
 | **Catalog Router** | `routers/catalog.py` | Integration listing with project metadata; tag suggest/confirm (ADR-019) |
 | **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback; regenerate REJECTED doc with feedback injected (ADR-032) |
 | **Documents Router** | `routers/documents.py` | Final doc listing; promote-to-kb (ADR-023) |
-| **KB Router** | `routers/kb.py` | File upload via `parse_with_docling()` (ADR-034); RAPTOR-lite section summarisation → `summaries_col` (ADR-035); URL registration (ADR-024); tag management; semantic search; stats |
+| **KB Router** | `routers/kb.py` | Single file upload via `parse_with_docling()` (ADR-034); **batch upload** `POST /api/v1/kb/batch-upload` (up to 10 files, partial success per file); RAPTOR-lite section summarisation → `summaries_col` (ADR-035); URL registration (ADR-024); tag management; semantic search; stats |
 | **Admin Router** | `routers/admin.py` | Reset tools; LLM settings CRUD (persist to MongoDB); project docs browser |
 | **LLM Service** | `services/llm_service.py` | `generate_with_retry()` — 3 attempts, 5s/15s exponential backoff (R13); Ollama `/api/generate` |
 | **RAG Service** | `services/rag_service.py` | ChromaDB approved_integrations + knowledge_base queries; `ContextAssembler` token-budgeted sections: `## DOCUMENT SUMMARIES` + `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` (R10 / ADR-035) |
@@ -1883,12 +1896,20 @@ gantt
 | ADR-033 | TanStack Query Frontend | Accepted | React Query server-state pilot |
 | ADR-034 | Docling + LLaVA Vision Parser | Accepted | Layout-aware PDF/DOCX parsing via IBM Docling; `DoclingChunk` with `chunk_type` (text/table/figure), `section_header`, `page_num`; figure captioning via `llava:7b` (local Ollama) |
 | ADR-035 | RAPTOR-lite Section Summaries | Accepted | Section-header grouping of `DoclingChunk`s; sections ≥ 3 chunks summarised via llama3.1:8b; `SummaryChunk` stored in `kb_summaries` ChromaDB collection; dense-only retrieval injected as `## DOCUMENT SUMMARIES` first section |
+| ADR-036 | Ingestion Platform Architecture | Accepted | New `services/ingestion-platform/` (port 4006) with 3 collectors (OpenAPI, HTML, MCP), source registry, diff engine, n8n (port 5678) orchestrator; shared `kb_collection` ChromaDB with `src_*` chunk IDs; 3 new MongoDB collections (`sources`, `source_runs`, `source_snapshots`) |
+| ADR-037 | Claude API Semantic Extraction | Accepted | Claude Haiku for HTML relevance filter and diff summaries; Claude Sonnet for schema-constrained capability extraction and cross-page reconciliation; `ClaudeService` wrapper with graceful degradation when key absent; confidence < 0.7 → `low_confidence=True` metadata (not discarded) |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |
 | R7 | UI Localization — Italian → English | Implemented | All remaining Italian strings in `UnifiedDocumentsPanel.jsx` and `ProjectModal.jsx` translated to English |
 | R18 | Real-Time Agent Progress Tracking | Implemented | `state.agent_progress` dict added to backend; `/agent/logs` response includes `"progress"` key (0–100); `useAgentLogs.js` exposes `progress`; `AgentWorkspacePage.jsx` renders real step progress bar |
 | R19-MVP | Append-Only MongoDB Audit Event Log | Implemented | `services/event_logger.py` created; `db.events_col` MongoDB collection with 90-day TTL index; audit events (`catalog_entry_created`, `document_approved`, `document_promoted`, `kb_document_uploaded`, `kb_document_deleted`) recorded in `catalog.py`, `approvals.py`, `documents.py` |
+| **Phase 5 — Ingestion Platform** | | | |
+| Batch KB Upload | `POST /api/v1/kb/batch-upload` — up to 10 files, partial success, per-file result array | n/a |
+| OpenAPI Collector | Fetcher (ETag) + parser (JSON/YAML) + normalizer + chunker + differ (SHA-256 + operation_id sets) | Full `runs` router for polling; HTML collector Playwright requires Chromium in image |
+| MCP Collector | Python `mcp` SDK SSE transport; tools/resources/prompts → `CanonicalCapability` | Test against live MCP servers |
+| HTML Collector | Playwright crawler + BS4 cleaner + Claude Haiku filter + Claude Sonnet extraction | Full Playwright headless testing in CI |
+| n8n Workflows | 6 JSON skeletons (WF-01..06) for import into n8n UI | Deploy n8n container and activate workflows |
 
 ---
 
@@ -1898,7 +1919,7 @@ gantt
 |------|--------------|---------|
 | Technical spec generation | Endpoint returns 501 stub | Implement `template/technical/` flow |
 | Security middleware | Passthrough in PoC | Full JWT/RBAC integration |
-| OpenAPI spec reading | Mock Swaggers only | Live spec ingestion for data mapping |
+| OpenAPI spec reading | Ingestion Platform OpenAPI collector (ETag caching, hash diff, breaking change detection) | Live spec ingestion for data mapping via Ingestion Platform source registry |
 | Model quality | llama3.2:3b (fast, PoC) | Configurable via `OLLAMA_MODEL` env var |
 | RAG grading | HybridRetriever: multi-query + BM25+dense ensemble + TF-IDF re-rank (Phase 2) | Per-session relevance feedback; learned re-ranking |
 | Embedding model | Default ChromaDB embeddings | Switch to `nomic-embed-text` for richer semantics |

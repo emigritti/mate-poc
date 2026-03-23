@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from typing import List
 
 import db
 import state
@@ -163,6 +164,128 @@ async def kb_upload(
         chunks_created=len(docling_chunks),
         auto_tags=auto_tags,
     ).model_dump()
+
+
+@router.post("/kb/batch-upload")
+async def kb_batch_upload(
+    files: List[UploadFile] = File(...),
+    _token: str = Depends(require_token),
+) -> dict:
+    """Upload up to 10 documents at once to the Knowledge Base.
+
+    Returns per-file results with partial success: a failure on one file
+    does not abort processing of the remaining files.
+    """
+    if len(files) > 10:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files: at most 10 allowed, got {len(files)}.",
+        )
+
+    results: list[dict] = []
+    for upload_file in files:
+        filename = upload_file.filename or "unnamed"
+        try:
+            file_type = detect_file_type(filename, upload_file.content_type)
+        except DocumentParseError as exc:
+            results.append({"filename": filename, "status": "error", "chunks_created": 0, "error": str(exc)})
+            continue
+
+        content = await upload_file.read()
+        if len(content) > settings.kb_max_file_bytes:
+            results.append({
+                "filename": filename,
+                "status": "error",
+                "chunks_created": 0,
+                "error": (
+                    f"File exceeds the {settings.kb_max_file_bytes // 1_048_576} MB limit "
+                    f"({len(content):,} bytes received)."
+                ),
+            })
+            continue
+
+        try:
+            docling_chunks = await parse_with_docling(content, file_type)
+        except Exception as exc:
+            results.append({"filename": filename, "status": "error", "chunks_created": 0, "error": f"Parsing failed: {exc}"})
+            continue
+
+        if not docling_chunks:
+            results.append({"filename": filename, "status": "error", "chunks_created": 0, "error": "No text could be extracted."})
+            continue
+
+        preview_text = " ".join(c.text for c in docling_chunks if c.chunk_type == "text")[:1000]
+        auto_tags = await suggest_kb_tags_via_llm(preview_text or docling_chunks[0].text[:1000], filename, log_fn=log_agent)
+
+        doc_id = f"KB-{uuid.uuid4().hex[:8].upper()}"
+        if state.kb_collection is None:
+            results.append({"filename": filename, "status": "error", "chunks_created": 0, "error": "ChromaDB is unavailable."})
+            continue
+
+        tags_csv = ",".join(auto_tags)
+        try:
+            state.kb_collection.upsert(
+                documents=[c.text for c in docling_chunks],
+                metadatas=[
+                    {
+                        "document_id": doc_id,
+                        "filename": filename,
+                        "chunk_index": c.index,
+                        "chunk_type": c.chunk_type,
+                        "page_num": c.page_num,
+                        "section_header": c.section_header,
+                        "tags_csv": tags_csv,
+                    }
+                    for c in docling_chunks
+                ],
+                ids=[f"{doc_id}-chunk-{c.index}" for c in docling_chunks],
+            )
+        except Exception as exc:
+            results.append({"filename": filename, "status": "error", "chunks_created": 0, "error": f"Vector store failed: {exc}"})
+            continue
+
+        if state.summaries_col is not None:
+            from itertools import groupby
+            sorted_chunks = sorted(docling_chunks, key=lambda c: c.section_header)
+            for section_header, group_iter in groupby(sorted_chunks, key=lambda c: c.section_header):
+                section_chunks = list(group_iter)
+                summary = await summarize_section(section_chunks, doc_id=doc_id, tags=auto_tags)
+                if summary is not None:
+                    summary_id = f"{doc_id}-summary-{abs(hash(section_header)) % 100000}"
+                    try:
+                        state.summaries_col.upsert(
+                            documents=[summary.text],
+                            metadatas=[{
+                                "document_id": doc_id,
+                                "filename": filename,
+                                "section_header": summary.section_header,
+                                "tags_csv": tags_csv,
+                            }],
+                            ids=[summary_id],
+                        )
+                    except Exception as exc:
+                        logger.warning("[RAPTOR] summaries_col upsert failed for %s: %s", doc_id, exc)
+
+        kb_doc = KBDocument(
+            id=doc_id,
+            filename=filename,
+            file_type=file_type,
+            file_size_bytes=len(content),
+            tags=auto_tags,
+            chunk_count=len(docling_chunks),
+            content_preview=preview_text[:500] or "",
+            uploaded_at=_now_iso(),
+        )
+        state.kb_docs[doc_id] = kb_doc
+        state.kb_chunks[doc_id] = [c.text for c in docling_chunks]
+        hybrid_retriever.build_bm25_index(state.kb_chunks)
+        if db.kb_documents_col is not None:
+            await db.kb_documents_col.replace_one({"id": doc_id}, kb_doc.model_dump(), upsert=True)
+
+        log_agent(f"[KB] Batch-upload: '{filename}' imported as {doc_id} ({len(docling_chunks)} chunks).")
+        results.append({"filename": filename, "status": "success", "chunks_created": len(docling_chunks), "error": None})
+
+    return {"results": results}
 
 
 @router.get("/kb/documents")

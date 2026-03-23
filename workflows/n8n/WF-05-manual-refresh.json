@@ -1,0 +1,68 @@
+{
+  "name": "WF-05 Manual Refresh (Webhook from UI)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "manual-refresh",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "manual-refresh"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {"value1": "={{ $json.body.source_id }}", "operation": "isNotEmpty"}
+          ]
+        }
+      },
+      "id": "validate_payload",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {"value1": "={{ $json.body.source_type }}", "value2": "openapi"}
+          ]
+        }
+      },
+      "id": "route_by_type",
+      "name": "Route by Source Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://mate-ingestion-platform:4006/api/v1/ingest/={{ $json.body.source_type }}/={{ $json.body.source_id }}",
+        "method": "POST",
+        "options": {}
+      },
+      "id": "dispatch_ingest",
+      "name": "Dispatch Typed Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {"main": [[{"node": "Validate Payload", "type": "main", "index": 0}]]},
+    "Validate Payload": {"main": [[{"node": "Route by Source Type", "type": "main", "index": 0}]]},
+    "Route by Source Type": {"main": [[{"node": "Dispatch Typed Ingest", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "meta": {"instanceId": "integration-mate-poc"},
+  "tags": [{"id": "wf05", "name": "manual-webhook"}]
+}
