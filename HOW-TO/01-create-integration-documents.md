@@ -30,17 +30,20 @@ Colonne obbligatorie: `req_id`, `description`, `source_system`, `target_system`.
 
 ## Via Dashboard (UI)
 
-### Step 1 — Crea un progetto (opzionale)
+### Step 1 — Upload requisiti + compila progetto
 1. Apri `http://localhost:8080`
-2. Tab **Projects** → **New Project**
-3. Compila Client Name, Domain, Accenture Ref → **Create**
+2. Tab **Requirements** (è la pagina di default)
+3. Clicca **Upload CSV** → seleziona il file
+4. Dopo il parsing appare automaticamente una **modal "Progetto"**:
+   - **Client Name**: nome del cliente (es. `Acme Corp`)
+   - **Prefix**: sigla 1-3 lettere maiuscole auto-generata (es. `ACM`) — modifica se necessario
+   - **Domain**: settore (es. `Manufacturing`)
+   - **Accenture Ref**: codice engagement opzionale
+5. Clicca **Confirm** — il progetto viene creato e le integrazioni appaiono con status `PENDING_TAG_REVIEW`
 
-### Step 2 — Upload requisiti
-1. Tab **Requirements** → **Upload CSV**
-2. Seleziona il file → **Upload**
-3. Le integrazioni appaiono con status `PENDING_TAG_REVIEW`
+> Se il prefix esiste già per lo stesso cliente, le integrazioni vengono aggiunte al progetto esistente.
 
-### Step 3 — Conferma i tag
+### Step 2 — Conferma i tag
 Per ogni integrazione:
 1. Clicca **Suggest Tags** → il sistema propone tag via LLM
 2. Rivedi/modifica i tag
