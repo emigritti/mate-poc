@@ -380,29 +380,6 @@ services:
   n8n-init:
     image: n8nio/n8n:latest
     container_name: mate-n8n-init
-    # Imports all workflow JSON files into n8n's SQLite DB.
-    # Idempotent: updates existing workflows without duplicating them.
-    # Depends on service_healthy so DB is fully initialized before import.
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        n8n import:workflow --separate --input=/workflows && \
-        echo "Workflow import complete."
-    volumes:
-      - n8n-data:/home/node/.n8n
-      - ./workflows/n8n:/workflows:ro
-    depends_on:
-      n8n:
-        condition: service_healthy
-    networks:
-      - integration-mate-net
-    restart: "no"
-    logging: *default-logging
-
-  n8n-init:
-    image: n8nio/n8n:latest
-    container_name: mate-n8n-init
     # Imports all workflow JSON files from the mounted workflows directory
     # into n8n's SQLite DB. Idempotent: re-running updates existing workflows.
     # Runs after n8n is healthy so the DB is fully initialized before import.
