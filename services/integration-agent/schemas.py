@@ -40,6 +40,7 @@ class CatalogEntry(BaseModel):
     tags: List[str] = []          # confirmed tags (max 5)
     project_id: str = "LEGACY"    # FK to Project.prefix; "LEGACY" for pre-ADR-025 entries
     created_at: str
+    technical_status: Optional[str] = None  # ADR-038: None|TECH_PENDING|TECH_GENERATING|TECH_REVIEW|TECH_DONE
 
 
 class Document(BaseModel):
