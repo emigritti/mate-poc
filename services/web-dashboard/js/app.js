@@ -676,6 +676,14 @@ async function renderCatalog() {
                     <div class="card-footer">
                         ${(i.requirements || []).map(r => `<span class="badge badge-primary">${escapeHtml(r)}</span>`).join('')}
                     </div>
+                    <div class="card-footer" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;gap:6px;flex-wrap:wrap;">
+                        ${i.status === 'generated' ? `<button class="btn btn-sm btn-primary" onclick="viewDoc('${escapeHtml(i.id)}', 'functional')">📋 Functional Spec</button>` : ''}
+                        ${i.technical_status === 'TECH_PENDING' ? `<button class="btn btn-sm btn-secondary" id="techBtn-${escapeHtml(i.id)}" onclick="triggerTechnical('${escapeHtml(i.id)}')">Genera Technical Design</button>` : ''}
+                        ${i.technical_status === 'TECH_GENERATING' ? `<span class="badge badge-info">⏳ Technical...</span>` : ''}
+                        ${i.technical_status === 'TECH_REVIEW' ? `<span class="badge badge-info">🔍 Tech Review</span>` : ''}
+                        ${i.technical_status === 'TECH_DONE' ? `<button class="btn btn-sm btn-outline-success" onclick="viewDoc('${escapeHtml(i.id)}', 'technical')">View Technical Spec</button>` : ''}
+                        <span id="techResult-${escapeHtml(i.id)}" style="font-size:12px;"></span>
+                    </div>
                 </div>`;
             }).join('')}</div>`;
 
@@ -700,6 +708,29 @@ function resetCatalogFilters() {
     _catalogFilterDomain    = '';
     _catalogFilterAccRef    = '';
     renderCatalog();
+}
+
+async function triggerTechnical(integrationId) {
+    const btn = document.getElementById(`techBtn-${integrationId}`);
+    const resultEl = document.getElementById(`techResult-${integrationId}`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
+    try {
+        const resp = await fetch(`${API.AGENT}/api/v1/agent/trigger-technical/${encodeURIComponent(integrationId)}`, {
+            method: 'POST',
+            headers: API.headers(),
+        });
+        const data = await resp.json();
+        if (data && data.status === 'success') {
+            if (resultEl) resultEl.innerHTML = `<span style="color:var(--success)">✅ Queued: ${escapeHtml(data.approval_id || '')}</span>`;
+            setTimeout(renderCatalog, 1500);
+        } else {
+            if (resultEl) resultEl.innerHTML = `<span style="color:var(--error)">❌ ${escapeHtml(data?.detail || 'Generation failed')}</span>`;
+            if (btn) { btn.disabled = false; btn.textContent = 'Genera Technical Design'; }
+        }
+    } catch (e) {
+        if (resultEl) resultEl.innerHTML = `<span style="color:var(--error)">❌ ${escapeHtml(e.message)}</span>`;
+        if (btn) { btn.disabled = false; btn.textContent = 'Genera Technical Design'; }
+    }
 }
 
 // ── Documents Page ──────────────────────────────────

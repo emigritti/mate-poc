@@ -87,6 +87,14 @@ const API = {
         return resp.json();
     },
 
+    async triggerTechnical(integrationId) {
+        const resp = await fetch(`${this.AGENT}/api/v1/agent/trigger-technical/${encodeURIComponent(integrationId)}`, {
+            method: 'POST',
+            headers: this.headers(),
+        });
+        return resp.json();
+    },
+
     // ── Agent Control ──
     async cancelAgent() {
         const resp = await fetch(`${this.AGENT}/api/v1/agent/cancel`, { method: 'POST', headers: this.headers() });
