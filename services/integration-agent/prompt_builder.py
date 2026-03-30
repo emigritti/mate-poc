@@ -140,7 +140,13 @@ def _load_technical_prompt() -> str:
 
 
 def _load_technical_template() -> str:
-    """Load and unescape the technical design template."""
+    """Load the technical design template from the template directory.
+
+    The template file uses backslash-escaped markdown (\\#, \\##, \\-) to
+    prevent editor rendering.  Those escapes are stripped here at load time
+    so the LLM receives clean Markdown syntax, reducing prompt token count
+    and avoiding model confusion.
+    """
     try:
         content = _TECHNICAL_TEMPLATE_PATH.read_text(encoding="utf-8")
         content = content.replace(r"\### ", "### ")
@@ -207,6 +213,7 @@ def build_technical_prompt(
         else ""
     )
     combined_context = f"{feedback_block}{rag_block}" if feedback_block else rag_block
+    # Note: kb_block is intentionally kept separate — injected via {kb_context}, not merged here.
 
     # F-09 pattern: sequential str.replace() prevents KeyError/ValueError
     result = _TECHNICAL_PROMPT

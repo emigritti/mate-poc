@@ -3,6 +3,7 @@ Unit tests for technical design document generation.
 ADR-038: Two-phase doc generation — technical spec after functional approval.
 """
 import pytest
+from output_guard import sanitize_llm_output, LLMOutputValidationError
 from schemas import CatalogEntry
 
 
@@ -34,9 +35,6 @@ def test_catalog_entry_technical_status_can_be_set():
         created_at="2026-03-30T00:00:00Z",
     )
     assert entry.technical_status == "TECH_PENDING"
-
-
-from output_guard import sanitize_llm_output, LLMOutputValidationError
 
 
 def test_sanitize_llm_output_technical_valid():
