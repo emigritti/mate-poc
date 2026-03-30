@@ -75,13 +75,28 @@ curl -s http://localhost:4003/api/v1/approvals/pending | \
 
 ### Approva il technical design
 
+> **Nota:** Per l'approvazione si raccomanda la Dashboard (UI) — consente di modificare il markdown prima di approvare. Via API, salva prima il contenuto su file per evitare problemi di escaping nella shell.
+
 ```bash
 APPROVAL_ID="APP-XYZ123"
 
+# 1. Salva il contenuto dell'approval su file
+curl -s http://localhost:4003/api/v1/approvals/pending | \
+  python3 -c "
+import sys, json
+data = json.load(sys.stdin)['data']
+a = next((a for a in data if a['id'] == '$APPROVAL_ID'), None)
+if a:
+    import pathlib, json as j
+    pathlib.Path('/tmp/tech_approve.json').write_text(j.dumps({'final_markdown': a['content']}))
+    print('Saved to /tmp/tech_approve.json')
+"
+
+# 2. Approva usando il file salvato
 curl -s -X POST http://localhost:4003/api/v1/approvals/$APPROVAL_ID/approve \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"final_markdown\": \"$(curl -s http://localhost:4003/api/v1/approvals/pending | python3 -c \"import sys,json; [print(a['content']) for a in json.load(sys.stdin)['data'] if a['id']=='$APPROVAL_ID']\" | head -c 200)...\"}" \
+  -d @/tmp/tech_approve.json \
   | python3 -m json.tool
 ```
 

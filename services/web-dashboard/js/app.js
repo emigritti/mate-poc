@@ -678,16 +678,24 @@ async function renderCatalog() {
                     </div>
                     <div class="card-footer" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;gap:6px;flex-wrap:wrap;">
                         ${i.status === 'generated' ? `<button class="btn btn-sm btn-primary" onclick="viewDoc('${escapeHtml(i.id)}', 'functional')">📋 Functional Spec</button>` : ''}
-                        ${i.technical_status === 'TECH_PENDING' ? `<button class="btn btn-sm btn-secondary" id="techBtn-${escapeHtml(i.id)}" onclick="triggerTechnical('${escapeHtml(i.id)}')">Genera Technical Design</button>` : ''}
+                        ${i.technical_status === 'TECH_PENDING' ? `<button class="btn btn-sm btn-secondary tech-trigger-btn" id="techBtn-${escapeHtml(i.id)}" data-tech-id="${escapeHtml(i.id)}">Genera Technical Design</button>` : ''}
                         ${i.technical_status === 'TECH_GENERATING' ? `<span class="badge badge-info">⏳ Technical...</span>` : ''}
                         ${i.technical_status === 'TECH_REVIEW' ? `<span class="badge badge-info">🔍 Tech Review</span>` : ''}
-                        ${i.technical_status === 'TECH_DONE' ? `<button class="btn btn-sm btn-outline-success" onclick="viewDoc('${escapeHtml(i.id)}', 'technical')">View Technical Spec</button>` : ''}
+                        ${i.technical_status === 'TECH_DONE' ? `<button class="btn btn-sm btn-outline-success tech-view-btn" data-tech-id="${escapeHtml(i.id)}">View Technical Spec</button>` : ''}
                         <span id="techResult-${escapeHtml(i.id)}" style="font-size:12px;"></span>
                     </div>
                 </div>`;
             }).join('')}</div>`;
 
         area.innerHTML = filterBar + cards;
+
+        // C-01: safe DOM event binding — data-tech-id eliminates JS-context injection risk
+        area.querySelectorAll('.tech-trigger-btn').forEach(btn => {
+            btn.addEventListener('click', () => triggerTechnical(btn.dataset.techId));
+        });
+        area.querySelectorAll('.tech-view-btn').forEach(btn => {
+            btn.addEventListener('click', () => viewDoc(btn.dataset.techId, 'technical'));
+        });
 
     } catch (e) {
         area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div>
@@ -715,11 +723,7 @@ async function triggerTechnical(integrationId) {
     const resultEl = document.getElementById(`techResult-${integrationId}`);
     if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
     try {
-        const resp = await fetch(`${API.AGENT}/api/v1/agent/trigger-technical/${encodeURIComponent(integrationId)}`, {
-            method: 'POST',
-            headers: API.headers(),
-        });
-        const data = await resp.json();
+        const data = await API.triggerTechnical(integrationId);
         if (data && data.status === 'success') {
             if (resultEl) resultEl.innerHTML = `<span style="color:var(--success)">✅ Queued: ${escapeHtml(data.approval_id || '')}</span>`;
             setTimeout(renderCatalog, 1500);
