@@ -6,6 +6,7 @@ Uses generate_with_retry (R13) for LLM calls with exponential backoff.
 """
 
 import asyncio
+import logging
 import uuid
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,7 +19,9 @@ from config import settings
 from log_helpers import log_agent
 from output_guard import LLMOutputValidationError, assess_quality
 from schemas import Approval, LogEntry
-from services.agent_service import generate_integration_doc
+from services.agent_service import generate_integration_doc, generate_technical_doc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["agent"])
 
@@ -213,6 +216,95 @@ async def cancel_agent(
 
     log_agent("⛔ Agent execution cancelled by user request.")
     return {"status": "success", "message": f"Cancel signal sent to {cancelled} task(s)."}
+
+
+@router.post("/agent/trigger-technical/{integration_id}")
+async def trigger_technical(
+    integration_id: str,
+    _token: str = Depends(require_token),
+) -> dict:
+    """
+    Trigger technical design generation for a single integration.
+
+    ADR-038: Second phase — only available after functional spec is approved.
+    Runs synchronously within the request (independent of the functional asyncio.Lock).
+
+    Preconditions:
+      - Integration exists in catalog
+      - technical_status == "TECH_PENDING"
+      - Approved functional spec exists in state.documents
+
+    Returns:
+        {"status": "success", "approval_id": "APP-XXXXXX"}
+    """
+    entry = state.catalog.get(integration_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Integration '{integration_id}' not found.")
+
+    if entry.technical_status != "TECH_PENDING":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Technical generation requires technical_status='TECH_PENDING'. "
+                f"Current: {entry.technical_status!r}"
+            ),
+        )
+
+    func_doc = state.documents.get(f"{integration_id}-functional")
+    if func_doc is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Approved functional spec for '{integration_id}' not found. Approve functional design first.",
+        )
+
+    entry.technical_status = "TECH_GENERATING"
+    if db.catalog_col is not None:
+        await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
+
+    try:
+        tech_content = await generate_technical_doc(
+            entry=entry,
+            functional_spec_content=func_doc.content,
+            reviewer_feedback="",
+            log_fn=logger.info,
+        )
+    except LLMOutputValidationError as exc:
+        entry.technical_status = "TECH_PENDING"
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
+        raise HTTPException(status_code=422, detail=f"Technical output failed structural guard: {exc}")
+    except Exception as exc:
+        entry.technical_status = "TECH_PENDING"
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
+        raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}")
+
+    quality = assess_quality(tech_content)
+    if not quality.passed:
+        logger.warning(
+            "[TECH-QUALITY] Low quality score %.2f for %s — %s",
+            quality.quality_score, integration_id, "; ".join(quality.issues),
+        )
+
+    app_id = f"APP-{uuid.uuid4().hex[:6].upper()}"
+    approval = Approval(
+        id=app_id,
+        integration_id=integration_id,
+        doc_type="technical",
+        content=tech_content,
+        status="PENDING",
+        generated_at=_now_iso(),
+    )
+    state.approvals[app_id] = approval
+    if db.approvals_col is not None:
+        await db.approvals_col.replace_one({"id": app_id}, approval.model_dump(), upsert=True)
+
+    entry.technical_status = "TECH_REVIEW"
+    if db.catalog_col is not None:
+        await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
+
+    logger.info("[TECH] Technical approval %s queued for HITL review (integration: %s)", app_id, integration_id)
+    return {"status": "success", "approval_id": app_id}
 
 
 @router.get("/agent/logs")
