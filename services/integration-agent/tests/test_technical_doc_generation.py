@@ -2,8 +2,10 @@
 Unit tests for technical design document generation.
 ADR-038: Two-phase doc generation — technical spec after functional approval.
 """
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from fastapi import HTTPException
 from output_guard import sanitize_llm_output, LLMOutputValidationError
 from schemas import CatalogEntry
 
@@ -247,3 +249,151 @@ async def test_generate_technical_doc_reviewer_feedback_in_prompt():
     assert len(captured_prompt) == 1
     assert "UNIQUE_FEEDBACK_MARKER_67890" in captured_prompt[0]
     assert "PREVIOUS REJECTION FEEDBACK" in captured_prompt[0]
+
+
+# ── Task 7: approve_doc sets technical_status ────────────────────────────────
+
+def test_approve_functional_sets_tech_pending():
+    """When functional approval is approved → CatalogEntry.technical_status = TECH_PENDING."""
+    from schemas import Approval, CatalogEntry, ApproveRequest
+
+    entry = CatalogEntry(
+        id="PLM-001",
+        name="PLM to PIM",
+        type="data_sync",
+        source={"system": "PLM"},
+        target={"system": "PIM"},
+        requirements=["REQ-001"],
+        status="DONE",
+        created_at="2026-03-30T00:00:00Z",
+    )
+    approval = Approval(
+        id="APP-AAA001",
+        integration_id="PLM-001",
+        doc_type="functional",
+        content="# Integration Functional Design\nContent",
+        status="PENDING",
+        generated_at="2026-03-30T00:00:00Z",
+    )
+
+    with patch("routers.approvals.state") as mock_state, \
+         patch("routers.approvals.db") as mock_db:
+
+        mock_state.approvals = {"APP-AAA001": approval}
+        mock_state.catalog = {"PLM-001": entry}
+        mock_state.documents = {}
+        mock_db.approvals_col = None
+        mock_db.documents_col = None
+        mock_db.catalog_col = None
+
+        from routers.approvals import approve_doc
+
+        asyncio.run(approve_doc(
+            id="APP-AAA001",
+            body=ApproveRequest(final_markdown="# Integration Functional Design\nApproved content"),
+            _token="test",
+        ))
+
+    assert entry.technical_status == "TECH_PENDING"
+
+
+def test_approve_technical_sets_tech_done():
+    """When technical approval is approved → CatalogEntry.technical_status = TECH_DONE."""
+    from schemas import Approval, CatalogEntry, ApproveRequest
+
+    entry = CatalogEntry(
+        id="PLM-001",
+        name="PLM to PIM",
+        type="data_sync",
+        source={"system": "PLM"},
+        target={"system": "PIM"},
+        requirements=["REQ-001"],
+        status="DONE",
+        technical_status="TECH_REVIEW",
+        created_at="2026-03-30T00:00:00Z",
+    )
+    approval = Approval(
+        id="APP-BBB002",
+        integration_id="PLM-001",
+        doc_type="technical",
+        content="# Integration Technical Design\nContent",
+        status="PENDING",
+        generated_at="2026-03-30T00:00:00Z",
+    )
+
+    with patch("routers.approvals.state") as mock_state, \
+         patch("routers.approvals.db") as mock_db:
+
+        mock_state.approvals = {"APP-BBB002": approval}
+        mock_state.catalog = {"PLM-001": entry}
+        mock_state.documents = {}
+        mock_db.approvals_col = None
+        mock_db.documents_col = None
+        mock_db.catalog_col = None
+
+        from routers.approvals import approve_doc
+
+        asyncio.run(approve_doc(
+            id="APP-BBB002",
+            body=ApproveRequest(final_markdown="# Integration Technical Design\nApproved content"),
+            _token="test",
+        ))
+
+    assert entry.technical_status == "TECH_DONE"
+
+
+# ── Task 8: trigger-technical endpoint ───────────────────────────────────────
+
+def test_trigger_technical_rejects_when_not_tech_pending():
+    """Should return 409 if technical_status is not TECH_PENDING."""
+    from schemas import CatalogEntry
+
+    entry = CatalogEntry(
+        id="PLM-001",
+        name="PLM to PIM",
+        type="data_sync",
+        source={"system": "PLM"},
+        target={"system": "PIM"},
+        requirements=["REQ-001"],
+        status="DONE",
+        technical_status=None,
+        created_at="2026-03-30T00:00:00Z",
+    )
+
+    with patch("routers.agent.state") as mock_state:
+        mock_state.catalog = {"PLM-001": entry}
+
+        from routers.agent import trigger_technical
+
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(trigger_technical(integration_id="PLM-001", _token="test"))
+
+        assert exc_info.value.status_code == 409
+
+
+def test_trigger_technical_rejects_when_functional_spec_missing():
+    """Should return 404 if approved functional spec doesn't exist."""
+    from schemas import CatalogEntry
+
+    entry = CatalogEntry(
+        id="PLM-001",
+        name="PLM to PIM",
+        type="data_sync",
+        source={"system": "PLM"},
+        target={"system": "PIM"},
+        requirements=["REQ-001"],
+        status="DONE",
+        technical_status="TECH_PENDING",
+        created_at="2026-03-30T00:00:00Z",
+    )
+
+    with patch("routers.agent.state") as mock_state:
+        mock_state.catalog = {"PLM-001": entry}
+        mock_state.documents = {}
+
+        from routers.agent import trigger_technical
+
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(trigger_technical(integration_id="PLM-001", _token="test"))
+
+        assert exc_info.value.status_code == 404

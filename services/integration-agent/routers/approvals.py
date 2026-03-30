@@ -77,6 +77,24 @@ async def approve_doc(
 
     await record_event("approval.approved", {"integration_id": app_entry.integration_id})
 
+    # ADR-038: when functional spec approved → unlock technical design phase
+    if app_entry.doc_type == "functional":
+        catalog_entry = state.catalog.get(app_entry.integration_id)
+        if catalog_entry is not None:
+            catalog_entry.technical_status = "TECH_PENDING"
+            if db.catalog_col is not None:
+                await db.catalog_col.replace_one(
+                    {"id": catalog_entry.id}, catalog_entry.model_dump(), upsert=True
+                )
+    elif app_entry.doc_type == "technical":
+        catalog_entry = state.catalog.get(app_entry.integration_id)
+        if catalog_entry is not None:
+            catalog_entry.technical_status = "TECH_DONE"
+            if db.catalog_col is not None:
+                await db.catalog_col.replace_one(
+                    {"id": catalog_entry.id}, catalog_entry.model_dump(), upsert=True
+                )
+
     return {"status": "success", "message": "Approved and staged. Use 'Promote to KB' to add to RAG."}
 
 
@@ -152,12 +170,29 @@ async def regenerate_doc(
     requirements = [r for r in state.parsed_requirements if r.req_id in entry.requirements]
 
     try:
-        new_content = await generate_integration_doc(
-            entry=entry,
-            requirements=requirements,
-            reviewer_feedback=app_entry.feedback,
-            log_fn=logger.info,
-        )
+        if app_entry.doc_type == "technical":
+            func_doc = state.documents.get(f"{app_entry.integration_id}-functional")
+            if func_doc is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cannot regenerate technical doc: approved functional spec not found.",
+                )
+            from services.agent_service import generate_technical_doc
+            new_content = await generate_technical_doc(
+                entry=entry,
+                functional_spec_content=func_doc.content,
+                reviewer_feedback=app_entry.feedback,
+                log_fn=logger.info,
+            )
+        else:
+            new_content = await generate_integration_doc(
+                entry=entry,
+                requirements=requirements,
+                reviewer_feedback=app_entry.feedback,
+                log_fn=logger.info,
+            )
+    except HTTPException:
+        raise
     except LLMOutputValidationError as exc:
         raise HTTPException(
             status_code=422,
@@ -183,6 +218,16 @@ async def regenerate_doc(
         await db.approvals_col.replace_one(
             {"id": new_id}, new_approval.model_dump(), upsert=True
         )
+
+    # ADR-038: keep technical_status in sync on regeneration
+    if app_entry.doc_type == "technical":
+        catalog_entry = state.catalog.get(app_entry.integration_id)
+        if catalog_entry is not None:
+            catalog_entry.technical_status = "TECH_REVIEW"
+            if db.catalog_col is not None:
+                await db.catalog_col.replace_one(
+                    {"id": catalog_entry.id}, catalog_entry.model_dump(), upsert=True
+                )
 
     logger.info(
         "[REGEN] New approval %s created from rejected %s (feedback: %d chars)",
