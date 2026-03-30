@@ -149,6 +149,7 @@ async def generate_technical_doc(
     )
 
     assembler = ContextAssembler()
+    # approved_chunks intentionally empty — technical phase uses functional_spec as primary context (ADR-038)
     rag_context = assembler.assemble(
         [], kb_scored_chunks, url_chunks,
         max_chars=settings.ollama_rag_max_chars,
@@ -159,6 +160,8 @@ async def generate_technical_doc(
     prompt = build_technical_prompt(
         source_system=source,
         target_system=target,
+        # formatted_requirements is a label here — the approved functional_spec_content
+        # is the authoritative requirements source for the technical phase (ADR-038).
         formatted_requirements=f"{source} → {target} integration",
         functional_spec=functional_spec_content,
         rag_context=rag_context,

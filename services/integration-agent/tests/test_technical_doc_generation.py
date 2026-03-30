@@ -200,3 +200,50 @@ async def test_generate_technical_doc_uses_functional_spec_in_prompt():
 
     assert len(captured_prompt) == 1
     assert "UNIQUE_FUNCTIONAL_SPEC_MARKER_12345" in captured_prompt[0]
+
+
+@pytest.mark.asyncio
+async def test_generate_technical_doc_reviewer_feedback_in_prompt():
+    """reviewer_feedback must be wired through to the LLM prompt."""
+    from services.agent_service import generate_technical_doc
+    from schemas import CatalogEntry
+
+    entry = CatalogEntry(
+        id="PLM-001",
+        name="Test",
+        type="data_sync",
+        source={"system": "PLM"},
+        target={"system": "PIM"},
+        requirements=["REQ-001"],
+        status="DONE",
+        tags=["plm"],
+        created_at="2026-03-30T00:00:00Z",
+    )
+
+    captured_prompt: list[str] = []
+
+    async def capture_and_return(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return "# Integration Technical Design\n\n## 1. Purpose\n" + "Content " * 20
+
+    with patch("services.agent_service.hybrid_retriever") as mock_retriever, \
+         patch("services.agent_service.generate_with_retry", side_effect=capture_and_return), \
+         patch("services.agent_service.state") as mock_state, \
+         patch("services.agent_service.fetch_url_kb_context", new_callable=AsyncMock) as mock_url:
+
+        mock_retriever.retrieve = AsyncMock(return_value=[])
+        mock_retriever.retrieve_summaries = AsyncMock(return_value=[])
+        mock_state.kb_collection = MagicMock()
+        mock_state.kb_docs = {}
+        mock_state.summaries_col = MagicMock()
+        mock_url.return_value = ""
+
+        await generate_technical_doc(
+            entry,
+            functional_spec_content="# Integration Functional Design\nSpec.",
+            reviewer_feedback="UNIQUE_FEEDBACK_MARKER_67890",
+        )
+
+    assert len(captured_prompt) == 1
+    assert "UNIQUE_FEEDBACK_MARKER_67890" in captured_prompt[0]
+    assert "PREVIOUS REJECTION FEEDBACK" in captured_prompt[0]
