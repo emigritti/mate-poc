@@ -69,3 +69,48 @@ def test_sanitize_llm_output_default_is_functional():
     raw = "# Integration Functional Design\n\n## 1. Overview\nContent.\n"
     result = sanitize_llm_output(raw)
     assert result.startswith("# Integration Functional Design")
+
+
+def test_build_technical_prompt_includes_functional_spec():
+    from prompt_builder import build_technical_prompt
+    result = build_technical_prompt(
+        source_system="PLM",
+        target_system="PIM",
+        formatted_requirements="Sync product catalog every 6h",
+        functional_spec="# Integration Functional Design\n\n## 1. Overview\nTest spec.",
+        rag_context="",
+        kb_context="",
+    )
+    assert "PLM" in result
+    assert "PIM" in result
+    assert "Sync product catalog" in result
+    assert "Integration Functional Design" in result
+
+
+def test_build_technical_prompt_with_feedback():
+    from prompt_builder import build_technical_prompt
+    result = build_technical_prompt(
+        source_system="PLM",
+        target_system="PIM",
+        formatted_requirements="Sync products",
+        functional_spec="# Integration Functional Design\nSpec content.",
+        rag_context="",
+        kb_context="",
+        reviewer_feedback="Missing retry policy details",
+    )
+    assert "Missing retry policy details" in result
+    assert "PREVIOUS REJECTION FEEDBACK" in result
+
+
+def test_build_technical_prompt_empty_functional_spec():
+    from prompt_builder import build_technical_prompt
+    result = build_technical_prompt(
+        source_system="PLM",
+        target_system="PIM",
+        formatted_requirements="Req 1",
+        functional_spec="",
+        rag_context="",
+        kb_context="",
+    )
+    # Should not crash; placeholder just empty
+    assert "PLM" in result

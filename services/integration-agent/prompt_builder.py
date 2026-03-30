@@ -99,6 +99,126 @@ def _load_functional_template() -> str:
 _TEMPLATE: str = _load_template()
 _FUNCTIONAL_TEMPLATE: str = _load_functional_template()
 
+# ── Technical prompt file paths ──────────────────────────────────────────────
+_TECHNICAL_PROMPT_FILE = pathlib.Path(__file__).parent.parent.parent / "reusable-meta-prompt-technical.md"
+_TECHNICAL_TEMPLATE_PATH = (
+    pathlib.Path(__file__).parent.parent.parent
+    / "template"
+    / "technical"
+    / "integration-technical-design.md"
+)
+
+_FALLBACK_TECHNICAL_TEMPLATE = (
+    "You are a Senior Solution Architect.\n"
+    "Produce a technical design for the integration between "
+    "{source_system} (Source) and {target_system} (Target).\n"
+    "Requirements:\n{formatted_requirements}\n\n"
+    "Functional Spec:\n{functional_spec}\n\n"
+    "{rag_context}\n\n{kb_context}\n\n"
+    "TEMPLATE:\n{document_template}\n\n"
+    "Output ONLY valid Markdown. Begin immediately with "
+    "`# Integration Technical Design`."
+)
+
+
+def _load_technical_prompt() -> str:
+    """Extract the fenced ``text`` block from the technical meta-prompt file."""
+    try:
+        raw = _TECHNICAL_PROMPT_FILE.read_text(encoding="utf-8")
+        match = re.search(r"```text\n(.*?)```", raw, re.DOTALL)
+        if match:
+            logger.info("[PromptBuilder] Loaded technical meta-prompt from %s", _TECHNICAL_PROMPT_FILE)
+            return match.group(1).strip()
+        logger.warning(
+            "[PromptBuilder] No ```text``` block in %s — using fallback.", _TECHNICAL_PROMPT_FILE
+        )
+    except FileNotFoundError:
+        logger.warning(
+            "[PromptBuilder] %s not found — using fallback.", _TECHNICAL_PROMPT_FILE
+        )
+    return _FALLBACK_TECHNICAL_TEMPLATE
+
+
+def _load_technical_template() -> str:
+    """Load and unescape the technical design template."""
+    try:
+        content = _TECHNICAL_TEMPLATE_PATH.read_text(encoding="utf-8")
+        content = content.replace(r"\### ", "### ")
+        content = content.replace(r"\## ", "## ")
+        content = content.replace(r"\# ", "# ")
+        content = content.replace(r"\- ", "- ")
+        content = content.replace(r"\| ", "| ")
+        logger.info("[PromptBuilder] Loaded technical template from %s", _TECHNICAL_TEMPLATE_PATH)
+        return content
+    except FileNotFoundError:
+        logger.warning(
+            "[PromptBuilder] %s not found — {document_template} slot will be empty.",
+            _TECHNICAL_TEMPLATE_PATH,
+        )
+        return ""
+
+
+_TECHNICAL_PROMPT: str = _load_technical_prompt()
+_TECHNICAL_TEMPLATE: str = _load_technical_template()
+
+
+def build_technical_prompt(
+    source_system: str,
+    target_system: str,
+    formatted_requirements: str,
+    functional_spec: str,
+    rag_context: str = "",
+    kb_context: str = "",
+    reviewer_feedback: str = "",
+) -> str:
+    """
+    Populate the technical meta-prompt with runtime values.
+
+    ADR-038: Second phase of two-phase document generation.
+    The approved functional spec is injected as primary grounding context.
+    Same feedback/RAG injection pattern as build_prompt().
+
+    Args:
+        source_system:           Name of the integration source system.
+        target_system:           Name of the integration target system.
+        formatted_requirements:  Concatenated requirement descriptions.
+        functional_spec:         Approved functional design markdown (primary context).
+        rag_context:             KB RAG context (may be empty).
+        kb_context:              Best-practice KB reference (may be empty).
+        reviewer_feedback:       Optional HITL rejection feedback for regeneration.
+
+    Returns:
+        A fully populated prompt string ready to be sent to the LLM.
+    """
+    feedback_block = (
+        f"## PREVIOUS REJECTION FEEDBACK (address these issues in your output):\n"
+        f"{reviewer_feedback.strip()}\n\n"
+        if reviewer_feedback.strip()
+        else ""
+    )
+    rag_block = (
+        f"PAST APPROVED EXAMPLES:\n{rag_context}"
+        if rag_context.strip()
+        else ""
+    )
+    kb_block = (
+        f"BEST PRACTICES REFERENCE:\n{kb_context}"
+        if kb_context.strip()
+        else ""
+    )
+    combined_context = f"{feedback_block}{rag_block}" if feedback_block else rag_block
+
+    # F-09 pattern: sequential str.replace() prevents KeyError/ValueError
+    result = _TECHNICAL_PROMPT
+    result = result.replace("{source_system}", source_system)
+    result = result.replace("{target_system}", target_system)
+    result = result.replace("{formatted_requirements}", formatted_requirements)
+    result = result.replace("{functional_spec}", functional_spec)
+    result = result.replace("{rag_context}", combined_context)
+    result = result.replace("{kb_context}", kb_block)
+    result = result.replace("{document_template}", _TECHNICAL_TEMPLATE)
+    return result
+
 
 def build_prompt(
     source_system: str,
