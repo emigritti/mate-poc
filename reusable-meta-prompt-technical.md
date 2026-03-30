@@ -36,5 +36,13 @@ Use it as the authoritative source of truth for scope, actors, business rules, a
 
 {document_template}
 
-Begin immediately with `# Integration Technical Design`. No preamble.
+## Output Format
+
+Output ONLY valid Markdown starting with `# Integration Technical Design`.
+
+Do NOT write "Here is", "Sure!", "Certainly", "Of course", or any introduction.
+Do NOT add any text before the document heading.
+
+START YOUR RESPONSE NOW WITH:
+# Integration Technical Design
 ```
