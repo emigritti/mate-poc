@@ -1,0 +1,9 @@
+# Normalise line endings to LF for all text files.
+# Docker Compose / shell scripts must be LF — CRLF breaks Go yaml.v3 parser.
+* text=auto eol=lf
+
+# Explicitly LF for files used inside Linux containers
+*.yml        eol=lf
+*.yaml       eol=lf
+*.sh         eol=lf
+Dockerfile   eol=lf
