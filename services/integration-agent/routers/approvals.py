@@ -16,7 +16,7 @@ import state
 from auth import require_token
 from output_guard import sanitize_human_content, LLMOutputValidationError
 from schemas import Approval, ApproveRequest, Document, RejectRequest
-from services.agent_service import generate_integration_doc
+from services.agent_service import generate_integration_doc, generate_technical_doc
 from services.event_logger import record_event
 from utils import _now_iso
 
@@ -77,19 +77,12 @@ async def approve_doc(
 
     await record_event("approval.approved", {"integration_id": app_entry.integration_id})
 
-    # ADR-038: when functional spec approved → unlock technical design phase
-    if app_entry.doc_type == "functional":
+    # ADR-038: update technical_status lifecycle on approval
+    _tech_status = {"functional": "TECH_PENDING", "technical": "TECH_DONE"}.get(app_entry.doc_type)
+    if _tech_status:
         catalog_entry = state.catalog.get(app_entry.integration_id)
         if catalog_entry is not None:
-            catalog_entry.technical_status = "TECH_PENDING"
-            if db.catalog_col is not None:
-                await db.catalog_col.replace_one(
-                    {"id": catalog_entry.id}, catalog_entry.model_dump(), upsert=True
-                )
-    elif app_entry.doc_type == "technical":
-        catalog_entry = state.catalog.get(app_entry.integration_id)
-        if catalog_entry is not None:
-            catalog_entry.technical_status = "TECH_DONE"
+            catalog_entry.technical_status = _tech_status
             if db.catalog_col is not None:
                 await db.catalog_col.replace_one(
                     {"id": catalog_entry.id}, catalog_entry.model_dump(), upsert=True
@@ -174,10 +167,9 @@ async def regenerate_doc(
             func_doc = state.documents.get(f"{app_entry.integration_id}-functional")
             if func_doc is None:
                 raise HTTPException(
-                    status_code=409,
+                    status_code=404,
                     detail="Cannot regenerate technical doc: approved functional spec not found.",
                 )
-            from services.agent_service import generate_technical_doc
             new_content = await generate_technical_doc(
                 entry=entry,
                 functional_spec_content=func_doc.content,

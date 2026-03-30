@@ -273,11 +273,17 @@ async def trigger_technical(
         if db.catalog_col is not None:
             await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
         raise HTTPException(status_code=422, detail=f"Technical output failed structural guard: {exc}")
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError) as exc:
+        entry.technical_status = "TECH_PENDING"
+        if db.catalog_col is not None:
+            await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
+        raise HTTPException(status_code=503, detail=f"LLM unavailable during technical generation: {exc}")
     except Exception as exc:
         entry.technical_status = "TECH_PENDING"
         if db.catalog_col is not None:
             await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
-        raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}")
+        logger.error("[TECH] Unexpected error for %s: %s", integration_id, exc)
+        raise HTTPException(status_code=500, detail="Unexpected error during technical generation.")
 
     quality = assess_quality(tech_content)
     if not quality.passed:
