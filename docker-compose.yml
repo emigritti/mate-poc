@@ -386,9 +386,7 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - |
-        n8n import:workflow --separate --input=/workflows && \
-        echo "Workflow import complete."
+      - "n8n import:workflow --separate --input=/workflows && echo 'Workflow import complete.'"
     volumes:
       - n8n-data:/home/node/.n8n
       - ./workflows/n8n:/workflows:ro
