@@ -6,6 +6,7 @@ import { API } from '../../api.js';
 
 // ── Category badge colours ────────────────────────────────────────────────────
 const CATEGORY_STYLE = {
+  'How-To':    'bg-teal-100   text-teal-700',
   'Guide':     'bg-emerald-100 text-emerald-700',
   'ADR':       'bg-blue-100   text-blue-700',
   'Checklist': 'bg-amber-100  text-amber-700',
@@ -13,7 +14,7 @@ const CATEGORY_STYLE = {
   'Mapping':   'bg-slate-100  text-slate-600',
 };
 
-const CATEGORY_ORDER = ['Guide', 'ADR', 'Checklist', 'Test Plan', 'Mapping'];
+const CATEGORY_ORDER = ['How-To', 'Guide', 'ADR', 'Checklist', 'Test Plan', 'Mapping'];
 
 function CategoryBadge({ category }) {
   return (

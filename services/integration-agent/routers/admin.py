@@ -43,43 +43,62 @@ class LLMSettingsPatchRequest(BaseModel):
     tag_llm: _TagLLMPatch | None = None
 
 # ── Project Docs ──────────────────────────────────────────────────────────────
-DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent.parent.parent.parent / "docs"))
+DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent.parent.parent.parent))
 if not DOCS_ROOT.is_dir():
     logger.warning("DOCS_ROOT %s does not exist or is not a directory.", DOCS_ROOT)
 
 DOCS_MANIFEST: list[dict] = [
-    {"path": "README.md", "name": "README", "category": "Guide", "description": "Overview of the project."},
-    {"path": "AWS-DEPLOYMENT-GUIDE.md", "name": "AWS Deployment Guide", "category": "Guide", "description": "Step-by-step AWS deployment instructions."},
-    {"path": "architecture_specification.md", "name": "Architecture Specification", "category": "Guide", "description": "Full technical architecture."},
-    {"path": "functional-guide.md", "name": "Functional Guide", "category": "Guide", "description": "End-to-end functional walkthrough."},
-    {"path": "adr/ADR-001-011-decisions.md", "name": "ADR-001…011", "category": "ADR", "description": "Foundational decisions."},
-    {"path": "adr/ADR-012-async-llm-client.md", "name": "ADR-012 Async LLM Client", "category": "ADR", "description": "Decision to use httpx.AsyncClient."},
-    {"path": "adr/ADR-013-mongodb-persistence.md", "name": "ADR-013 MongoDB Persistence", "category": "ADR", "description": "MongoDB write-through cache."},
-    {"path": "adr/ADR-014-prompt-builder.md", "name": "ADR-014 Prompt Builder", "category": "ADR", "description": "Prompt assembly module."},
-    {"path": "adr/ADR-015-llm-output-guard.md", "name": "ADR-015 LLM Output Guard", "category": "ADR", "description": "Output sanitization layer."},
-    {"path": "adr/ADR-016-secret-management.md", "name": "ADR-016 Secret Management", "category": "ADR", "description": "Pydantic-settings config."},
-    {"path": "adr/ADR-017-frontend-xss-mitigation.md", "name": "ADR-017 Frontend XSS", "category": "ADR", "description": "Frontend XSS mitigation."},
-    {"path": "adr/ADR-018-cors-standardization.md", "name": "ADR-018 CORS Standardization", "category": "ADR", "description": "CORS allowlist strategy."},
-    {"path": "adr/ADR-019-rag-tag-filtering.md", "name": "ADR-019 RAG Tag Filtering", "category": "ADR", "description": "ChromaDB tag-based queries."},
-    {"path": "adr/ADR-020-tag-llm-tuning.md", "name": "ADR-020 Tag LLM Tuning", "category": "ADR", "description": "Lightweight tag LLM settings."},
-    {"path": "adr/ADR-021-best-practice-flow.md", "name": "ADR-021 Best Practice Flow", "category": "ADR", "description": "KB import flow and RAG integration."},
-    {"path": "adr/ADR-022-nginx-gateway.md", "name": "ADR-022 Nginx Gateway", "category": "ADR", "description": "Nginx reverse-proxy gateway."},
-    {"path": "adr/ADR-023-document-lifecycle-staged-promotion.md", "name": "ADR-023 Document Lifecycle", "category": "ADR", "description": "Staged document promotion."},
-    {"path": "adr/ADR-024-kb-url-links.md", "name": "ADR-024 KB URL Links", "category": "ADR", "description": "Live URL fetch at generation time."},
-    {"path": "adr/ADR-025-project-metadata-upload-modal.md", "name": "ADR-025 Project Metadata", "category": "ADR", "description": "Client-scoped projects."},
-    {"path": "adr/ADR-026-backend-decomposition-r15.md", "name": "ADR-026 Backend Decomposition (R15)", "category": "ADR", "description": "Modular routers, services, shared state."},
-    {"path": "adr/ADR-027-bm25-hybrid-retrieval.md", "name": "ADR-027 BM25 Hybrid Retrieval", "category": "ADR", "description": "BM25 + ChromaDB dense ensemble retrieval."},
-    {"path": "adr/ADR-028-multi-query-expansion.md", "name": "ADR-028 Multi-Query Expansion", "category": "ADR", "description": "2 template + 2 LLM query variants."},
-    {"path": "adr/ADR-029-context-assembler.md", "name": "ADR-029 ContextAssembler", "category": "ADR", "description": "Unified context fusion with token budget."},
-    {"path": "adr/ADR-030-semantic-chunking-langchain.md", "name": "ADR-030 Semantic Chunking", "category": "ADR", "description": "LangChain RecursiveCharacterTextSplitter."},
-    {"path": "adr/ADR-031-output-quality-checker.md", "name": "ADR-031 Output Quality Checker", "category": "ADR", "description": "Quality assessment gate after LLM generation."},
-    {"path": "adr/ADR-032-feedback-loop-regenerate.md", "name": "ADR-032 Feedback Loop Regenerate", "category": "ADR", "description": "HITL feedback loop: regenerate rejected documents."},
-    {"path": "adr/ADR-033-tanstack-query-frontend.md", "name": "ADR-033 TanStack Query Frontend", "category": "ADR", "description": "React Query for server-state management."},
-    {"path": "code-review/CODE-REVIEW-CHECKLIST.md", "name": "Code Review Checklist", "category": "Checklist", "description": "Architecture/correctness/security gates."},
-    {"path": "security-review/SECURITY-REVIEW-CHECKLIST.md", "name": "Security Review Checklist", "category": "Checklist", "description": "OWASP-aligned security checklist."},
-    {"path": "unit-test-review/UNIT-TEST-REVIEW-CHECKLIST.md", "name": "Unit Test Review Checklist", "category": "Checklist", "description": "Test quality gates."},
-    {"path": "test-plan/TEST-PLAN-001-remediation.md", "name": "TEST-PLAN-001 Remediation", "category": "Test Plan", "description": "Unit test plan with 274 tests."},
-    {"path": "mappings/UNIT-SECURITY-OWASP-MAPPING.md", "name": "OWASP Unit-Test Mapping", "category": "Mapping", "description": "Test-to-OWASP traceability."},
+    # ── How-To guides ─────────────────────────────────────────────────────────
+    {"path": "HOW-TO/README.md", "name": "HOW-TO Index", "category": "How-To", "description": "Panoramica di tutti gli scenari operativi e flusso end-to-end."},
+    {"path": "HOW-TO/01-create-integration-documents.md", "name": "01 — Creare documenti di integrazione", "category": "How-To", "description": "Upload CSV → conferma tag → trigger agent → HITL approval."},
+    {"path": "HOW-TO/02-upload-kb-document.md", "name": "02 — Upload documento nella KB", "category": "How-To", "description": "Caricamento manuale di file PDF/MD nella Knowledge Base."},
+    {"path": "HOW-TO/03-link-url-to-kb.md", "name": "03 — Link URL per scanning on-the-fly", "category": "How-To", "description": "Registra un URL da consultare live durante la generazione."},
+    {"path": "HOW-TO/04-openapi-ingestion.md", "name": "04 — Ingestion OpenAPI", "category": "How-To", "description": "Registra una sorgente OpenAPI/Swagger nell'Ingestion Platform."},
+    {"path": "HOW-TO/05-html-scraping.md", "name": "05 — Scraping HTML", "category": "How-To", "description": "Registra pagine HTML per estrazione semantica via Claude."},
+    {"path": "HOW-TO/06-mcp-server-integration.md", "name": "06 — Integrazione MCP Server", "category": "How-To", "description": "Connetti un MCP server come sorgente KB."},
+    {"path": "HOW-TO/07-generate-technical-design.md", "name": "07 — Generare Technical Design", "category": "How-To", "description": "Workflow two-phase: functional approval → technical design generation."},
+    # ── Project guides ─────────────────────────────────────────────────────────
+    {"path": "docs/README.md", "name": "README", "category": "Guide", "description": "Overview of the project."},
+    {"path": "docs/AWS-DEPLOYMENT-GUIDE.md", "name": "AWS Deployment Guide", "category": "Guide", "description": "Step-by-step AWS deployment instructions."},
+    {"path": "docs/architecture_specification.md", "name": "Architecture Specification", "category": "Guide", "description": "Full technical architecture."},
+    {"path": "docs/functional-guide.md", "name": "Functional Guide", "category": "Guide", "description": "End-to-end functional walkthrough."},
+    # ── ADRs ──────────────────────────────────────────────────────────────────
+    {"path": "docs/adr/ADR-001-011-decisions.md", "name": "ADR-001…011", "category": "ADR", "description": "Foundational decisions."},
+    {"path": "docs/adr/ADR-012-async-llm-client.md", "name": "ADR-012 Async LLM Client", "category": "ADR", "description": "Decision to use httpx.AsyncClient."},
+    {"path": "docs/adr/ADR-013-mongodb-persistence.md", "name": "ADR-013 MongoDB Persistence", "category": "ADR", "description": "MongoDB write-through cache."},
+    {"path": "docs/adr/ADR-014-prompt-builder.md", "name": "ADR-014 Prompt Builder", "category": "ADR", "description": "Prompt assembly module."},
+    {"path": "docs/adr/ADR-015-llm-output-guard.md", "name": "ADR-015 LLM Output Guard", "category": "ADR", "description": "Output sanitization layer."},
+    {"path": "docs/adr/ADR-016-secret-management.md", "name": "ADR-016 Secret Management", "category": "ADR", "description": "Pydantic-settings config."},
+    {"path": "docs/adr/ADR-017-frontend-xss-mitigation.md", "name": "ADR-017 Frontend XSS", "category": "ADR", "description": "Frontend XSS mitigation."},
+    {"path": "docs/adr/ADR-018-cors-standardization.md", "name": "ADR-018 CORS Standardization", "category": "ADR", "description": "CORS allowlist strategy."},
+    {"path": "docs/adr/ADR-019-rag-tag-filtering.md", "name": "ADR-019 RAG Tag Filtering", "category": "ADR", "description": "ChromaDB tag-based queries."},
+    {"path": "docs/adr/ADR-020-tag-llm-tuning.md", "name": "ADR-020 Tag LLM Tuning", "category": "ADR", "description": "Lightweight tag LLM settings."},
+    {"path": "docs/adr/ADR-021-best-practice-flow.md", "name": "ADR-021 Best Practice Flow", "category": "ADR", "description": "KB import flow and RAG integration."},
+    {"path": "docs/adr/ADR-022-nginx-gateway.md", "name": "ADR-022 Nginx Gateway", "category": "ADR", "description": "Nginx reverse-proxy gateway."},
+    {"path": "docs/adr/ADR-023-document-lifecycle-staged-promotion.md", "name": "ADR-023 Document Lifecycle", "category": "ADR", "description": "Staged document promotion."},
+    {"path": "docs/adr/ADR-024-kb-url-links.md", "name": "ADR-024 KB URL Links", "category": "ADR", "description": "Live URL fetch at generation time."},
+    {"path": "docs/adr/ADR-025-project-metadata-upload-modal.md", "name": "ADR-025 Project Metadata", "category": "ADR", "description": "Client-scoped projects."},
+    {"path": "docs/adr/ADR-026-backend-decomposition-r15.md", "name": "ADR-026 Backend Decomposition (R15)", "category": "ADR", "description": "Modular routers, services, shared state."},
+    {"path": "docs/adr/ADR-027-bm25-hybrid-retrieval.md", "name": "ADR-027 BM25 Hybrid Retrieval", "category": "ADR", "description": "BM25 + ChromaDB dense ensemble retrieval."},
+    {"path": "docs/adr/ADR-028-multi-query-expansion.md", "name": "ADR-028 Multi-Query Expansion", "category": "ADR", "description": "2 template + 2 LLM query variants."},
+    {"path": "docs/adr/ADR-029-context-assembler.md", "name": "ADR-029 ContextAssembler", "category": "ADR", "description": "Unified context fusion with token budget."},
+    {"path": "docs/adr/ADR-030-semantic-chunking-langchain.md", "name": "ADR-030 Semantic Chunking", "category": "ADR", "description": "LangChain RecursiveCharacterTextSplitter."},
+    {"path": "docs/adr/ADR-031-output-quality-checker.md", "name": "ADR-031 Output Quality Checker", "category": "ADR", "description": "Quality assessment gate after LLM generation."},
+    {"path": "docs/adr/ADR-032-feedback-loop-regenerate.md", "name": "ADR-032 Feedback Loop Regenerate", "category": "ADR", "description": "HITL feedback loop: regenerate rejected documents."},
+    {"path": "docs/adr/ADR-033-tanstack-query-frontend.md", "name": "ADR-033 TanStack Query Frontend", "category": "ADR", "description": "React Query for server-state management."},
+    {"path": "docs/adr/ADR-034-docling-vision-parser.md", "name": "ADR-034 Docling + Vision Parser", "category": "ADR", "description": "Layout-aware document parsing with LLaVA vision captions."},
+    {"path": "docs/adr/ADR-035-raptor-lite-summaries.md", "name": "ADR-035 RAPTOR-lite Summaries", "category": "ADR", "description": "Section-level LLM summaries for hierarchical RAG retrieval."},
+    {"path": "docs/adr/ADR-036-ingestion-platform-architecture.md", "name": "ADR-036 Ingestion Platform", "category": "ADR", "description": "n8n + multi-source collectors (OpenAPI, HTML, MCP)."},
+    {"path": "docs/adr/ADR-037-claude-api-semantic-extraction.md", "name": "ADR-037 Claude Semantic Extraction", "category": "ADR", "description": "Claude API for HTML relevance filtering and capability extraction."},
+    {"path": "docs/adr/ADR-038-technical-design-generation.md", "name": "ADR-038 Technical Design Generation", "category": "ADR", "description": "Two-phase doc generation: functional approval → technical design."},
+    # ── Checklists ────────────────────────────────────────────────────────────
+    {"path": "docs/code-review/CODE-REVIEW-CHECKLIST.md", "name": "Code Review Checklist", "category": "Checklist", "description": "Architecture/correctness/security gates."},
+    {"path": "docs/security-review/SECURITY-REVIEW-CHECKLIST.md", "name": "Security Review Checklist", "category": "Checklist", "description": "OWASP-aligned security checklist."},
+    {"path": "docs/unit-test-review/UNIT-TEST-REVIEW-CHECKLIST.md", "name": "Unit Test Review Checklist", "category": "Checklist", "description": "Test quality gates."},
+    # ── Test Plans ────────────────────────────────────────────────────────────
+    {"path": "docs/test-plan/TEST-PLAN-001-remediation.md", "name": "TEST-PLAN-001 Remediation", "category": "Test Plan", "description": "Unit test plan with 314 tests."},
+    # ── Mappings ──────────────────────────────────────────────────────────────
+    {"path": "docs/mappings/UNIT-SECURITY-OWASP-MAPPING.md", "name": "OWASP Unit-Test Mapping", "category": "Mapping", "description": "Test-to-OWASP traceability."},
 ]
 
 
