@@ -106,6 +106,23 @@ async def lifespan(app: FastAPI):
             len(state.catalog), len(state.approvals), len(state.documents),
         )
 
+        # ADR-038 backfill: entries approved before ADR-038 never had technical_status set.
+        # Set TECH_PENDING for any entry that has an approved functional doc but no tech status.
+        backfill_count = 0
+        for entry in state.catalog.values():
+            if (
+                entry.technical_status is None
+                and state.documents.get(f"{entry.id}-functional") is not None
+                and state.documents.get(f"{entry.id}-technical") is None
+            ):
+                entry.technical_status = "TECH_PENDING"
+                await db.catalog_col.replace_one(
+                    {"id": entry.id}, entry.model_dump(), upsert=True
+                )
+                backfill_count += 1
+        if backfill_count:
+            logger.info("[DB] ADR-038 backfill: set TECH_PENDING for %d catalog entries.", backfill_count)
+
     # Seed Knowledge Base docs from MongoDB
     if db.kb_documents_col is not None:
         async for doc in db.kb_documents_col.find({}, {"_id": 0}):
