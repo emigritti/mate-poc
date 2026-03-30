@@ -3,6 +3,7 @@ Unit tests for technical design document generation.
 ADR-038: Two-phase doc generation — technical spec after functional approval.
 """
 import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
 from output_guard import sanitize_llm_output, LLMOutputValidationError
 from schemas import CatalogEntry
 
@@ -112,3 +113,90 @@ def test_build_technical_prompt_empty_functional_spec():
     )
     # Should not crash; placeholder just empty
     assert "PLM" in result
+
+
+@pytest.mark.asyncio
+async def test_generate_technical_doc_calls_rag_and_llm():
+    """generate_technical_doc must call KB retrieval and LLM, return sanitized technical markdown."""
+    from services.agent_service import generate_technical_doc
+    from schemas import CatalogEntry
+
+    entry = CatalogEntry(
+        id="PLM-001",
+        name="PLM to PIM Sync",
+        type="data_sync",
+        source={"system": "PLM"},
+        target={"system": "PIM"},
+        requirements=["REQ-001"],
+        status="DONE",
+        tags=["plm", "pim"],
+        created_at="2026-03-30T00:00:00Z",
+    )
+    functional_spec = "# Integration Functional Design\n\n## 1. Overview\nApproved spec."
+
+    with patch("services.agent_service.hybrid_retriever") as mock_retriever, \
+         patch("services.agent_service.generate_with_retry", new_callable=AsyncMock) as mock_llm, \
+         patch("services.agent_service.state") as mock_state, \
+         patch("services.agent_service.fetch_url_kb_context", new_callable=AsyncMock) as mock_url:
+
+        mock_retriever.retrieve = AsyncMock(return_value=[])
+        mock_retriever.retrieve_summaries = AsyncMock(return_value=[])
+        mock_state.kb_collection = MagicMock()
+        mock_state.kb_docs = {}
+        mock_state.summaries_col = MagicMock()
+        mock_url.return_value = ""
+        mock_llm.return_value = (
+            "# Integration Technical Design\n\n## 1. Purpose\n"
+            + "Technical content " * 20
+        )
+
+        result = await generate_technical_doc(entry, functional_spec)
+
+    assert result.startswith("# Integration Technical Design")
+    mock_llm.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_generate_technical_doc_uses_functional_spec_in_prompt():
+    """The functional spec content must appear in the prompt sent to the LLM."""
+    from services.agent_service import generate_technical_doc
+    from schemas import CatalogEntry
+
+    entry = CatalogEntry(
+        id="PLM-001",
+        name="Test",
+        type="data_sync",
+        source={"system": "PLM"},
+        target={"system": "PIM"},
+        requirements=["REQ-001"],
+        status="DONE",
+        tags=["plm"],
+        created_at="2026-03-30T00:00:00Z",
+    )
+    functional_spec = "UNIQUE_FUNCTIONAL_SPEC_MARKER_12345"
+
+    captured_prompt: list[str] = []
+
+    async def capture_and_return(prompt, **kwargs):
+        captured_prompt.append(prompt)
+        return (
+            "# Integration Technical Design\n\n## 1. Purpose\n"
+            + "Technical content " * 20
+        )
+
+    with patch("services.agent_service.hybrid_retriever") as mock_retriever, \
+         patch("services.agent_service.generate_with_retry", side_effect=capture_and_return), \
+         patch("services.agent_service.state") as mock_state, \
+         patch("services.agent_service.fetch_url_kb_context", new_callable=AsyncMock) as mock_url:
+
+        mock_retriever.retrieve = AsyncMock(return_value=[])
+        mock_retriever.retrieve_summaries = AsyncMock(return_value=[])
+        mock_state.kb_collection = MagicMock()
+        mock_state.kb_docs = {}
+        mock_state.summaries_col = MagicMock()
+        mock_url.return_value = ""
+
+        await generate_technical_doc(entry, functional_spec)
+
+    assert len(captured_prompt) == 1
+    assert "UNIQUE_FUNCTIONAL_SPEC_MARKER_12345" in captured_prompt[0]
