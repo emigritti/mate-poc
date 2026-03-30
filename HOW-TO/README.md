@@ -43,6 +43,7 @@ Ogni guida ha una sezione **via Dashboard (UI)** e una **via API (curl)**.
 | 04 | Avviare ingestion OpenAPI da web | ✅ Implementato | [→](./04-openapi-ingestion.md) |
 | 05 | Avviare scraping HTML | ⚠️ Work in Progress | [→](./05-html-scraping.md) |
 | 06 | Integrarsi come MCP server | ⚠️ Work in Progress | [→](./06-mcp-server-integration.md) |
+| 07 | Generare il Technical Design Document | ✅ Implementato | [→](./07-generate-technical-design.md) |
 
 ---
 

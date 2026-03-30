@@ -1101,6 +1101,22 @@ Total context budget raised to **3000 chars** (`ollama_rag_max_chars`).
 
 **ADR references:** ADR-034 (Docling + LLaVA vision parser), ADR-035 (RAPTOR-lite section summaries).
 
+### 7.9 Two-Phase Document Generation (ADR-038)
+
+Document generation follows a two-phase lifecycle:
+
+**Phase 1 — Functional Design** (existing):
+CSV upload → tag confirmation → Agent trigger → LLM+RAG → HITL approve → `status: DONE`
+
+**Phase 2 — Technical Design** (ADR-038):
+Functional approval → `technical_status: TECH_PENDING` → user triggers → LLM+RAG (KB-only, functional spec as context) → HITL approve → `technical_status: TECH_DONE`
+
+`technical_status` lifecycle: `None → TECH_PENDING → TECH_GENERATING → TECH_REVIEW → TECH_DONE`
+
+New endpoints:
+- `POST /api/v1/agent/trigger-technical/{integration_id}` — start technical generation
+- `GET /api/v1/catalog/integrations/{id}/technical-spec` — retrieve approved technical spec
+
 ---
 
 ## 8. Integration Patterns

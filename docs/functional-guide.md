@@ -163,6 +163,8 @@ The analyst navigates to **"HITL Approvals (RAG)"** and sees the generated docum
 - Click **"Approve & Save to RAG"** → document is persisted to MongoDB and fed into ChromaDB.
 - Click **"Reject (Retry)"** → provide feedback; the document is marked REJECTED. Use **"Regenerate with Feedback"** (see §5 below) to create a new generation attempt with the feedback injected into the prompt.
 
+> **Next step after functional approval:** Once the functional spec is approved, a **Genera Technical Design** button appears in the Catalog. See [HOW-TO/07 — Generate Technical Design](../HOW-TO/07-generate-technical-design.md) for the full technical design generation flow.
+
 ### Step 5 — Catalog & Document Access
 
 After approval, the document is accessible via:
