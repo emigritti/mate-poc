@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
-import { BookOpen, RefreshCw, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { BookOpen, RefreshCw, ArrowRight, Loader2, AlertCircle, X, FileText, Wrench } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
 
@@ -18,7 +20,169 @@ const TYPE_PILL = {
   'File-based':   'bg-amber-100 text-amber-700',
 };
 
-function IntegrationCard({ integration }) {
+// ── Technical status badge ───────────────────────────────────────────────────
+
+const TECH_STATUS_STYLE = {
+  TECH_PENDING:     'bg-amber-100  text-amber-700',
+  TECH_GENERATING:  'bg-blue-100   text-blue-700',
+  TECH_REVIEW:      'bg-violet-100 text-violet-700',
+  TECH_DONE:        'bg-emerald-100 text-emerald-700',
+};
+
+const TECH_STATUS_LABEL = {
+  TECH_PENDING:    'Technical: pronto',
+  TECH_GENERATING: 'Technical: generazione...',
+  TECH_REVIEW:     'Technical: in revisione',
+  TECH_DONE:       'Technical: approvato',
+};
+
+// ── Markdown viewer modal ────────────────────────────────────────────────────
+
+function DocModal({ title, content, onClose }) {
+  useEffect(() => {
+    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.45)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ width: '90vw', maxWidth: 900, maxHeight: '88vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Wrench size={14} className="text-slate-400" />
+            <span className="font-semibold text-slate-800 text-sm" style={{ fontFamily: 'Outfit, sans-serif' }}>
+              {title}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 prose prose-slate prose-sm max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Technical actions section inside a card ──────────────────────────────────
+
+function TechActions({ integration, onRefresh }) {
+  const ts = integration.technical_status;
+  const [busy,    setBusy]    = useState(false);
+  const [error,   setError]   = useState(null);
+  const [modal,   setModal]   = useState(null); // { title, content }
+  const [viewing, setViewing] = useState(false);
+  const timerRef = useRef(null);
+
+  // Cancel pending refresh timer on unmount
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  if (!ts) return null;
+
+  const trigger = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res  = await API.catalog.triggerTechnical(integration.id);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+      timerRef.current = setTimeout(onRefresh, 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const viewTech = async () => {
+    setViewing(true);
+    setError(null);
+    try {
+      const res  = await API.catalog.technicalSpec(integration.id);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+      setModal({ title: `Technical Design — ${integration.name || integration.id}`, content: data.data?.content || '' });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setViewing(false);
+    }
+  };
+
+  return (
+    <>
+      {modal && <DocModal title={modal.title} content={modal.content} onClose={() => setModal(null)} />}
+
+      <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 space-y-2">
+        {/* Status badge row */}
+        <div className="flex items-center gap-2">
+          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${TECH_STATUS_STYLE[ts] ?? 'bg-slate-100 text-slate-500'}`}>
+            {TECH_STATUS_LABEL[ts] ?? ts}
+          </span>
+          {(ts === 'TECH_GENERATING') && (
+            <Loader2 size={12} className="animate-spin text-blue-500" />
+          )}
+        </div>
+
+        {/* Action buttons */}
+        {ts === 'TECH_PENDING' && (
+          <button
+            onClick={trigger}
+            disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <Wrench size={11} />}
+            {busy ? 'Avvio...' : 'Genera Technical Design'}
+          </button>
+        )}
+
+        {ts === 'TECH_REVIEW' && (
+          <p className="text-xs text-violet-700">
+            In attesa di approvazione HITL nella tab <span className="font-semibold">Approvals</span>.
+          </p>
+        )}
+
+        {ts === 'TECH_DONE' && (
+          <button
+            onClick={viewTech}
+            disabled={viewing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {viewing ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
+            {viewing ? 'Caricamento...' : 'View Technical Spec'}
+          </button>
+        )}
+
+        {error && (
+          <p className="text-xs text-rose-600 flex items-center gap-1">
+            <AlertCircle size={11} />
+            {error.length > 120 ? `${error.slice(0, 120)}…` : error}
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Integration card ─────────────────────────────────────────────────────────
+
+function IntegrationCard({ integration, onRefresh }) {
   const statusCfg = STATUS_MAP[integration.status] ?? { variant: 'slate', label: integration.status };
   const typeColor = TYPE_PILL[integration.type] ?? 'bg-slate-100 text-slate-600';
 
@@ -76,9 +240,14 @@ function IntegrationCard({ integration }) {
           </p>
         </div>
       )}
+
+      {/* ADR-038: technical status actions */}
+      <TechActions integration={integration} onRefresh={onRefresh} />
     </div>
   );
 }
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CatalogPage() {
   const [integrations, setIntegrations] = useState([]);
@@ -86,26 +255,24 @@ export default function CatalogPage() {
   const [error, setError]               = useState(null);
   const [filter, setFilter]             = useState('all');
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res  = await API.catalog.list();
       const data = await res.json();
-      // Backend returns { status, data: [...] }
       setIntegrations(data.data || []);
     } catch {
       setError('Failed to load integrations');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const statuses  = ['all', ...new Set(integrations.map(i => i.status).filter(Boolean))];
-  const filtered  = filter === 'all' ? integrations : integrations.filter(i => i.status === filter);
+  useEffect(() => { load(); }, [load]);
 
+  const statuses = ['all', ...new Set(integrations.map(i => i.status).filter(Boolean))];
+  const filtered = filter === 'all' ? integrations : integrations.filter(i => i.status === filter);
   const countFor = (s) =>
     s === 'all' ? integrations.length : integrations.filter(i => i.status === s).length;
 
@@ -157,7 +324,7 @@ export default function CatalogPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(int => (
-            <IntegrationCard key={int.id} integration={int} />
+            <IntegrationCard key={int.id} integration={int} onRefresh={load} />
           ))}
         </div>
       )}
