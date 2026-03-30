@@ -75,7 +75,10 @@ async def get_func_spec(id: str) -> dict:
 
 @router.get("/catalog/integrations/{id}/technical-spec")
 async def get_tech_spec(id: str) -> dict:
-    return {"status": "error", "message": "Technical specs generation is not yet implemented."}
+    doc = state.documents.get(f"{id}-technical")
+    if not doc:
+        return {"status": "error", "message": "Technical design not approved yet or not found."}
+    return {"status": "success", "data": doc.model_dump()}
 
 
 @router.get("/catalog/integrations/{id}/suggest-tags")
