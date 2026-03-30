@@ -34,7 +34,12 @@ _ALLOWED_ATTRS: dict[str, list[str]] = {"a": ["href", "title"]}
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 _MAX_CHARS: int = 50_000
-_REQUIRED_PREFIX: str = "# Integration Functional Design"
+_REQUIRED_PREFIX_BY_TYPE: dict[str, str] = {
+    "functional": "# Integration Functional Design",
+    "technical":  "# Integration Technical Design",
+}
+# Backward-compat alias used by existing tests that reference this directly
+_REQUIRED_PREFIX: str = _REQUIRED_PREFIX_BY_TYPE["functional"]
 
 # ── Quality thresholds (R14) ────────────────────────────────────────────────────
 _MIN_SECTION_COUNT: int = 5    # at least 5 ## headings expected
@@ -49,46 +54,49 @@ class LLMOutputValidationError(ValueError):
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def sanitize_llm_output(raw: str) -> str:
+def sanitize_llm_output(raw: str, doc_type: str = "functional") -> str:
     """
     Validate and sanitize LLM-generated markdown (strict mode).
 
     Strategy:
       1. Fast path  — output starts with the required heading: use as-is.
       2. Fallback   — LLM added a preamble: find the heading and strip before it.
-                      Small models (llama3.2:3b) routinely add courtesy intros
-                      despite explicit instructions — this handles that gracefully.
-      3. Hard fail  — required heading not found anywhere: reject. This catches
-                      completely off-topic responses and prompt-injection attempts.
+      3. Hard fail  — required heading not found anywhere: reject.
+
+    Args:
+        raw:      Raw LLM output string.
+        doc_type: "functional" (default) or "technical" (ADR-038).
 
     Raises:
-        LLMOutputValidationError: if _REQUIRED_PREFIX is absent entirely.
+        LLMOutputValidationError: if the required prefix is absent entirely.
 
     Returns:
         Sanitized markdown string, truncated to _MAX_CHARS.
     """
+    required_prefix = _REQUIRED_PREFIX_BY_TYPE.get(doc_type, _REQUIRED_PREFIX_BY_TYPE["functional"])
+
     if not raw or not raw.strip():
         raise LLMOutputValidationError("LLM returned empty output.")
 
     text = raw.strip()
 
     # Fast path — correct output
-    if text.startswith(_REQUIRED_PREFIX):
+    if text.startswith(required_prefix):
         return _apply_bleach_and_truncate(text)
 
     # Fallback — strip preamble added by the model
-    idx = text.find(_REQUIRED_PREFIX)
+    idx = text.find(required_prefix)
     if idx != -1:
         logger.warning(
             "[OutputGuard] Preamble detected (%d chars stripped) before '%s'.",
             idx,
-            _REQUIRED_PREFIX,
+            required_prefix,
         )
         return _apply_bleach_and_truncate(text[idx:])
 
     # Hard fail — heading not found at all
     raise LLMOutputValidationError(
-        f"Output must contain '{_REQUIRED_PREFIX}'. "
+        f"Output must contain '{required_prefix}'. "
         "Got: {!r}".format(text[:120])
     )
 
