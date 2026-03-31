@@ -52,7 +52,7 @@ function normalizeKBDocs(kbList = [], intList = []) {
         .filter(d => d.kb_status === 'promoted')
         .map(d => ({
             id: d.id,
-            name: `${d.integration_id} · ${d.doc_type}`,
+            name: `${d.integration_id} · Integration Spec`,
             tags: [],
             date: d.generated_at,
             source: 'integration',

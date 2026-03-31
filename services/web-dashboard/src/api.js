@@ -51,10 +51,7 @@ export const API = {
 
   catalog: {
     list: () => fetch(`${AGENT}/api/v1/catalog/integrations`),
-    functionalSpec: (id) => fetch(`${AGENT}/api/v1/catalog/integrations/${encodeURIComponent(id)}/functional-spec`),
-    technicalSpec: (id) => fetch(`${AGENT}/api/v1/catalog/integrations/${encodeURIComponent(id)}/technical-spec`),
-    triggerTechnical: (id) =>
-      fetch(`${AGENT}/api/v1/agent/trigger-technical/${encodeURIComponent(id)}`, { method: 'POST' }),
+    integrationSpec: (id) => fetch(`${AGENT}/api/v1/catalog/integrations/${encodeURIComponent(id)}/integration-spec`),
     suggestTags: (id) => fetch(`${AGENT}/api/v1/catalog/integrations/${id}/suggest-tags`),
     confirmTags: (id, tags) =>
       fetch(`${AGENT}/api/v1/catalog/integrations/${id}/confirm-tags`, {

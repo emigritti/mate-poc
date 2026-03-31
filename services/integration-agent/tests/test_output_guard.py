@@ -3,7 +3,7 @@ Unit tests — output_guard module
 ADR-015 / CLAUDE.md §7: Security guard tests are highest priority.
 
 Coverage:
-  - Structural guard (LLM output must start with '# Integration Functional Design')
+  - Structural guard (LLM output must start with '# Integration Design')
   - XSS prevention via bleach allowlist
   - Truncation at max chars
   - Empty / None input handling
@@ -19,7 +19,7 @@ from output_guard import (
     sanitize_llm_output,
 )
 
-_VALID_PREFIX = "# Integration Functional Design"
+_VALID_PREFIX = "# Integration Design"
 
 
 class TestSanitizeLlmOutput:
@@ -126,7 +126,7 @@ class TestSanitizeHumanContent:
 
 def _make_doc(sections: int = 7, na_per_section: bool = False) -> str:
     """Helper: build a minimal functional design doc."""
-    lines = ["# Integration Functional Design\n"]
+    lines = ["# Integration Design\n"]
     for i in range(1, sections + 1):
         lines.append(f"## {i}. Section Title\n")
         lines.append(
@@ -144,7 +144,7 @@ class TestAssessQuality:
         assert report.issues == []
 
     def test_too_few_sections_fails(self):
-        doc = "# Integration Functional Design\n\n## 1. Only\n\nContent here."
+        doc = "# Integration Design\n\n## 1. Only\n\nContent here."
         report = assess_quality(doc)
         assert report.passed is False
         assert any("section" in i.lower() for i in report.issues)
@@ -155,7 +155,7 @@ class TestAssessQuality:
         assert any("n/a" in i.lower() for i in report.issues)
 
     def test_too_short_fails(self):
-        report = assess_quality("# Integration Functional Design\n\n## 1. S\n\nTiny.")
+        report = assess_quality("# Integration Design\n\n## 1. S\n\nTiny.")
         assert report.passed is False
         assert any("short" in i.lower() or "word" in i.lower() for i in report.issues)
 

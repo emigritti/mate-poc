@@ -35,11 +35,11 @@ class TestBuildPrompt:
         prompt = build_prompt("PLM", "PIM", "Sync product data", "")
         assert "{document_template}" not in prompt
 
-    def test_functional_template_sections_in_prompt(self):
-        """Section headings from the functional design template must appear in the built prompt."""
+    def test_integration_template_sections_in_prompt(self):
+        """Section headings from the integration base template must appear in the built prompt."""
         prompt = build_prompt("PLM", "PIM", "Sync product data", "")
         assert "## 1. Overview" in prompt
-        assert "## 2. Scope & Context" in prompt
+        assert "## 2. Scope" in prompt       # covers "Scope & Context" after backslash-strip
 
     def test_rag_context_section_present_when_provided(self):
         """The RAG block header 'PAST APPROVED EXAMPLES:\n' must appear when context is given."""

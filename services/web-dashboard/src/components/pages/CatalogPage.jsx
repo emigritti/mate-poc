@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, RefreshCw, ArrowRight, Loader2, AlertCircle, X, FileText, Wrench } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { BookOpen, RefreshCw, ArrowRight, Loader2, AlertCircle, X, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Badge from '../ui/Badge.jsx';
@@ -18,22 +18,6 @@ const TYPE_PILL = {
   'REST-to-SOAP': 'bg-purple-100 text-purple-700',
   'SOAP-to-REST': 'bg-violet-100 text-violet-700',
   'File-based':   'bg-amber-100 text-amber-700',
-};
-
-// ── Technical status badge ───────────────────────────────────────────────────
-
-const TECH_STATUS_STYLE = {
-  TECH_PENDING:     'bg-amber-100  text-amber-700',
-  TECH_GENERATING:  'bg-blue-100   text-blue-700',
-  TECH_REVIEW:      'bg-violet-100 text-violet-700',
-  TECH_DONE:        'bg-emerald-100 text-emerald-700',
-};
-
-const TECH_STATUS_LABEL = {
-  TECH_PENDING:    'Technical: pronto',
-  TECH_GENERATING: 'Technical: generazione...',
-  TECH_REVIEW:     'Technical: in revisione',
-  TECH_DONE:       'Technical: approvato',
 };
 
 // ── Markdown viewer modal ────────────────────────────────────────────────────
@@ -59,7 +43,7 @@ function DocModal({ title, content, onClose }) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <Wrench size={14} className="text-slate-400" />
+            <FileText size={14} className="text-slate-400" />
             <span className="font-semibold text-slate-800 text-sm" style={{ fontFamily: 'Outfit, sans-serif' }}>
               {title}
             </span>
@@ -80,48 +64,34 @@ function DocModal({ title, content, onClose }) {
   );
 }
 
-// ── Technical actions section inside a card ──────────────────────────────────
+// ── Integration card ─────────────────────────────────────────────────────────
 
-function TechActions({ integration, onRefresh }) {
-  const ts = integration.technical_status;
-  const [busy,    setBusy]    = useState(false);
-  const [error,   setError]   = useState(null);
+function IntegrationCard({ integration, onRefresh }) {
+  const statusCfg = STATUS_MAP[integration.status] ?? { variant: 'slate', label: integration.status };
+  const typeColor = TYPE_PILL[integration.type] ?? 'bg-slate-100 text-slate-600';
   const [modal,   setModal]   = useState(null); // { title, content }
-  const [viewing, setViewing] = useState(false);
-  const timerRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
 
-  // Cancel pending refresh timer on unmount
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  const hasSpec = integration.status === 'DONE';
 
-  if (!ts) return null;
-
-  const trigger = async () => {
-    setBusy(true);
+  const viewSpec = async () => {
+    setLoading(true);
     setError(null);
     try {
-      const res  = await API.catalog.triggerTechnical(integration.id);
+      const res  = await API.catalog.integrationSpec(integration.id);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
-      timerRef.current = setTimeout(onRefresh, 2000);
+      if (!res.ok || data.status === 'error') {
+        throw new Error(data.message || data.detail || `Error ${res.status}`);
+      }
+      setModal({
+        title: `Integration Spec — ${integration.name || integration.id}`,
+        content: data.data?.content || '',
+      });
     } catch (e) {
       setError(e.message);
     } finally {
-      setBusy(false);
-    }
-  };
-
-  const viewTech = async () => {
-    setViewing(true);
-    setError(null);
-    try {
-      const res  = await API.catalog.technicalSpec(integration.id);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
-      setModal({ title: `Technical Design — ${integration.name || integration.id}`, content: data.data?.content || '' });
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setViewing(false);
+      setLoading(false);
     }
   };
 
@@ -129,121 +99,81 @@ function TechActions({ integration, onRefresh }) {
     <>
       {modal && <DocModal title={modal.title} content={modal.content} onClose={() => setModal(null)} />}
 
-      <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 space-y-2">
-        {/* Status badge row */}
-        <div className="flex items-center gap-2">
-          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${TECH_STATUS_STYLE[ts] ?? 'bg-slate-100 text-slate-500'}`}>
-            {TECH_STATUS_LABEL[ts] ?? ts}
-          </span>
-          {(ts === 'TECH_GENERATING') && (
-            <Loader2 size={12} className="animate-spin text-blue-500" />
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden flex flex-col">
+        {/* Status accent bar */}
+        <div
+          className={`h-1 flex-shrink-0 ${
+            statusCfg.variant === 'success' ? 'bg-emerald-400'
+            : statusCfg.variant === 'warning' ? 'bg-amber-400'
+            : statusCfg.variant === 'error' ? 'bg-rose-400'
+            : statusCfg.variant === 'info' ? 'bg-blue-400'
+            : statusCfg.variant === 'primary' ? 'bg-indigo-400'
+            : 'bg-slate-200'
+          }`}
+        />
+
+        <div className="px-5 pt-4 pb-4 flex-1">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex-1 min-w-0 pr-3">
+              <h3
+                className="font-semibold text-slate-900 truncate"
+                style={{ fontFamily: 'Outfit, sans-serif' }}
+              >
+                {integration.name}
+              </h3>
+              <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{integration.id}</p>
+            </div>
+            <Badge variant={statusCfg.variant} dot>{statusCfg.label}</Badge>
+          </div>
+
+          {/* Source → Target */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-medium text-slate-600 truncate max-w-[110px] bg-slate-100 px-2 py-0.5 rounded">
+              {integration.source?.system || '—'}
+            </span>
+            <ArrowRight size={12} className="text-slate-400 flex-shrink-0" />
+            <span className="text-xs font-medium text-slate-600 truncate max-w-[110px] bg-slate-100 px-2 py-0.5 rounded">
+              {integration.target?.system || '—'}
+            </span>
+          </div>
+
+          {integration.type && (
+            <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${typeColor}`}>
+              {integration.type}
+            </span>
           )}
         </div>
 
-        {/* Action buttons */}
-        {ts === 'TECH_PENDING' && (
-          <button
-            onClick={trigger}
-            disabled={busy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {busy ? <Loader2 size={11} className="animate-spin" /> : <Wrench size={11} />}
-            {busy ? 'Avvio...' : 'Genera Technical Design'}
-          </button>
+        {integration.requirement_ids?.length > 0 && (
+          <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100">
+            <p className="text-xs text-slate-400">
+              <span className="font-semibold text-slate-600">{integration.requirement_ids.length}</span>
+              {' '}linked requirement{integration.requirement_ids.length !== 1 ? 's' : ''}
+            </p>
+          </div>
         )}
 
-        {ts === 'TECH_REVIEW' && (
-          <p className="text-xs text-violet-700">
-            In attesa di approvazione HITL nella tab <span className="font-semibold">Approvals</span>.
-          </p>
-        )}
-
-        {ts === 'TECH_DONE' && (
-          <button
-            onClick={viewTech}
-            disabled={viewing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {viewing ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
-            {viewing ? 'Caricamento...' : 'View Technical Spec'}
-          </button>
-        )}
-
-        {error && (
-          <p className="text-xs text-rose-600 flex items-center gap-1">
-            <AlertCircle size={11} />
-            {error.length > 120 ? `${error.slice(0, 120)}…` : error}
-          </p>
+        {/* Integration Spec action */}
+        {hasSpec && (
+          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 space-y-1.5">
+            <button
+              onClick={viewSpec}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
+              {loading ? 'Caricamento...' : 'View Integration Spec'}
+            </button>
+            {error && (
+              <p className="text-xs text-rose-600 flex items-center gap-1">
+                <AlertCircle size={11} />
+                {error.length > 120 ? `${error.slice(0, 120)}…` : error}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </>
-  );
-}
-
-// ── Integration card ─────────────────────────────────────────────────────────
-
-function IntegrationCard({ integration, onRefresh }) {
-  const statusCfg = STATUS_MAP[integration.status] ?? { variant: 'slate', label: integration.status };
-  const typeColor = TYPE_PILL[integration.type] ?? 'bg-slate-100 text-slate-600';
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden flex flex-col">
-      {/* Status accent bar */}
-      <div
-        className={`h-1 flex-shrink-0 ${
-          statusCfg.variant === 'success' ? 'bg-emerald-400'
-          : statusCfg.variant === 'warning' ? 'bg-amber-400'
-          : statusCfg.variant === 'error' ? 'bg-rose-400'
-          : statusCfg.variant === 'info' ? 'bg-blue-400'
-          : statusCfg.variant === 'primary' ? 'bg-indigo-400'
-          : 'bg-slate-200'
-        }`}
-      />
-
-      <div className="px-5 pt-4 pb-4 flex-1">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 min-w-0 pr-3">
-            <h3
-              className="font-semibold text-slate-900 truncate"
-              style={{ fontFamily: 'Outfit, sans-serif' }}
-            >
-              {integration.name}
-            </h3>
-            <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{integration.id}</p>
-          </div>
-          <Badge variant={statusCfg.variant} dot>{statusCfg.label}</Badge>
-        </div>
-
-        {/* Source → Target */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs font-medium text-slate-600 truncate max-w-[110px] bg-slate-100 px-2 py-0.5 rounded">
-            {integration.source?.system || '—'}
-          </span>
-          <ArrowRight size={12} className="text-slate-400 flex-shrink-0" />
-          <span className="text-xs font-medium text-slate-600 truncate max-w-[110px] bg-slate-100 px-2 py-0.5 rounded">
-            {integration.target?.system || '—'}
-          </span>
-        </div>
-
-        {integration.type && (
-          <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${typeColor}`}>
-            {integration.type}
-          </span>
-        )}
-      </div>
-
-      {integration.requirement_ids?.length > 0 && (
-        <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100">
-          <p className="text-xs text-slate-400">
-            <span className="font-semibold text-slate-600">{integration.requirement_ids.length}</span>
-            {' '}linked requirement{integration.requirement_ids.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-      )}
-
-      {/* ADR-038: technical status actions */}
-      <TechActions integration={integration} onRefresh={onRefresh} />
-    </div>
   );
 }
 

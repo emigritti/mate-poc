@@ -32,9 +32,9 @@ CRITICAL RULES — you MUST follow these exactly:
 - Output ONLY the filled Markdown document. NO preamble, NO intro, NO commentary.
 - Do NOT write "Here is", "Sure!", "Certainly", "Of course" or any similar phrase.
 - Preserve EVERY section heading from the template exactly as written.
-- Your response MUST start with the exact characters: `# Integration Functional Design`
+- Your response MUST start with the exact characters: `# Integration Design`
 - The very first character of your response must be `#`.
 - Immediately begin the document with no preceding text whatsoever.
 
-START YOUR RESPONSE NOW WITH: # Integration Functional Design
+START YOUR RESPONSE NOW WITH: # Integration Design
 ```

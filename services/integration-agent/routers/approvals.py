@@ -16,7 +16,7 @@ import state
 from auth import require_token
 from output_guard import sanitize_human_content, LLMOutputValidationError
 from schemas import Approval, ApproveRequest, Document, RejectRequest
-from services.agent_service import generate_integration_doc, generate_technical_doc
+from services.agent_service import generate_integration_doc
 from services.event_logger import record_event
 from utils import _now_iso
 
@@ -38,7 +38,7 @@ async def approve_doc(
     _token: str = Depends(require_token),
 ) -> dict:
     """
-    Approve a pending document.
+    Approve a pending Integration Spec.
 
     ADR-023: ChromaDB write removed. Approved documents are staged in MongoDB
              with kb_status='staged'. Use POST /api/v1/documents/{id}/promote-to-kb
@@ -60,11 +60,11 @@ async def approve_doc(
             {"id": id}, app_entry.model_dump(), upsert=True
         )
 
-    doc_id = f"{app_entry.integration_id}-{app_entry.doc_type}"
+    doc_id = f"{app_entry.integration_id}-integration"
     doc = Document(
         id=doc_id,
         integration_id=app_entry.integration_id,
-        doc_type=app_entry.doc_type,
+        doc_type="integration",
         content=safe_md,
         generated_at=_now_iso(),
         kb_status="staged",
@@ -76,17 +76,6 @@ async def approve_doc(
         )
 
     await record_event("approval.approved", {"integration_id": app_entry.integration_id})
-
-    # ADR-038: update technical_status lifecycle on approval
-    _tech_status = {"functional": "TECH_PENDING", "technical": "TECH_DONE"}.get(app_entry.doc_type)
-    if _tech_status:
-        catalog_entry = state.catalog.get(app_entry.integration_id)
-        if catalog_entry is not None:
-            catalog_entry.technical_status = _tech_status
-            if db.catalog_col is not None:
-                await db.catalog_col.replace_one(
-                    {"id": catalog_entry.id}, catalog_entry.model_dump(), upsert=True
-                )
 
     return {"status": "success", "message": "Approved and staged. Use 'Promote to KB' to add to RAG."}
 
@@ -128,9 +117,9 @@ async def regenerate_doc(
     _token: str = Depends(require_token),
 ) -> dict:
     """
-    Regenerate a REJECTED document using stored reviewer feedback.
+    Regenerate a REJECTED Integration Spec using stored reviewer feedback.
 
-    R16: Creates a new PENDING Approval for the same integration, with the
+    Creates a new PENDING Approval for the same integration, with the
     rejection feedback injected into the prompt via build_prompt(reviewer_feedback=...).
 
     Raises:
@@ -163,26 +152,12 @@ async def regenerate_doc(
     requirements = [r for r in state.parsed_requirements if r.req_id in entry.requirements]
 
     try:
-        if app_entry.doc_type == "technical":
-            func_doc = state.documents.get(f"{app_entry.integration_id}-functional")
-            if func_doc is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Cannot regenerate technical doc: approved functional spec not found.",
-                )
-            new_content = await generate_technical_doc(
-                entry=entry,
-                functional_spec_content=func_doc.content,
-                reviewer_feedback=app_entry.feedback,
-                log_fn=logger.info,
-            )
-        else:
-            new_content = await generate_integration_doc(
-                entry=entry,
-                requirements=requirements,
-                reviewer_feedback=app_entry.feedback,
-                log_fn=logger.info,
-            )
+        new_content = await generate_integration_doc(
+            entry=entry,
+            requirements=requirements,
+            reviewer_feedback=app_entry.feedback,
+            log_fn=logger.info,
+        )
     except HTTPException:
         raise
     except LLMOutputValidationError as exc:
@@ -200,7 +175,7 @@ async def regenerate_doc(
     new_approval = Approval(
         id=new_id,
         integration_id=app_entry.integration_id,
-        doc_type=app_entry.doc_type,
+        doc_type="integration",
         content=new_content,
         status="PENDING",
         generated_at=_now_iso(),
@@ -210,16 +185,6 @@ async def regenerate_doc(
         await db.approvals_col.replace_one(
             {"id": new_id}, new_approval.model_dump(), upsert=True
         )
-
-    # ADR-038: keep technical_status in sync on regeneration
-    if app_entry.doc_type == "technical":
-        catalog_entry = state.catalog.get(app_entry.integration_id)
-        if catalog_entry is not None:
-            catalog_entry.technical_status = "TECH_REVIEW"
-            if db.catalog_col is not None:
-                await db.catalog_col.replace_one(
-                    {"id": catalog_entry.id}, catalog_entry.model_dump(), upsert=True
-                )
 
     logger.info(
         "[REGEN] New approval %s created from rejected %s (feedback: %d chars)",

@@ -406,12 +406,12 @@ class TestDocumentLifecycle:
             assert response.status_code == 200
             data = response.json()
             assert data["message"] == "Approved and staged. Use 'Promote to KB' to add to RAG."
-            doc_id = "INT-LIFECYCLE-functional"
+            doc_id = "INT-LIFECYCLE-integration"
             assert doc_id in agent_main.documents
             assert agent_main.documents[doc_id].kb_status == "staged"
         finally:
             agent_main.approvals.pop(approval_id, None)
-            agent_main.documents.pop("INT-LIFECYCLE-functional", None)
+            agent_main.documents.pop("INT-LIFECYCLE-integration", None)
 
     def test_documents_list_endpoint_returns_empty_list(self, client):
         """GET /api/v1/documents must return an empty list when no documents exist."""

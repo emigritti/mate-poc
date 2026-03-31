@@ -19,7 +19,7 @@ from config import settings
 from log_helpers import log_agent
 from output_guard import LLMOutputValidationError, assess_quality
 from schemas import Approval, LogEntry
-from services.agent_service import generate_integration_doc, generate_technical_doc
+from services.agent_service import generate_integration_doc
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,8 @@ async def run_agentic_rag_flow() -> None:
     """
     Core agentic loop: read TAG_CONFIRMED catalog entries → RAG → LLM → guard → HITL queue.
 
-    Now uses generate_with_retry (R13) for resilient LLM calls.
+    Generates a single unified Integration Spec per entry using the
+    integration_base_template.md. Optionally enriches n/a sections via Claude API.
     """
     confirmed = [e for e in state.catalog.values() if e.status == "TAG_CONFIRMED"]
     total = len(confirmed)
@@ -67,21 +68,20 @@ async def run_agentic_rag_flow() -> None:
             )
         log_agent(f"Processing entry: {entry.id} ({entry.name}) -- {len(reqs)} reqs.")
 
-        # 1–4. RAG retrieval + LLM generation (extracted to agent_service.py for reuse by regenerate endpoint)
-        query_text = " ".join(r.description for r in reqs)
+        # RAG retrieval + LLM generation + optional Claude enrichment
         try:
-            func_content = await generate_integration_doc(
+            spec_content = await generate_integration_doc(
                 entry=entry,
                 requirements=reqs,
                 reviewer_feedback="",
                 log_fn=log_agent,
             )
             log_agent(
-                f"[LLM] Spec generated and sanitized for {entry.id} — "
-                f"{len(func_content)} chars."
+                f"[LLM] Integration Spec generated for {entry.id} — "
+                f"{len(spec_content)} chars."
             )
             # R14: non-destructive quality assessment
-            quality = assess_quality(func_content)
+            quality = assess_quality(spec_content)
             if not quality.passed:
                 log_agent(
                     f"[QUALITY] Low quality score {quality.quality_score:.2f} for {entry.id}"
@@ -90,9 +90,8 @@ async def run_agentic_rag_flow() -> None:
             else:
                 log_agent(f"[QUALITY] Quality OK — score {quality.quality_score:.2f} for {entry.id}")
         except LLMOutputValidationError as exc:
-            preview = (raw if 'raw' in dir() else "")[:120].replace("\n", " ")
             log_agent(f"[GUARD] Output rejected for {entry.id}: {exc}")
-            func_content = "[LLM_OUTPUT_REJECTED: structural guard failed -- see agent logs]"
+            spec_content = "[LLM_OUTPUT_REJECTED: structural guard failed — see agent logs]"
         except Exception as exc:
             exc_type = type(exc).__name__
             if isinstance(exc, httpx.TimeoutException):
@@ -112,15 +111,15 @@ async def run_agentic_rag_flow() -> None:
             else:
                 detail = str(exc) if str(exc) else exc_type
             log_agent(f"[ERROR] LLM generation failed for {entry.id} — {exc_type}: {detail}")
-            func_content = "[LLM_UNAVAILABLE: generation failed — see agent logs for details]"
+            spec_content = "[LLM_UNAVAILABLE: generation failed — see agent logs for details]"
 
-        # 5. Create HITL Approval entry
+        # Create HITL Approval entry
         app_id = f"APP-{uuid.uuid4().hex[:6].upper()}"
         approval = Approval(
             id=app_id,
             integration_id=entry.id,
-            doc_type="functional",
-            content=func_content,
+            doc_type="integration",
+            content=spec_content,
             status="PENDING",
             generated_at=_now_iso(),
         )
@@ -162,7 +161,7 @@ async def trigger_agent(
     """
     if not state.parsed_requirements:
         raise HTTPException(
-            status_code=400, detail="No requirements loaded. Upload a CSV first."
+            status_code=400, detail="No requirements loaded. Upload a CSV or Markdown file first."
         )
 
     if state.agent_lock.locked():
@@ -216,101 +215,6 @@ async def cancel_agent(
 
     log_agent("⛔ Agent execution cancelled by user request.")
     return {"status": "success", "message": f"Cancel signal sent to {cancelled} task(s)."}
-
-
-@router.post("/agent/trigger-technical/{integration_id}")
-async def trigger_technical(
-    integration_id: str,
-    _token: str = Depends(require_token),
-) -> dict:
-    """
-    Trigger technical design generation for a single integration.
-
-    ADR-038: Second phase — only available after functional spec is approved.
-    Runs synchronously within the request (independent of the functional asyncio.Lock).
-
-    Preconditions:
-      - Integration exists in catalog
-      - technical_status == "TECH_PENDING"
-      - Approved functional spec exists in state.documents
-
-    Returns:
-        {"status": "success", "approval_id": "APP-XXXXXX"}
-    """
-    entry = state.catalog.get(integration_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"Integration '{integration_id}' not found.")
-
-    if entry.technical_status != "TECH_PENDING":
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Technical generation requires technical_status='TECH_PENDING'. "
-                f"Current: {entry.technical_status!r}"
-            ),
-        )
-
-    func_doc = state.documents.get(f"{integration_id}-functional")
-    if func_doc is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Approved functional spec for '{integration_id}' not found. Approve functional design first.",
-        )
-
-    entry.technical_status = "TECH_GENERATING"
-    if db.catalog_col is not None:
-        await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
-
-    try:
-        tech_content = await generate_technical_doc(
-            entry=entry,
-            functional_spec_content=func_doc.content,
-            reviewer_feedback="",
-            log_fn=logger.info,
-        )
-    except LLMOutputValidationError as exc:
-        entry.technical_status = "TECH_PENDING"
-        if db.catalog_col is not None:
-            await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
-        raise HTTPException(status_code=422, detail=f"Technical output failed structural guard: {exc}")
-    except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError) as exc:
-        entry.technical_status = "TECH_PENDING"
-        if db.catalog_col is not None:
-            await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
-        raise HTTPException(status_code=503, detail=f"LLM unavailable during technical generation: {exc}")
-    except Exception as exc:
-        entry.technical_status = "TECH_PENDING"
-        if db.catalog_col is not None:
-            await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
-        logger.error("[TECH] Unexpected error for %s: %s", integration_id, exc)
-        raise HTTPException(status_code=500, detail="Unexpected error during technical generation.")
-
-    quality = assess_quality(tech_content)
-    if not quality.passed:
-        logger.warning(
-            "[TECH-QUALITY] Low quality score %.2f for %s — %s",
-            quality.quality_score, integration_id, "; ".join(quality.issues),
-        )
-
-    app_id = f"APP-{uuid.uuid4().hex[:6].upper()}"
-    approval = Approval(
-        id=app_id,
-        integration_id=integration_id,
-        doc_type="technical",
-        content=tech_content,
-        status="PENDING",
-        generated_at=_now_iso(),
-    )
-    state.approvals[app_id] = approval
-    if db.approvals_col is not None:
-        await db.approvals_col.replace_one({"id": app_id}, approval.model_dump(), upsert=True)
-
-    entry.technical_status = "TECH_REVIEW"
-    if db.catalog_col is not None:
-        await db.catalog_col.replace_one({"id": entry.id}, entry.model_dump(), upsert=True)
-
-    logger.info("[TECH] Technical approval %s queued for HITL review (integration: %s)", app_id, integration_id)
-    return {"status": "success", "approval_id": app_id}
 
 
 @router.get("/agent/logs")

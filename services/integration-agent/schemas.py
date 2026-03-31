@@ -41,13 +41,12 @@ class CatalogEntry(BaseModel):
     tags: List[str] = []          # confirmed tags (max 5)
     project_id: str = "LEGACY"    # FK to Project.prefix; "LEGACY" for pre-ADR-025 entries
     created_at: str
-    technical_status: Optional[str] = None  # ADR-038: None|TECH_PENDING|TECH_GENERATING|TECH_REVIEW|TECH_DONE
 
 
 class Document(BaseModel):
     id: str
     integration_id: str
-    doc_type: str  # 'functional' or 'technical'
+    doc_type: str = "integration"  # always "integration" (unified single-doc model)
     content: str
     generated_at: str
     kb_status: Literal["staged", "promoted"] = "staged"
@@ -56,7 +55,7 @@ class Document(BaseModel):
 class Approval(BaseModel):
     id: str
     integration_id: str
-    doc_type: str
+    doc_type: str = "integration"  # always "integration" (unified single-doc model)
     content: str
     status: str  # 'PENDING', 'APPROVED', 'REJECTED'
     generated_at: str

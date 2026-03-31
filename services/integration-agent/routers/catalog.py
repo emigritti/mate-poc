@@ -65,19 +65,12 @@ async def get_catalog(
     return {"status": "success", "data": result}
 
 
-@router.get("/catalog/integrations/{id}/functional-spec")
-async def get_func_spec(id: str) -> dict:
-    doc = state.documents.get(f"{id}-functional")
+@router.get("/catalog/integrations/{id}/integration-spec")
+async def get_integration_spec(id: str) -> dict:
+    """Return the approved Integration Spec document for a catalog entry."""
+    doc = state.documents.get(f"{id}-integration")
     if not doc:
-        return {"status": "error", "message": "Document not approved yet or not found."}
-    return {"status": "success", "data": doc.model_dump()}
-
-
-@router.get("/catalog/integrations/{id}/technical-spec")
-async def get_tech_spec(id: str) -> dict:
-    doc = state.documents.get(f"{id}-technical")
-    if not doc:
-        return {"status": "error", "message": "Technical design not approved yet or not found."}
+        return {"status": "error", "message": "Integration Spec not approved yet or not found."}
     return {"status": "success", "data": doc.model_dump()}
 
 

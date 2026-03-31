@@ -34,12 +34,13 @@ _ALLOWED_ATTRS: dict[str, list[str]] = {"a": ["href", "title"]}
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 _MAX_CHARS: int = 50_000
+_REQUIRED_PREFIX: str = "# Integration Design"
+# Legacy map kept for backward compatibility with existing tests
 _REQUIRED_PREFIX_BY_TYPE: dict[str, str] = {
-    "functional": "# Integration Functional Design",
-    "technical":  "# Integration Technical Design",
+    "integration": _REQUIRED_PREFIX,
+    "functional":  _REQUIRED_PREFIX,   # legacy alias
+    "technical":   _REQUIRED_PREFIX,   # legacy alias
 }
-# Backward-compat alias used by existing tests that reference this directly
-_REQUIRED_PREFIX: str = _REQUIRED_PREFIX_BY_TYPE["functional"]
 
 # ── Quality thresholds (R14) ────────────────────────────────────────────────────
 _MIN_SECTION_COUNT: int = 5    # at least 5 ## headings expected
@@ -54,7 +55,7 @@ class LLMOutputValidationError(ValueError):
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def sanitize_llm_output(raw: str, doc_type: str = "functional") -> str:
+def sanitize_llm_output(raw: str, doc_type: str = "integration") -> str:
     """
     Validate and sanitize LLM-generated markdown (strict mode).
 
@@ -65,7 +66,7 @@ def sanitize_llm_output(raw: str, doc_type: str = "functional") -> str:
 
     Args:
         raw:      Raw LLM output string.
-        doc_type: "functional" (default) or "technical" (ADR-038).
+        doc_type: "integration" (default). Legacy values "functional"/"technical" are accepted.
 
     Raises:
         LLMOutputValidationError: if the required prefix is absent entirely.
