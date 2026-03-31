@@ -104,7 +104,16 @@
       "Bash(/c/Windows/Temp/dlogs.ps1:*)",
       "Bash(powershell.exe -NoProfile -NonInteractive -File \"C:\\\\Windows\\\\Temp\\\\dlogs.ps1\")",
       "Bash(/c/Windows/Temp/finddocker.ps1:*)",
-      "Bash(powershell.exe -NoProfile -NonInteractive -File \"C:\\\\Windows\\\\Temp\\\\finddocker.ps1\")"
+      "Bash(powershell.exe -NoProfile -NonInteractive -File \"C:\\\\Windows\\\\Temp\\\\finddocker.ps1\")",
+      "Bash(python3 -c \":*)",
+      "Bash(xxd)",
+      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc log --oneline --follow -- template/integration_base_template.md)",
+      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc log --oneline --follow -- services/integration-agent/prompt_builder.py)",
+      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc show 3f37c7c -- services/integration-agent/prompt_builder.py)",
+      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc add services/integration-agent/prompt_builder.py)",
+      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc status)",
+      "Bash(git -C:*)",
+      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc push origin main)"
     ]
   },
   "hooks": {
