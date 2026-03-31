@@ -62,9 +62,12 @@ def _load_integration_template() -> str:
 
     Strips backslash-escaped markdown markers (\\#, \\##, \\-) that editors
     add to prevent live rendering of template headings/lists.
+    Normalises CRLF → LF so Docker (Linux) receives clean line endings.
     """
     try:
         content = _TEMPLATE_PATH.read_text(encoding="utf-8")
+        # Normalise Windows line endings before further processing
+        content = content.replace("\r\n", "\n").replace("\r", "\n")
         content = content.replace(r"\### ", "### ")
         content = content.replace(r"\## ", "## ")
         content = content.replace(r"\# ", "# ")
