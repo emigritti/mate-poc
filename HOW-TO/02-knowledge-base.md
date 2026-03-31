@@ -34,38 +34,11 @@ L'URL viene incluso nel contesto RAG ad ogni chiamata all'agente.
 
 Per indicizzare automaticamente le specifiche di un'API (Swagger/OpenAPI).
 
-### Registrare la sorgente
+Vai a **Ingestion Sources** nella sidebar → **+ Add Source** → seleziona tipo **OpenAPI** → inserisci URL, tag e schedule → clicca ▶ per triggerare.
 
-```bash
-curl -X POST http://<EC2_IP>:4006/api/v1/sources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "plm_api_v1",
-    "source_type": "openapi",
-    "entrypoints": ["http://mate-plm-mock:3001/openapi.json"],
-    "tags": ["plm", "product"],
-    "refresh_cron": "0 */6 * * *"
-  }'
-```
+Il risultato (run status, chunk conteggio, diff summary) è visibile espandendo la riga della sorgente.
 
-### Triggerare l'ingestion manualmente
-
-```bash
-# Ottieni source_id dalla lista
-curl http://<EC2_IP>:4006/api/v1/sources
-
-# Trigger ingestion
-curl -X POST http://<EC2_IP>:4006/api/v1/ingest/openapi/<source_id>
-```
-
-### Verificare il risultato
-
-```bash
-# Controlla lo stato del run
-curl http://<EC2_IP>:4006/api/v1/sources/<source_id>
-```
-
-I chunk vengono scritti in ChromaDB con ID `src_plm_api_v1-chunk-<n>`.
+→ Guida completa: [HOW-TO 04 — Gestire le sorgenti OpenAPI](./04-openapi-ingestion.md)
 
 ---
 

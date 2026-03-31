@@ -14,6 +14,7 @@ import ApprovalsPage from './components/pages/ApprovalsPage.jsx';
 import ResetPage from './components/pages/ResetPage.jsx';
 import ProjectDocsPage from './components/pages/ProjectDocsPage.jsx';
 import LlmSettingsPage from './components/pages/LlmSettingsPage.jsx';
+import IngestionSourcesPage from './components/pages/IngestionSourcesPage.jsx';
 import { API } from './api.js';
 
 const queryClient = new QueryClient({
@@ -36,7 +37,8 @@ const PAGE_META = {
   approvals: { title: 'HITL Approvals', subtitle: 'Human-in-the-loop document review', step: 4 },
   reset: { title: 'Reset Tools', subtitle: 'Admin data management', step: null },
   'project-docs': { title: 'Project Docs', subtitle: 'Browse governance documents, ADRs, and checklists', step: null },
-  'llm-settings': { title: 'LLM Settings', subtitle: 'Tune model parameters and test response times', step: null },
+  'llm-settings':       { title: 'LLM Settings',       subtitle: 'Tune model parameters and test response times',                  step: null },
+  'ingestion-sources':  { title: 'Ingestion Sources',  subtitle: 'Manage OpenAPI, HTML and MCP knowledge base sources',            step: null },
 };
 
 function renderPage(page) {
@@ -50,14 +52,15 @@ function renderPage(page) {
     case 'approvals': return <ApprovalsPage />;
     case 'reset': return <ResetPage />;
     case 'project-docs': return <ProjectDocsPage />;
-    case 'llm-settings': return <LlmSettingsPage />;
+    case 'llm-settings':      return <LlmSettingsPage />;
+    case 'ingestion-sources': return <IngestionSourcesPage />;
     default: return <RequirementsPage />;
   }
 }
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('requirements');
-  const [services, setServices] = useState({ agent: null, plm: null, pim: null });
+  const [services, setServices] = useState({ agent: null, plm: null, pim: null, ingestion: null });
 
   useEffect(() => {
     checkServices();
@@ -74,8 +77,8 @@ export default function App() {
         return 'error';
       }
     };
-    const [agent, plm, pim] = await Promise.all([check('agent'), check('plm'), check('pim')]);
-    setServices({ agent, plm, pim });
+    const [agent, plm, pim, ingestion] = await Promise.all([check('agent'), check('plm'), check('pim'), check('ingestion')]);
+    setServices({ agent, plm, pim, ingestion });
   }
 
   const meta = PAGE_META[currentPage] ?? PAGE_META.requirements;

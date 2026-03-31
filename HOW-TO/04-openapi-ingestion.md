@@ -1,186 +1,193 @@
-# 04 — Avviare ingestion OpenAPI tramite Ingestion Platform
+# 04 — Gestire le sorgenti OpenAPI (Ingestion Platform)
 
-Registra una sorgente OpenAPI nell'Ingestion Platform e indicizza automaticamente tutti gli endpoint come chunk nella KB condivisa (ChromaDB `kb_collection`).
+Registra una specifica OpenAPI/Swagger, indicizzala automaticamente nella KB e tienila aggiornata. Tutto gestibile dalla dashboard senza toccare terminale o n8n.
 
-**Flusso:** Registra sorgente → triggera → fetch spec → parse → normalize → chunk → diff → index in ChromaDB.
-
----
-
-## Come funziona
-
-```
-Ingestion Platform (port 4006)
-──────────────────────────────
-POST /api/v1/sources             → registra URL della spec OpenAPI
-POST /api/v1/ingest/openapi/{id} → avvia pipeline in background (202 Accepted)
-  │
-  ├─ Fetch spec (JSON/YAML) con ETag support
-  ├─ Parse e validazione (OpenAPIParser)
-  ├─ Diff con snapshot precedente → salta se non cambiato (hash SHA-256)
-  ├─ Normalize → CanonicalCapability list (endpoint, schema, auth, overview)
-  ├─ Chunk → CanonicalChunk (chunk ID: src_{code}-chunk-{n})
-  ├─ Upsert in ChromaDB kb_collection (sostituisce vecchi chunk della sorgente)
-  └─ Diff summary opzionale via Claude Haiku (se ANTHROPIC_API_KEY configurata)
-
-Integration Agent (port 4003)
-─────────────────────────────
-GET /api/v1/kb/search  → trova i chunk indicizzati via RAG ibrido
-```
+**Flusso:** Registra sorgente → triggera → fetch spec → parse → diff → chunk → index in ChromaDB → disponibile al RAG.
 
 ---
 
-## Prerequisiti
+## Dove si trova
 
-- Ingestion Platform in esecuzione: `docker ps | grep ingestion-platform`
-- URL della spec OpenAPI (JSON o YAML) accessibile dal container (http/https)
-- I mock API interni sono disponibili come sorgente di test
+Sidebar → **Ingestion Sources** (gruppo *Knowledge Base*).
 
 ---
 
-## Via Dashboard (UI)
+## Registrare una nuova sorgente OpenAPI
 
-> La UI dell'Ingestion Platform è in sviluppo — usa l'API o n8n.
+1. Clicca **+ Add Source** in alto a destra
+2. Compila il form:
 
-**Via n8n (già configurato):**
-1. Apri `http://localhost:5678` (login: admin/admin)
-2. Workflow **WF-05 — Manual Ingest Trigger**
-3. Configura il `source_id` nel nodo webhook
-4. **Execute Workflow**
+   | Campo | Cosa inserire | Esempio |
+   |-------|--------------|---------|
+   | **Source code** | Identificativo univoco (solo minuscolo, cifre, `_`) | `plm_api_v1` |
+   | **Source type** | Scegli **OpenAPI** | — |
+   | **URL spec** | URL diretto al file JSON o YAML della spec | `http://mate-plm-mock:3001/openapi.json` |
+   | **Tags** | Uno o più tag per il RAG (Enter per aggiungere) | `plm`, `product` |
+   | **Refresh schedule** | Ogni quanto rieseguire l'ingestion automatica | *Every 6 hours* |
+   | **Description** | Opzionale — appare nella lista | `PLM Mock API` |
+
+   > Per le API interne usa il nome container Docker come hostname, non `localhost`:
+   > ✅ `http://mate-plm-mock:3001/openapi.json`
+   > ❌ `http://localhost:3001/openapi.json`
+
+3. Clicca **Register Source**
+
+La sorgente appare nella tabella con stato **active**.
 
 ---
 
-## Via API (curl)
+## Avviare l'ingestion manualmente
 
-### Step 1 — Registra la sorgente OpenAPI
+Nella riga della sorgente, clicca il tasto ▶ (**Play**).
+
+- Il bottone mostra uno spinner mentre l'ingestion è in corso
+- Arriva una notifica in alto a destra con l'esito:
+  - ✅ *"plm_api_v1 ingested successfully (14 chunks)"*
+  - ⚠️ *"ingested with warnings"* — alcuni chunk hanno avuto errori ma l'indicizzazione è parzialmente riuscita
+  - ❌ *"ingestion failed"* — vedi Run History per i dettagli
+
+> L'ingestion funziona in background: la pagina resta usabile durante l'elaborazione.
+
+---
+
+## Verificare il risultato
+
+Clicca sulla riga (o la freccia ▼) per espandere il pannello di dettaglio.
+
+### Run History
+
+Mostra gli ultimi 20 run con:
+
+| Colonna | Significato |
+|---------|-------------|
+| Status | `success` / `failed` / `partial` / `running` |
+| Trigger | `manual` (tu) · `scheduler` (automatico) · `webhook` (n8n) |
+| Started | Data e ora di avvio |
+| Duration | Tempo impiegato |
+| Chunks | Numero di chunk indicizzati in ChromaDB |
+| 🔴 | Clicca per espandere i messaggi di errore |
+
+### Snapshots
+
+Mostra le ultime versioni indicizzate della spec con:
+- **Hash** abbreviato — identifica univocamente il contenuto
+- Badge **current** — indica lo snapshot attivo
+- **Diff summary** — descrizione testuale delle modifiche rispetto alla versione precedente (generata via Claude se `ANTHROPIC_API_KEY` è configurata)
+
+---
+
+## Mettere in pausa / riattivare
+
+Nella riga della sorgente, clicca il tasto ⏸ (**Pause**) o ▶ (**Activate**).
+
+- **Paused** → lo scheduler n8n salta questa sorgente; i chunk esistenti rimangono in ChromaDB
+- **Active** → la sorgente torna nel ciclo automatico
+
+---
+
+## Eliminare una sorgente
+
+1. Clicca 🗑 nella riga della sorgente
+2. Clicca **Confirm** per confermare
+
+> I chunk indicizzati in ChromaDB vengono eliminati al prossimo run di questa sorgente o manualmente via KB management. La sorgente scompare dalla lista immediatamente.
+
+---
+
+## Monitorare la salute del servizio
+
+In fondo alla sidebar trovi il dot **Ingestion (4006)**:
+
+- 🟢 Verde — servizio raggiungibile
+- 🔴 Rosso — servizio non risponde (controlla `docker ps | grep ingestion`)
+
+---
+
+## Schedulazione automatica con n8n
+
+Una volta registrata, la sorgente viene triggerata automaticamente da n8n secondo il `refresh_cron` impostato. Non serve configurazione aggiuntiva.
+
+| Workflow | Comportamento |
+|----------|--------------|
+| **WF-01** — Scheduler | Triggera ogni sorgente *active* secondo `refresh_cron` ogni ora |
+| **WF-06** — Breaking Change Notify | Alert giornaliero se rileva endpoint rimossi |
+
+Per attivare WF-01: apri `http://<EC2_IP>:8080/n8n/` → workflow WF-01 → **Activate**.
+
+---
+
+## Registrare anche il PIM mock (esempio pratico)
+
+Ripeti i passi di registrazione con questi valori:
+
+| Campo | Valore |
+|-------|--------|
+| Source code | `pim_api_v1` |
+| Source type | OpenAPI |
+| URL spec | `http://mate-pim-mock:3002/openapi.json` |
+| Tags | `pim`, `product`, `catalog` |
+
+---
+
+## Domande frequenti
+
+**I chunk rimangono se metto in pausa la sorgente?**
+Sì. La pausa blocca solo i run automatici. I chunk restano in ChromaDB e continuano ad essere usati dal RAG.
+
+**Cosa succede se la spec non è cambiata?**
+L'ingestion confronta l'hash SHA-256 del contenuto. Se non è cambiato, il run termina immediatamente senza riscrivere nulla (vedi colonna *Chunks = 0* nella Run History).
+
+**Il diff summary non compare — perché?**
+Richiede `ANTHROPIC_API_KEY` configurata nel `.env`. Senza chiave il summary è assente ma l'ingestion funziona normalmente.
+
+**Posso avere più URL per la stessa sorgente?**
+Sì — nella modal clicca **+ Add URL** per aggiungere entrypoint aggiuntivi.
+
+**Come verifico che i chunk siano effettivamente cercabili?**
+Vai a **Knowledge Base → Search** e cerca un termine relativo all'API (es. `product lifecycle endpoint`).
+
+---
+
+## Via API (alternativa avanzata)
+
+Se preferisci curl o stai automatizzando da script:
 
 ```bash
+# Registra sorgente
 curl -s -X POST http://localhost:4006/api/v1/sources \
   -H "Content-Type: application/json" \
   -d '{
     "code": "plm_api_v1",
     "source_type": "openapi",
     "entrypoints": ["http://mate-plm-mock:3001/openapi.json"],
-    "tags": ["plm", "product", "lifecycle"],
-    "description": "PLM Mock API — gestione ciclo vita prodotto",
+    "tags": ["plm", "product"],
     "refresh_cron": "0 */6 * * *"
-  }' \
-  | python3 -m json.tool
-```
-
-**Risposta:**
-```json
-{
-  "id": "src_a1b2c3d4",
-  "code": "plm_api_v1",
-  "source_type": "openapi",
-  "entrypoints": ["http://mate-plm-mock:3001/openapi.json"],
-  "tags": ["plm", "product", "lifecycle"],
-  "status": {"state": "active", "last_run_at": null},
-  "refresh_cron": "0 */6 * * *"
-}
-```
-
-> Annota `"id"` — serve per triggerare l'ingestion.
-
-### Step 2 — Triggera l'ingestion
-
-```bash
-SOURCE_ID="src_a1b2c3d4"
-
-curl -s -X POST http://localhost:4006/api/v1/ingest/openapi/$SOURCE_ID \
-  | python3 -m json.tool
-```
-
-**Risposta immediata (async — 202 Accepted):**
-```json
-{
-  "run_id": "run_20260323103045_src_a1b2",
-  "status": "accepted",
-  "source_id": "src_a1b2c3d4"
-}
-```
-
-### Step 3 — Verifica chunk in ChromaDB
-
-```bash
-# Ricerca semantica — i chunk PLM appaiono tra i risultati
-curl -s "http://localhost:4003/api/v1/kb/search?q=product+lifecycle+endpoint&n=5" \
-  | python3 -m json.tool
-
-# Lista tutti i documenti KB
-curl -s http://localhost:4003/api/v1/kb/documents | python3 -m json.tool
-```
-
-### Registra anche il PIM mock
-
-```bash
-curl -s -X POST http://localhost:4006/api/v1/sources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "pim_api_v1",
-    "source_type": "openapi",
-    "entrypoints": ["http://mate-pim-mock:3002/openapi.json"],
-    "tags": ["pim", "product", "catalog"],
-    "description": "PIM Mock API — informazioni prodotto"
   }' | python3 -m json.tool
-```
 
-### Lista sorgenti registrate
+# Triggera ingestion (sostituisci src_a1b2c3d4 con l'id ricevuto)
+curl -s -X POST http://localhost:4006/api/v1/ingest/openapi/src_a1b2c3d4 \
+  | python3 -m json.tool
 
-```bash
-curl -s http://localhost:4006/api/v1/sources | python3 -m json.tool
-```
+# Controlla stato del run (run_id dalla risposta precedente)
+curl -s http://localhost:4006/api/v1/runs/run_20260331103045_src_a1b2 \
+  | python3 -m json.tool
 
-### Triggera più sorgenti in sequenza
+# Lista run di una sorgente
+curl -s http://localhost:4006/api/v1/sources/src_a1b2c3d4/runs \
+  | python3 -m json.tool
 
-```bash
-for SOURCE_ID in src_a1b2c3d4 src_b2c3d4e5; do
-  echo "Triggering $SOURCE_ID..."
-  curl -s -X POST http://localhost:4006/api/v1/ingest/openapi/$SOURCE_ID | python3 -m json.tool
-  sleep 2
-done
-```
-
-### Elimina una sorgente
-
-```bash
-curl -s -X DELETE http://localhost:4006/api/v1/sources/src_a1b2c3d4 \
+# Lista snapshot di una sorgente
+curl -s http://localhost:4006/api/v1/sources/src_a1b2c3d4/snapshots \
   | python3 -m json.tool
 ```
 
 ---
 
-## Chunk ID — coesistenza nella KB condivisa
-
-| Origine | Chunk ID prefix | Esempio |
-|---------|----------------|---------|
-| Upload manuale (guida 02) | `KB-{uuid}-chunk-{n}` | `KB-A1B2C3D4-chunk-0` |
-| Ingestion Platform | `src_{code}-chunk-{n}` | `src_plm_api_v1-chunk-0` |
-
-Entrambi finiscono nella stessa `kb_collection` ChromaDB e vengono recuperati dal RAG ibrido senza modifiche al retriever.
-
----
-
-## Schedulazione automatica con n8n
-
-| Workflow | Comportamento |
-|----------|--------------|
-| **WF-01** — Scheduler | Triggera ogni sorgente attiva secondo `refresh_cron` |
-| **WF-02** — OpenAPI Collector | Pipeline dedicata OpenAPI |
-| **WF-05** — Manual Trigger | Trigger manuale via webhook |
-| **WF-06** — Breaking Change Notify | Alert daily se rileva breaking changes |
-
-Per attivare WF-01: `http://localhost:5678` → workflow → **Activate**.
-
----
-
-## Note operative
+## Note tecniche
 
 | Aspetto | Dettaglio |
 |---------|-----------|
-| **Diff detection** | Se hash SHA-256 della spec non cambia → ingestion salta senza riscrivere chunk |
-| **ETag support** | Il fetcher usa `If-None-Match` se il server supporta ETag |
-| **Claude diff summary** | Se `ANTHROPIC_API_KEY` è configurata → summary leggibile dei cambiamenti |
-| **Low confidence** | Capabilities con confidence < 0.7 incluse con `low_confidence=true` nei metadati |
+| **Chunk ID** | `src_{code}-chunk-{n}` — non collide mai con upload manuali (`KB-…`) |
+| **ETag support** | Il fetcher usa `If-None-Match` se il server supporta HTTP ETag |
+| **Low confidence** | Capabilities con confidence < 0.7 incluse con metadato `low_confidence=true` |
 | **Re-index** | Prima dell'upsert vengono eliminati tutti i chunk precedenti della stessa sorgente |
-| **URL interno** | Per i mock usa nome container Docker: `http://mate-plm-mock:3001` non `localhost:3001` |

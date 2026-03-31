@@ -17,6 +17,7 @@ import state
 from config import settings
 from routers.sources import router as sources_router
 from routers.ingest import router as ingest_router
+from routers.runs import router as runs_router
 
 
 @asynccontextmanager
@@ -50,6 +51,7 @@ app.add_middleware(
 # ── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(sources_router)
 app.include_router(ingest_router)
+app.include_router(runs_router)
 
 
 @app.get("/health")

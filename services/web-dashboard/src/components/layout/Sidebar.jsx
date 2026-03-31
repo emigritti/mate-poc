@@ -1,4 +1,4 @@
-import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal } from 'lucide-react';
+import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
@@ -12,7 +12,8 @@ const NAV_GROUPS = [
   {
     label: 'Knowledge Base',
     items: [
-      { id: 'kb', label: 'Knowledge Base', icon: Library },
+      { id: 'kb',                label: 'Knowledge Base',    icon: Library     },
+      { id: 'ingestion-sources', label: 'Ingestion Sources', icon: DatabaseZap },
     ],
   },
   {
@@ -98,9 +99,10 @@ export default function Sidebar({ currentPage, onNavigate, services }) {
       <div className="px-5 py-4 border-t border-slate-800 space-y-2">
         <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2">Services</p>
         {[
-          { label: 'Agent (4003)', key: 'agent' },
-          { label: 'PLM API (3001)', key: 'plm' },
-          { label: 'PIM API (3002)', key: 'pim' },
+          { label: 'Agent (4003)',      key: 'agent'     },
+          { label: 'PLM API (3001)',    key: 'plm'       },
+          { label: 'PIM API (3002)',    key: 'pim'       },
+          { label: 'Ingestion (4006)', key: 'ingestion' },
         ].map(({ label, key }) => (
           <div key={key} className="flex items-center gap-2">
             <ServiceDot status={services[key]} />

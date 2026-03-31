@@ -5,14 +5,16 @@
  * Non è necessario aprire porte separate (4003, 4001, 4002) sul firewall.
  *
  * Routing gateway:
- *   /agent/* → integration-agent:3003
- *   /plm/*   → plm-mock:3001
- *   /pim/*   → pim-mock:3002
+ *   /agent/*      → integration-agent:3003
+ *   /plm/*        → plm-mock:3001
+ *   /pim/*        → pim-mock:3002
+ *   /ingestion/*  → ingestion-platform:4006
  */
 
-const AGENT = '/agent';
-const PLM   = '/plm';
-const PIM   = '/pim';
+const AGENT     = '/agent';
+const PLM       = '/plm';
+const PIM       = '/pim';
+const INGESTION = '/ingestion';
 
 export const API = {
   requirements: {
@@ -139,10 +141,27 @@ export const API = {
     stats: () => fetch(`${AGENT}/api/v1/kb/stats`),
   },
 
+  ingestion: {
+    listSources:        ()         => fetch(`${INGESTION}/api/v1/sources`),
+    createSource:       (body)     => fetch(`${INGESTION}/api/v1/sources`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(body),
+                                      }),
+    deleteSource:       (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    pauseSource:        (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}/pause`, { method: 'PUT' }),
+    activateSource:     (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}/activate`, { method: 'PUT' }),
+    triggerIngest:      (id, type) => fetch(`${INGESTION}/api/v1/ingest/${type}/${encodeURIComponent(id)}`, { method: 'POST' }),
+    getRun:             (runId)    => fetch(`${INGESTION}/api/v1/runs/${encodeURIComponent(runId)}`),
+    getSourceRuns:      (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}/runs`),
+    getSourceSnapshots: (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}/snapshots`),
+    health:             ()         => fetch(`${INGESTION}/health`),
+  },
+
   health: {
-    // service: 'agent' | 'plm' | 'pim'
+    // service: 'agent' | 'plm' | 'pim' | 'ingestion'
     check: (service) => {
-      const paths = { agent: AGENT, plm: PLM, pim: PIM };
+      const paths = { agent: AGENT, plm: PLM, pim: PIM, ingestion: INGESTION };
       const base = paths[service] ?? `/${service}`;
       return fetch(`${base}/health`);
     },
