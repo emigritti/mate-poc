@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     rag_top_k_chunks: int = 5              # override: RAG_TOP_K_CHUNKS
 
     # ── Advanced RAG — Vision + RAPTOR-lite (ADR-031, ADR-032) ──────────────────
+    # Docling parsing timeout (seconds). If Docling exceeds this, falls back to the
+    # fast legacy text parser so the upload never hangs or returns 504.
+    # Large books (100+ pages on CPU) can take minutes — default 180s is generous
+    # for typical docs (< 30 pages). Override via DOCLING_TIMEOUT_SECONDS.
+    docling_timeout_seconds: int = 180
+
     # Vision captioning: set to False to skip LLaVA calls (figures get placeholder caption).
     vision_captioning_enabled: bool = True
     # Ollama model used for image captioning (must support multimodal via /api/chat).

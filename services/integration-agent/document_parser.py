@@ -482,8 +482,22 @@ async def parse_with_docling(file_bytes: bytes, file_type: str) -> list[DoclingC
         return converter.convert(stream)
 
     # Docling conversion is CPU-bound — run in thread pool to avoid blocking.
+    # A configurable timeout prevents 504s on very large documents (e.g. 500-page books).
+    # On timeout, fall back to the fast legacy text parser rather than failing the upload.
+    from config import settings as _settings
     loop = _asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _convert)
+    try:
+        result = await _asyncio.wait_for(
+            loop.run_in_executor(None, _convert),
+            timeout=_settings.docling_timeout_seconds,
+        )
+    except _asyncio.TimeoutError:
+        logger.warning(
+            "[Docling] Parsing timed out after %ds — falling back to legacy parser. "
+            "Set DOCLING_TIMEOUT_SECONDS env var to allow more time for large documents.",
+            _settings.docling_timeout_seconds,
+        )
+        return _docling_fallback(file_bytes, file_type)
     doc = result.document
 
     chunks: list[DoclingChunk] = []
