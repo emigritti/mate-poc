@@ -18,11 +18,11 @@ Explain the value delivered by the integration (outcomes, KPIs, user impact).
 
 \- Solution / Integration Architects
 
-\- Delivery & QA Teams
+\- Delivery \& QA Teams
 
 \---
 
-\## 2. Scope & Context
+\## 2. Scope \& Context
 
 \### 2.1 In-Scope
 
@@ -32,7 +32,7 @@ List systems, processes, and data flows included.
 
 Explicitly list exclusions.
 
-\### 2.3 Assumptions & Constraints
+\### 2.3 Assumptions \& Constraints
 
 \- Business assumptions
 
@@ -42,7 +42,13 @@ Explicitly list exclusions.
 
 \---
 
-\## 3. Actors & Systems
+\## 3. Actors \& Systems
+
+
+
+Include a graph (c4) that explain involved system and their relations
+
+create a table like one below that explains the diagram
 
 | System | Role | Description |
 
@@ -53,6 +59,8 @@ Explicitly list exclusions.
 | Target System | Consumer | |
 
 | Middleware / Platform | Broker | |
+
+Include component that will be used (API, Bucket, Queue, DB, proxy component, etc..) and their activities
 
 \---
 
@@ -112,7 +120,7 @@ Clarify ownership and lifecycle per system.
 
 \- Conditional logic
 
-\### 7.2 Idempotency & Consistency
+\### 7.2 Idempotency \& Consistency
 
 Rules to prevent duplicates and inconsistencies.
 
@@ -136,7 +144,7 @@ Rules to prevent duplicates and inconsistencies.
 
 \---
 
-\## 10. Dependencies, Risks & Open Points
+\## 10. Dependencies, Risks \& Open Points
 
 \### 10.1 Dependencies
 
@@ -153,3 +161,4 @@ Rules to prevent duplicates and inconsistencies.
 \### 10.3 Open Points
 
 List unresolved items.
+
