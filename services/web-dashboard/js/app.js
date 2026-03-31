@@ -755,15 +755,31 @@ async function renderDocuments() {
             area.innerHTML = `<div class="empty-state"><div class="icon">📄</div><h3>No Documents</h3><p>Trigger the agent to generate integration documents.</p></div>`;
             return;
         }
-        area.innerHTML = `<div class="card-grid">${items.map(i => `
+        const cards = items.map(i => `
             <div class="card">
                 <div class="card-title">${escapeHtml(i.name || i.id)}</div>
                 <div class="card-subtitle">${escapeHtml(i.id)}</div>
-                <div class="card-footer" style="margin-top:12px">
-                    <button class="btn btn-sm btn-primary" onclick="viewDoc('${escapeHtml(i.id)}', 'functional')">📋 Functional Spec</button>
-                    <button class="btn btn-sm btn-info" style="background:var(--info)" onclick="viewDoc('${escapeHtml(i.id)}', 'technical')">🔧 Technical Spec</button>
+                <div class="card-footer" style="margin-top:12px;gap:6px;flex-wrap:wrap;">
+                    ${i.status === 'generated' ? `
+                        <button class="btn btn-sm btn-primary doc-view-btn" data-doc-id="${escapeHtml(i.id)}" data-doc-type="functional">📋 Functional Spec</button>
+                        <button class="btn btn-sm btn-secondary doc-dl-btn" data-doc-id="${escapeHtml(i.id)}" data-doc-type="functional">⬇ Functional</button>
+                    ` : ''}
+                    ${i.technical_status === 'TECH_DONE' ? `
+                        <button class="btn btn-sm btn-info doc-view-btn" style="background:var(--info)" data-doc-id="${escapeHtml(i.id)}" data-doc-type="technical">🔧 Technical Spec</button>
+                        <button class="btn btn-sm btn-secondary doc-dl-btn" data-doc-id="${escapeHtml(i.id)}" data-doc-type="technical">⬇ Technical</button>
+                    ` : ''}
+                    ${!i.status || i.status !== 'generated' ? `<span class="badge badge-info" style="font-size:11px">${escapeHtml(i.status || 'pending')}</span>` : ''}
                 </div>
-            </div>`).join('')}</div><div id="docViewer" style="margin-top:20px; background:var(--bg-secondary); padding:20px; border-radius:8px; display:none;"></div>`;
+            </div>`).join('');
+        area.innerHTML = `<div class="card-grid">${cards}</div><div id="docViewer" style="margin-top:20px; background:var(--bg-secondary); padding:20px; border-radius:8px; display:none;"></div>`;
+
+        // safe DOM event binding (ADR-017)
+        area.querySelectorAll('.doc-view-btn').forEach(btn => {
+            btn.addEventListener('click', () => viewDoc(btn.dataset.docId, btn.dataset.docType));
+        });
+        area.querySelectorAll('.doc-dl-btn').forEach(btn => {
+            btn.addEventListener('click', () => downloadDoc(btn.dataset.docId, btn.dataset.docType));
+        });
     } catch (e) { area.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${escapeHtml(e.message)}</p></div>`; }
 }
 
