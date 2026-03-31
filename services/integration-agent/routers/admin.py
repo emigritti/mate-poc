@@ -49,14 +49,12 @@ if not DOCS_ROOT.is_dir():
 
 DOCS_MANIFEST: list[dict] = [
     # ── How-To guides ─────────────────────────────────────────────────────────
-    {"path": "HOW-TO/README.md", "name": "HOW-TO Index", "category": "How-To", "description": "Panoramica di tutti gli scenari operativi e flusso end-to-end."},
-    {"path": "HOW-TO/01-create-integration-documents.md", "name": "01 — Creare documenti di integrazione", "category": "How-To", "description": "Upload CSV → conferma tag → trigger agent → HITL approval."},
-    {"path": "HOW-TO/02-upload-kb-document.md", "name": "02 — Upload documento nella KB", "category": "How-To", "description": "Caricamento manuale di file PDF/MD nella Knowledge Base."},
-    {"path": "HOW-TO/03-link-url-to-kb.md", "name": "03 — Link URL per scanning on-the-fly", "category": "How-To", "description": "Registra un URL da consultare live durante la generazione."},
-    {"path": "HOW-TO/04-openapi-ingestion.md", "name": "04 — Ingestion OpenAPI", "category": "How-To", "description": "Registra una sorgente OpenAPI/Swagger nell'Ingestion Platform."},
-    {"path": "HOW-TO/05-html-scraping.md", "name": "05 — Scraping HTML", "category": "How-To", "description": "Registra pagine HTML per estrazione semantica via Claude."},
-    {"path": "HOW-TO/06-mcp-server-integration.md", "name": "06 — Integrazione MCP Server", "category": "How-To", "description": "Connetti un MCP server come sorgente KB."},
-    {"path": "HOW-TO/07-generate-technical-design.md", "name": "07 — Generare Technical Design", "category": "How-To", "description": "Workflow two-phase: functional approval → technical design generation."},
+    {"path": "HOW-TO/README.md",              "name": "HOW-TO — Indice",                   "category": "How-To", "description": "Panoramica di tutti gli scenari operativi e flusso end-to-end."},
+    {"path": "HOW-TO/01-deploy-ec2.md",       "name": "01 — Deploy su EC2",                "category": "How-To", "description": "Prima messa in produzione: .env, Docker Compose, porte, aggiornamenti."},
+    {"path": "HOW-TO/02-knowledge-base.md",   "name": "02 — Gestire la Knowledge Base",    "category": "How-To", "description": "Upload manuale, URL link, ingestion OpenAPI e scraping HTML."},
+    {"path": "HOW-TO/03-generate-document.md","name": "03 — Generare documenti",            "category": "How-To", "description": "Dal CSV dei requisiti al Technical Design approvato — flusso completo."},
+    {"path": "HOW-TO/04-manage-ollama.md",    "name": "04 — Gestire Ollama",               "category": "How-To", "description": "Pull modelli, switch modello, parametri performance, verifica GPU."},
+    {"path": "HOW-TO/05-troubleshooting.md",  "name": "05 — Troubleshooting",              "category": "How-To", "description": "Diagnosi e risoluzione dei problemi più comuni."},
     # ── Project guides ─────────────────────────────────────────────────────────
     {"path": "docs/README.md", "name": "README", "category": "Guide", "description": "Overview of the project."},
     {"path": "docs/AWS-DEPLOYMENT-GUIDE.md", "name": "AWS Deployment Guide", "category": "Guide", "description": "Step-by-step AWS deployment instructions."},
