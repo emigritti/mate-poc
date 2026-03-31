@@ -51,7 +51,7 @@ const inputCls =
  *   onConfirm    – async (projectId) => void   called after successful /finalize
  *   onCancel     – () => void
  */
-export default function ProjectModal({ preview, onConfirm, onCancel }) {
+export default function ProjectModal({ preview, fieldOverrides = {}, onConfirm, onCancel }) {
   const [clientName, setClientName] = useState('');
   const [domain, setDomain]         = useState('');
   const [prefix, setPrefix]         = useState('');
@@ -160,8 +160,8 @@ export default function ProjectModal({ preview, onConfirm, onCancel }) {
         projectId = projData.data?.prefix;
       }
 
-      // Finalize: create CatalogEntries with prefix IDs
-      const finRes = await API.requirements.finalize(projectId);
+      // Finalize: create CatalogEntries with prefix IDs (pass user-supplied overrides if any)
+      const finRes = await API.requirements.finalize(projectId, fieldOverrides);
       const finData = await finRes.json().catch(() => ({}));
       if (!finRes.ok) {
         throw new Error(extractDetail(finData, `Finalization error (${finRes.status})`));

@@ -212,8 +212,23 @@ async def finalize_requirements(body: FinalizeRequirementsRequest) -> dict:
             detail=f"Project '{project_id}' not found. Create it first via POST /api/v1/projects.",
         )
 
-    groups: dict[str, list[Requirement]] = {}
+    # Apply user-supplied field overrides (source/target corrections from the UI modal)
+    overrides = body.field_overrides or {}
+    resolved: list[Requirement] = []
     for r in state.parsed_requirements:
+        ov = overrides.get(r.req_id, {})
+        updates = {
+            k: v for k, v in ov.items()
+            if k in ("source_system", "target_system") and v and v.strip()
+        }
+        resolved.append(r.model_copy(update=updates) if updates else r)
+
+    # Persist corrected values back into state so GET /requirements reflects them
+    for i, r in enumerate(resolved):
+        state.parsed_requirements[i] = r
+
+    groups: dict[str, list[Requirement]] = {}
+    for r in resolved:
         key = f"{r.source_system}|||{r.target_system}"
         groups.setdefault(key, []).append(r)
 

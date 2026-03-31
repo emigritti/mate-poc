@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Upload, CheckCircle, XCircle, Tags, Loader2, FileText } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import ProjectModal from '../ui/ProjectModal.jsx';
+import RequirementValidationModal from '../ui/RequirementValidationModal.jsx';
 import TagConfirmPanel from '../requirements/TagConfirmPanel.jsx';
 import { API } from '../../api.js';
 
@@ -22,10 +23,16 @@ export default function RequirementsPage() {
   const [error, setError]               = useState(null);
   // null = no modal; array = upload preview → modal open
   const [uploadPreview, setUploadPreview] = useState(null);
+  // validation modal state
+  const [showValidation, setShowValidation] = useState(false);
+  const [validationReqs, setValidationReqs] = useState([]);
+  const [fieldOverrides, setFieldOverrides] = useState({});
   const fileInputRef = useRef(null);
 
   // Load existing data on mount and after each successful upload
   useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isIncomplete = (val) => !val || val.trim() === '' || val.trim().toLowerCase() === 'unknown';
 
   const handleFile = async (file) => {
     const lowerName = file?.name?.toLowerCase() ?? '';
@@ -39,8 +46,27 @@ export default function RequirementsPage() {
       const res = await API.requirements.upload(file);
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
-      // ADR-025: upload is now parse-only; show Project Modal before finalize
-      setUploadPreview(data.preview || []);
+      const preview = data.preview || [];
+
+      // Check if any integration pair is missing source or target
+      const hasIncomplete = preview.some(
+        (p) => isIncomplete(p.source) || isIncomplete(p.target),
+      );
+
+      if (hasIncomplete) {
+        // Fetch full requirement list for the validation modal
+        const reqRes = await API.requirements.list();
+        const reqData = await reqRes.json();
+        setValidationReqs(reqData.data || []);
+        setFieldOverrides({});
+        setUploadPreview(preview);
+        setShowValidation(true);
+      } else {
+        // No missing data — go straight to project modal
+        setFieldOverrides({});
+        setUploadPreview(preview);
+        setShowValidation(false);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -48,15 +74,31 @@ export default function RequirementsPage() {
     }
   };
 
+  // Called when user confirms (or skips) the validation modal
+  const handleValidationContinue = (overrides) => {
+    setFieldOverrides(overrides);
+    setShowValidation(false);
+    // uploadPreview is already set → ProjectModal will now open
+  };
+
+  const handleValidationCancel = () => {
+    setShowValidation(false);
+    setUploadPreview(null);
+    setValidationReqs([]);
+    setFieldOverrides({});
+  };
+
   // Called by ProjectModal after project creation + finalize succeed
   const handleProjectConfirmed = async (_projectId) => {
     setUploadPreview(null);
+    setFieldOverrides({});
     await loadData();
   };
 
-  // Called when user cancels the modal (parsed requirements stay on server until next upload)
+  // Called when user cancels the project modal
   const handleProjectCancel = () => {
     setUploadPreview(null);
+    setFieldOverrides({});
   };
 
   const loadData = async () => {
@@ -84,10 +126,20 @@ export default function RequirementsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Project Modal — shown after a successful parse-only upload (ADR-025) */}
-      {uploadPreview !== null && (
+      {/* Validation Modal — shown when source/target could not be extracted (step 1) */}
+      {uploadPreview !== null && showValidation && (
+        <RequirementValidationModal
+          requirements={validationReqs}
+          onContinue={handleValidationContinue}
+          onCancel={handleValidationCancel}
+        />
+      )}
+
+      {/* Project Modal — shown after validation (or directly if no missing data) (ADR-025, step 2) */}
+      {uploadPreview !== null && !showValidation && (
         <ProjectModal
           preview={uploadPreview}
+          fieldOverrides={fieldOverrides}
           onConfirm={handleProjectConfirmed}
           onCancel={handleProjectCancel}
         />

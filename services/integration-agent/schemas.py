@@ -227,3 +227,11 @@ class FinalizeRequirementsRequest(BaseModel):
         pattern=r"^[A-Za-z0-9]{1,3}$",
         description="Prefix of an existing Project. CatalogEntries will use this as ID prefix.",
     )
+    field_overrides: Optional[dict[str, dict[str, str]]] = Field(
+        None,
+        description=(
+            "Optional per-req_id overrides supplied by the user when source/target "
+            "could not be extracted automatically. "
+            "Format: {req_id: {source_system?: str, target_system?: str}}"
+        ),
+    )

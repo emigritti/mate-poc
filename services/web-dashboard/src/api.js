@@ -24,11 +24,16 @@ export const API = {
       return fetch(`${AGENT}/api/v1/requirements/upload`, { method: 'POST', body: fd });
     },
     list: () => fetch(`${AGENT}/api/v1/requirements`),
-    finalize: (projectId) =>
+    finalize: (projectId, fieldOverrides = null) =>
       fetch(`${AGENT}/api/v1/requirements/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId }),
+        body: JSON.stringify({
+          project_id: projectId,
+          ...(fieldOverrides && Object.keys(fieldOverrides).length > 0
+            ? { field_overrides: fieldOverrides }
+            : {}),
+        }),
       }),
   },
 
