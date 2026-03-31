@@ -87,6 +87,19 @@ export default function DocumentsPage() {
     loadSpec(id, type);
   };
 
+  const handleDownload = () => {
+    if (!content || !selectedId) return;
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${selectedId}-${specType}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex gap-5" style={{ height: 'calc(100vh - 200px)' }}>
       {/* Left: integration list */}
@@ -183,9 +196,18 @@ export default function DocumentsPage() {
           <>
             <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
               <FileText size={13} className="text-slate-400" />
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex-1">
                 {specType === 'functional' ? 'Functional' : 'Technical'} Specification
               </span>
+              {content && (
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-all"
+                  title={`Download ${selectedId}-${specType}.md`}
+                >
+                  ⬇ Download
+                </button>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto p-6 prose prose-slate prose-sm max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
