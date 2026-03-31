@@ -22,9 +22,12 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.1:8b"
     ollama_timeout_seconds: int = 120
     # num_predict caps generated tokens — prevents timeout on slow CPU instances.
-    # llama3.1:8b on CPU (~3 tok/s): 1000 tokens ≈ 333s, well within 600s timeout.
-    # Override via OLLAMA_NUM_PREDICT env var for faster hardware.
-    ollama_num_predict: int = 1000
+    # llama3.2:3b on CPU (~10 tok/s): 2000 tokens ≈ 200s, within 600s timeout.
+    # llama3.1:8b on CPU (~3 tok/s): 2000 tokens ≈ 667s — raise OLLAMA_TIMEOUT_SECONDS
+    # to 900 if using 8b on CPU-only. For GPU instances set OLLAMA_NUM_PREDICT=-1.
+    # The 16-section template needs ~2000-3000 tokens for a full document.
+    # Sections beyond the limit are completed by _enrich_with_claude() if API key is set.
+    ollama_num_predict: int = 2000
     # temperature controls randomness; lower = more deterministic and slightly faster.
     ollama_temperature: float = 0.3
     # RAG context injected into the prompt is truncated to this many chars.

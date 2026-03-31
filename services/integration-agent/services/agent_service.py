@@ -15,13 +15,17 @@ from typing import Callable
 
 from config import settings
 from output_guard import sanitize_llm_output
-from prompt_builder import build_prompt
+from prompt_builder import build_prompt, get_integration_template
 from services.llm_service import generate_with_retry
 from services.rag_service import ContextAssembler, fetch_url_kb_context
 from services.retriever import ScoredChunk, hybrid_retriever
 import state
 
 logger = logging.getLogger(__name__)
+
+
+_TEMPLATE_SECTION_COUNT = 16  # number of ## sections in integration_base_template.md
+_MIN_SECTIONS_FOR_COMPLETE = 14  # tolerate up to 2 missing sections before forcing completion
 
 
 async def _enrich_with_claude(
@@ -31,27 +35,58 @@ async def _enrich_with_claude(
     requirements_text: str,
 ) -> str:
     """
-    Post-process the LLM output with Claude to fill any 'n/a' or thin sections.
+    Post-process the LLM output with Claude to fix incomplete or n/a-heavy documents.
 
-    Called only when:
-      - ANTHROPIC_API_KEY is set in the environment
+    Called when ANTHROPIC_API_KEY is set AND at least one of:
+      - The document has fewer than _MIN_SECTIONS_FOR_COMPLETE '##' sections
+        (Ollama hit the num_predict token cap before finishing all 16 sections)
       - The document contains at least one 'n/a' occurrence
 
-    Returns the enriched document, or the original on any error (graceful degradation).
+    Returns the enriched/completed document, or the original on any error.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return content
 
-    # Skip enrichment if there are no n/a sections
-    if not re.search(r"\bn/a\b", content, re.IGNORECASE):
+    generated_sections = len(re.findall(r"^## ", content, re.MULTILINE))
+    is_truncated = generated_sections < _MIN_SECTIONS_FOR_COMPLETE
+    has_na = bool(re.search(r"\bn/a\b", content, re.IGNORECASE))
+
+    if not is_truncated and not has_na:
         return content
 
     try:
         import anthropic  # lazy import — not required in dev/test environments
 
         client = anthropic.Anthropic(api_key=api_key)
-        logger.info("[Claude] Enriching n/a sections for %s → %s integration...", source, target)
+
+        if is_truncated:
+            logger.info(
+                "[Claude] Document truncated (%d/%d sections) for %s → %s — completing...",
+                generated_sections, _TEMPLATE_SECTION_COUNT, source, target,
+            )
+            task_description = (
+                f"The document is INCOMPLETE — the local model stopped after section "
+                f"{generated_sections} of {_TEMPLATE_SECTION_COUNT} due to token limits.\n\n"
+                f"**Your task:**\n"
+                f"1. Keep ALL existing content unchanged.\n"
+                f"2. Add every MISSING section (those not yet present) following the "
+                f"standard integration template structure below.\n"
+                f"3. Also replace any `n/a` entries with real content where possible.\n\n"
+                f"EXPECTED TEMPLATE STRUCTURE (use section headings exactly as shown):\n"
+                f"{get_integration_template()}"
+            )
+        else:
+            logger.info(
+                "[Claude] Enriching n/a sections (%d sections present) for %s → %s...",
+                generated_sections, source, target,
+            )
+            task_description = (
+                "Some sections are marked `n/a` because the local model lacked context.\n\n"
+                "**Your task:** Replace every `n/a` section with accurate, concise content "
+                f"based on typical {source} to {target} integration patterns and industry "
+                "best practices. Keep ALL existing non-n/a content unchanged."
+            )
 
         message = client.messages.create(
             model="claude-3-haiku-20240307",
@@ -59,20 +94,21 @@ async def _enrich_with_claude(
             messages=[{
                 "role": "user",
                 "content": (
-                    f"You are a senior integration architect specializing in enterprise system integrations.\n\n"
-                    f"Below is an Integration Design document for **{source} → {target}**. "
-                    f"Some sections are marked `n/a` because the local AI model lacked sufficient context.\n\n"
-                    f"**Integration requirements provided by the analyst:**\n{requirements_text}\n\n"
-                    f"**Your task:** Replace every `n/a` section with accurate, concise content based on "
-                    f"typical {source} to {target} integration patterns and industry best practices. "
-                    f"Keep ALL existing non-n/a content unchanged. "
-                    f"Output the COMPLETE document starting with `# Integration Design`.\n\n"
-                    f"DOCUMENT TO ENRICH:\n\n{content}"
+                    f"You are a senior integration architect specializing in enterprise "
+                    f"system integrations.\n\n"
+                    f"Below is an Integration Design document for **{source} → {target}**.\n\n"
+                    f"**Integration requirements:**\n{requirements_text}\n\n"
+                    f"{task_description}\n\n"
+                    f"Output the COMPLETE document starting with `# Integration Design`.\n"
+                    f"Do NOT add any preamble or explanation before the document heading.\n\n"
+                    f"DOCUMENT SO FAR:\n\n{content}"
                 ),
             }],
         )
         enriched = message.content[0].text.strip()
-        logger.info("[Claude] Enrichment complete — %d → %d chars", len(content), len(enriched))
+        logger.info(
+            "[Claude] Enrichment complete — %d → %d chars", len(content), len(enriched)
+        )
         return enriched
 
     except Exception as exc:

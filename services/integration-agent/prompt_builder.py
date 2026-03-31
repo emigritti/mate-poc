@@ -90,6 +90,11 @@ _META_PROMPT: str = _load_meta_prompt()
 _INTEGRATION_TEMPLATE: str = _load_integration_template()
 
 
+def get_integration_template() -> str:
+    """Return the loaded integration template (used by enrichment to detect missing sections)."""
+    return _INTEGRATION_TEMPLATE
+
+
 def build_prompt(
     source_system: str,
     target_system: str,
