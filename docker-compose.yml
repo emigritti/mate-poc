@@ -271,6 +271,7 @@ services:
       - ./reusable-meta-prompt.md:/reusable-meta-prompt.md:ro
       - ./template:/template:ro
       - ./docs:/app/docs:ro
+      - ./HOW-TO:/app/HOW-TO:ro
     environment:
       - OLLAMA_HOST=http://mate-ollama:11434
       # OLLAMA_MODEL: use a smaller model on CPU-only instances for faster responses.
@@ -285,7 +286,7 @@ services:
       - TAG_NUM_PREDICT=${TAG_NUM_PREDICT:-20}
       - TAG_TIMEOUT_SECONDS=${TAG_TIMEOUT_SECONDS:-15}
       - TAG_TEMPERATURE=${TAG_TEMPERATURE:-0.0}
-      - DOCS_ROOT=/app/docs
+      - DOCS_ROOT=/app
       # API_KEY: set this env var to enable token auth; leave unset for open PoC mode
     depends_on:
       mongodb:
