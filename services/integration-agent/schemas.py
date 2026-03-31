@@ -27,6 +27,7 @@ class Requirement(BaseModel):
     target_system: str
     category: str
     description: str
+    mandatory: bool = False
 
 
 class CatalogEntry(BaseModel):

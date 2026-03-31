@@ -46,7 +46,7 @@ In enterprise integration projects, writing Functional and Technical Specificati
 
 **Integration Mate addresses this by:**
 
-1. Ingesting raw requirements from a CSV (the analyst's starting point).
+1. Ingesting raw requirements from a CSV or Markdown file (the analyst's starting point).
 2. Automatically retrieving past, human-approved integration patterns from a vector database.
 3. Using a locally-hosted LLM to draft a structured Functional Design document.
 4. Enforcing a human review gate before the document is persisted — preserving quality and governance.
@@ -58,17 +58,33 @@ In enterprise integration projects, writing Functional and Technical Specificati
 
 ### Step 1 — Upload Requirements
 
-The analyst uploads a CSV file via the Web Dashboard. The file contains rows like:
+The analyst uploads a **CSV** (multi-integration) or **Markdown** (single integration) file via the Web Dashboard.
 
+**CSV format:**
 ```csv
-req_id,source_system,target_system,category,description
-REQ-001,PLM,PIM,Product Master,Sync product master data including SKU and EAN codes daily
-REQ-002,PLM,PIM,Pricing,Transfer net price lists to PIM upon approval in PLM
+ReqID,Source,Target,Category,Description,Mandatory
+REQ-001,PLM,PIM,Product Master,Sync product master data including SKU and EAN codes daily,true
+REQ-002,PLM,PIM,Pricing,Transfer net price lists to PIM upon approval in PLM,false
+```
+
+**Markdown format** (one file = one integration):
+```markdown
+---
+source: ERP
+target: Salsify
+---
+
+## Mandatory Requirements
+- REQ-M01 | Product Collection | Sync daily articles from ERP to PLM
+
+## Non-Mandatory Requirements
+- REQ-O01 | Reporting | Generate weekly sync report
 ```
 
 The Integration Agent:
-- Validates the file (MIME type, max 1 MB, UTF-8 encoding).
-- Parses each row into a `Requirement` object.
+- Detects file type by extension (`.md` → Markdown parser; otherwise → CSV parser).
+- Validates the file (max 1 MB, UTF-8 encoding).
+- Parses each item into a `Requirement` object with a `mandatory: bool` field.
 - Returns a preview `[{source, target}, …]` **without yet creating CatalogEntries** (ADR-025).
 
 **Step 1a — Project Modal (mandatory)**

@@ -276,7 +276,7 @@ graph TB
 | Component | File | Key Behaviour |
 |-----------|------|---------------|
 | **Agent Router** | `routers/agent.py` | Trigger/cancel/logs; asyncio.Lock concurrency guard |
-| **Requirements Router** | `routers/requirements.py` | CSV upload: MIME/size/encoding guards; groups rows by `source|||target` key; finalize creates catalog entries |
+| **Requirements Router** | `routers/requirements.py` | CSV and Markdown upload: size/encoding guards; file type detected by `.md` extension; Markdown parser extracts source/target from YAML frontmatter, mandatory flag from section headings; `Requirement.mandatory: bool` field; groups rows by `source|||target` key; finalize creates catalog entries |
 | **Projects Router** | `routers/projects.py` | Project CRUD; idempotent POST; prefix uniqueness check |
 | **Catalog Router** | `routers/catalog.py` | Integration listing with project metadata; tag suggest/confirm (ADR-019) |
 | **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback; regenerate REJECTED doc with feedback injected (ADR-032) |
@@ -802,7 +802,7 @@ sequenceDiagram
 
 | Step | Actor | Action | Guard / Security |
 |------|-------|--------|-----------------|
-| 1. Upload | Analyst | POST CSV file | MIME check, 1 MB limit, UTF-8 guard |
+| 1. Upload | Analyst | POST CSV or Markdown file | Extension check, 1 MB limit, UTF-8 guard |
 | 2. Trigger | Analyst | POST /agent/trigger | `asyncio.Lock` prevents concurrent runs |
 | 3. Group | Agent | Cluster reqs by source+target | `|||` separator (not hyphen — avoids system name collision) |
 | 4. RAG Query | Agent | HybridRetriever — multi-query expansion (4 variants: 2 templates + 2 LLM) + BM25+dense ensemble (weights 0.6/0.4) + threshold filter + TF-IDF cosine re-rank + ContextAssembler (R8–R10) | Falls back to zero-shot if no chunks pass `rag_distance_threshold`; LLM query expansion has fallback to template variants |
@@ -1451,7 +1451,7 @@ graph TB
 |-------|---------|----------------|-------|
 | API Auth | Bearer token (optional) | `hmac.compare_digest()` — constant-time | A07 |
 | CORS | Allowlist from env var | No `*` with credentials | A05 |
-| Input | CSV guards | MIME type, 1 MB size, UTF-8 encoding | A03 |
+| Input | Requirements file guards | Extension-based type detection, 1 MB size, UTF-8 encoding; CSV and Markdown parsers | A03 |
 | Input | Request bodies | Pydantic `Field(min_length, max_length)` | A03 |
 | LLM Output | Structural guard | Must start `# Integration Functional Design` | A03 |
 | LLM Output | HTML sanitization | `bleach.clean(strip=True, tags=allowlist)` | A03 |

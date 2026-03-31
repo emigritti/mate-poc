@@ -1,30 +1,61 @@
 # 01 — Creare documenti di integrazione
 
-Genera automaticamente functional spec per le tue integrazioni partendo da un CSV di requisiti.
+Genera automaticamente functional spec per le tue integrazioni partendo da un file di requisiti (CSV o Markdown).
 
-**Flusso:** Upload CSV → parse requirements → confirm tags → trigger agent (LLM + RAG) → HITL approve → spec nel catalog.
+**Flusso:** Upload CSV o Markdown → parse requirements → confirm tags → trigger agent (LLM + RAG) → HITL approve → spec nel catalog.
 
 ---
 
 ## Prerequisiti
 
 - Almeno un documento o URL nella KB (vedi guide [02], [03], [04])
-- File CSV nel formato atteso (vedi sezione Formato)
+- File dei requisiti nel formato atteso (CSV o Markdown — vedi sezione Formato)
 - Sistema avviato: `docker compose up -d`
 
 ---
 
-## Formato CSV
+## Formato dei requisiti
+
+Puoi usare **CSV** (multi-integrazione in un file) oppure **Markdown** (una integrazione per file).
+
+### Formato CSV
 
 ```csv
-req_id,description,source_system,target_system,category
-REQ-001,Sincronizzare anagrafica prodotti da PLM a PIM ogni 6 ore,PLM,PIM,data_sync
-REQ-002,Notifica webhook al DAM quando un asset viene approvato,PIM,DAM,event
-REQ-003,Validare schema JSON prima dell'import nel catalogo,PLM,Catalog,validation
+ReqID,Source,Target,Category,Description,Mandatory
+REQ-001,PLM,PIM,Product Master,Sync product master data including SKU and EAN codes daily,true
+REQ-002,PLM,PIM,Pricing,Transfer net price lists to PIM upon approval in PLM,false
+REQ-003,PLM,DAM,Asset Sync,Push approved images from PLM to DAM on publish event,true
 ```
 
-Colonne obbligatorie: `req_id`, `description`, `source_system`, `target_system`.
-`category` è opzionale ma migliora l'auto-tagging.
+Colonne obbligatorie: `ReqID`, `Source`, `Target`, `Category`, `Description`.
+`Mandatory` è opzionale (valori: `true`/`yes`/`1`); default `false` (non-mandatory).
+
+### Formato Markdown (.md)
+
+Un file `.md` = **una sola integrazione**. Usa frontmatter YAML per source/target e sezioni di heading per classificare i requisiti come mandatory o non-mandatory.
+
+```markdown
+---
+source: ERP
+target: Salsify
+---
+
+## Mandatory Requirements
+
+- REQ-M01 | Product Collection | Sync daily created articles from ERP to PLM
+- REQ-M02 | Image Collection | Automatically link high-res images from DAM with Salsify SKU
+
+## Non-Mandatory Requirements
+
+- REQ-O01 | Reporting | Generate weekly synchronization status report
+```
+
+**Regole del parser Markdown:**
+- `source:` e `target:` nel frontmatter → identificano la coppia di sistemi.
+  - Fallback se frontmatter assente: filename tipo `erp-to-salsify.md`.
+- Heading contenente `mandatory` (ma non `non-mandatory` / `optional`) → flag `mandatory=true`.
+- Formato bullet: `REQ-ID | Categoria | Descrizione` (1–3 parti separate da `|`).
+  - Se REQ-ID omesso → generato automaticamente (`R-XXXXXX`).
 
 ---
 
@@ -33,7 +64,7 @@ Colonne obbligatorie: `req_id`, `description`, `source_system`, `target_system`.
 ### Step 1 — Upload requisiti + compila progetto
 1. Apri `http://localhost:8080`
 2. Tab **Requirements** (è la pagina di default)
-3. Clicca **Upload CSV** → seleziona il file
+3. Clicca **Upload** → seleziona un file `.csv` o `.md`
 4. Dopo il parsing appare automaticamente una **modal "Progetto"**:
    - **Client Name**: nome del cliente (es. `Acme Corp`)
    - **Prefix**: sigla 1-3 lettere maiuscole auto-generata (es. `ACM`) — modifica se necessario
@@ -70,12 +101,21 @@ Per ogni integrazione:
 
 ## Via API (curl)
 
-### Step 1 — Upload CSV
+### Step 1 — Upload requisiti (CSV o Markdown)
 
+**CSV:**
 ```bash
 curl -s -X POST http://localhost:4003/api/v1/requirements/upload \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -F "file=@requirements.csv" \
+  | python3 -m json.tool
+```
+
+**Markdown:**
+```bash
+curl -s -X POST http://localhost:4003/api/v1/requirements/upload \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "file=@erp-to-salsify.md" \
   | python3 -m json.tool
 ```
 

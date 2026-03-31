@@ -29,8 +29,8 @@ export default function RequirementsPage() {
 
   const handleFile = async (file) => {
     const lowerName = file?.name?.toLowerCase() ?? '';
-    if (!lowerName.endsWith('.csv')) {
-      setError('Please upload a CSV file (.csv)');
+    if (!lowerName.endsWith('.csv') && !lowerName.endsWith('.md')) {
+      setError('Please upload a CSV (.csv) or Markdown (.md) file');
       return;
     }
     setError(null);
@@ -107,7 +107,7 @@ export default function RequirementsPage() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv"
+          accept=".csv,.md"
           className="hidden"
           onChange={e => handleFile(e.target.files[0])}
         />
@@ -125,9 +125,9 @@ export default function RequirementsPage() {
             </div>
             <div>
               <p className="font-semibold text-slate-700" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                Drop your CSV file here
+                Drop your requirements file here
               </p>
-              <p className="text-sm text-slate-400 mt-1">or click to browse — accepts .csv files</p>
+              <p className="text-sm text-slate-400 mt-1">or click to browse — accepts .csv and .md files</p>
             </div>
           </div>
         )}
@@ -156,7 +156,7 @@ export default function RequirementsPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {['Req ID', 'Description', 'Source', 'Target', 'Category', 'Status'].map(h => (
+                  {['Req ID', 'Description', 'Source', 'Target', 'Category', 'Priority', 'Status'].map(h => (
                     <th
                       key={h}
                       className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider"
@@ -175,6 +175,12 @@ export default function RequirementsPage() {
                     <td className="px-4 py-3 text-slate-600">{req.source_system || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{req.target_system || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{req.category || '—'}</td>
+                    <td className="px-4 py-3">
+                      {req.mandatory
+                        ? <Badge variant="error">Mandatory</Badge>
+                        : <Badge variant="slate">Optional</Badge>
+                      }
+                    </td>
                     <td className="px-4 py-3">
                       <Badge variant="primary" dot>Parsed</Badge>
                     </td>
