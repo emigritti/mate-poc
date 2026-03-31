@@ -114,13 +114,31 @@ Describe key alternative scenarios.
 
 \### 6.2 Architecture Diagram
 
-Insert C4 / sequence / component diagram.
+Generate a Mermaid flowchart showing the high-level component interactions. Replace the placeholder nodes with the actual systems and middleware involved.
+
+```mermaid
+flowchart LR
+    Src[Source System] -->|Protocol / API / Event| Int[Integration Layer]
+    Int -->|Transform & Route| Tgt[Target System]
+```
 
 \## 7. Detailed Flow
 
 \### 7.1 Sequence Diagram
 
-Describe the technical interaction sequence.
+Generate a Mermaid sequence diagram showing the step-by-step interaction between systems. Replace participant names and steps with the actual integration flow.
+
+```mermaid
+sequenceDiagram
+    participant Src as Source System
+    participant Int as Integration Layer
+    participant Tgt as Target System
+    Src->>Int: Trigger (event / API call / batch)
+    Int->>Int: Validate & Transform payload
+    Int->>Tgt: Deliver payload
+    Tgt-->>Int: ACK / response
+    Int-->>Src: Confirm success
+```
 
 \### 7.2 Component Responsibilities
 

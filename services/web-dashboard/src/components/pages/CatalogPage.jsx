@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BookOpen, RefreshCw, ArrowRight, Loader2, AlertCircle, X, FileText } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import MarkdownViewer from '../ui/MarkdownViewer.jsx';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
 
@@ -56,8 +55,8 @@ function DocModal({ title, content, onClose }) {
           </button>
         </div>
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 prose prose-slate prose-sm max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        <div className="flex-1 overflow-y-auto p-6">
+          <MarkdownViewer>{content}</MarkdownViewer>
         </div>
       </div>
     </div>
