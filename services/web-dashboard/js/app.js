@@ -677,11 +677,11 @@ async function renderCatalog() {
                         ${(i.requirements || []).map(r => `<span class="badge badge-primary">${escapeHtml(r)}</span>`).join('')}
                     </div>
                     <div class="card-footer" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;gap:6px;flex-wrap:wrap;">
-                        ${i.status === 'generated' ? `<button class="btn btn-sm btn-primary" onclick="viewDoc('${escapeHtml(i.id)}', 'functional')">📋 Functional Spec</button>` : ''}
+                        ${i.status === 'generated' ? `<button class="btn btn-sm btn-primary" onclick="viewDoc('${escapeHtml(i.id)}', 'functional')">📋 Functional Spec</button><button class="btn btn-sm btn-secondary func-download-btn" data-doc-id="${escapeHtml(i.id)}">⬇ Download</button>` : ''}
                         ${i.technical_status === 'TECH_PENDING' ? `<button class="btn btn-sm btn-secondary tech-trigger-btn" id="techBtn-${escapeHtml(i.id)}" data-tech-id="${escapeHtml(i.id)}">Genera Technical Design</button>` : ''}
                         ${i.technical_status === 'TECH_GENERATING' ? `<span class="badge badge-info">⏳ Technical...</span>` : ''}
                         ${i.technical_status === 'TECH_REVIEW' ? `<span class="badge badge-info">🔍 Tech Review</span>` : ''}
-                        ${i.technical_status === 'TECH_DONE' ? `<button class="btn btn-sm btn-outline-success tech-view-btn" data-tech-id="${escapeHtml(i.id)}">View Technical Spec</button>` : ''}
+                        ${i.technical_status === 'TECH_DONE' ? `<button class="btn btn-sm btn-outline-success tech-view-btn" data-tech-id="${escapeHtml(i.id)}">View Technical Spec</button><button class="btn btn-sm btn-secondary tech-download-btn" data-doc-id="${escapeHtml(i.id)}">⬇ Download</button>` : ''}
                         <span id="techResult-${escapeHtml(i.id)}" style="font-size:12px;"></span>
                     </div>
                 </div>`;
@@ -689,12 +689,18 @@ async function renderCatalog() {
 
         area.innerHTML = filterBar + cards;
 
-        // C-01: safe DOM event binding — data-tech-id eliminates JS-context injection risk
+        // C-01: safe DOM event binding — data-* attributes eliminate JS-context injection risk
         area.querySelectorAll('.tech-trigger-btn').forEach(btn => {
             btn.addEventListener('click', () => triggerTechnical(btn.dataset.techId));
         });
         area.querySelectorAll('.tech-view-btn').forEach(btn => {
             btn.addEventListener('click', () => viewDoc(btn.dataset.techId, 'technical'));
+        });
+        area.querySelectorAll('.func-download-btn').forEach(btn => {
+            btn.addEventListener('click', () => downloadDoc(btn.dataset.docId, 'functional'));
+        });
+        area.querySelectorAll('.tech-download-btn').forEach(btn => {
+            btn.addEventListener('click', () => downloadDoc(btn.dataset.docId, 'technical'));
         });
 
     } catch (e) {
@@ -768,7 +774,16 @@ async function viewDoc(id, type) {
     try {
         const data = type === 'functional' ? await API.getFunctionalSpec(id) : await API.getTechnicalSpec(id);
         const mdContent = data?.data?.content || '*No content available.*';
-        viewer.innerHTML = `<div class="markdown-body">${marked.parse(mdContent)}</div>`;
+        const safeId = escapeHtml(id);
+        const safeType = escapeHtml(type);
+        viewer.innerHTML = `
+            <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+                <button class="btn btn-sm btn-secondary viewer-download-btn" data-doc-id="${safeId}" data-doc-type="${safeType}">⬇ Download .md</button>
+            </div>
+            <div class="markdown-body">${marked.parse(mdContent)}</div>`;
+        viewer.querySelector('.viewer-download-btn').addEventListener('click', btn => {
+            downloadDoc(btn.currentTarget.dataset.docId, btn.currentTarget.dataset.docType);
+        });
     } catch (e) { viewer.innerHTML = `<p style="color:var(--error)">Failed to load document: ${escapeHtml(e.message)}</p>`; }
 }
 
@@ -971,6 +986,29 @@ function escapeHtml(str) {
 }
 
 function truncate(str, len) { return (str || '').length > len ? str.substring(0, len) + '...' : str || ''; }
+
+/**
+ * Fetch a generated spec and trigger a browser download as a .md file.
+ * Only call when the document is confirmed available (status guard done at render time).
+ */
+async function downloadDoc(id, type) {
+    try {
+        const data = type === 'functional' ? await API.getFunctionalSpec(id) : await API.getTechnicalSpec(id);
+        const content = data?.data?.content || '';
+        if (!content) { alert('Document content not available.'); return; }
+        const blob = new Blob([content], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${id}-${type}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        alert('Download failed: ' + e.message);
+    }
+}
 
 // ── Project helpers (ADR-025) ─────────────────────────────────────────────────
 
