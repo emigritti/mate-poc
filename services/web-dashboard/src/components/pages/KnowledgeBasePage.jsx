@@ -142,6 +142,23 @@ export default function KnowledgeBasePage() {
         }
     };
 
+    const handleDeleteIntegration = async (id) => {
+        if (!confirm('Remove this integration document from the Knowledge Base?\nThe document will revert to "staged" status and can be re-promoted later.')) return;
+        setDeletingId(id);
+        try {
+            const res = await API.documents.removeFromKB(id);
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                throw new Error(d.detail || 'Remove from KB failed');
+            }
+            await loadData();
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
     const handlePreviewUnified = (unifiedDoc) => {
         setPreviewDoc({
             filename: unifiedDoc.name,
@@ -270,6 +287,7 @@ export default function KnowledgeBasePage() {
             <UnifiedDocumentsPanel
                 docs={unifiedDocs}
                 onDelete={handleDelete}
+                onDeleteIntegration={handleDeleteIntegration}
                 deletingId={deletingId}
                 onPreview={handlePreviewUnified}
                 onEditTags={(kbDoc) => setEditingDoc(kbDoc)}

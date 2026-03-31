@@ -80,3 +80,43 @@ async def promote_document_to_kb(doc_id: str, _user: str = Depends(require_token
         "doc_id": doc_id,
         "message": f"Document '{doc_id}' promoted to Knowledge Base.",
     }
+
+
+@router.delete("/documents/{doc_id}/from-kb")
+async def remove_document_from_kb(doc_id: str, _user: str = Depends(require_token)):
+    """Remove a promoted document from the RAG Knowledge Base (ChromaDB) and reset its kb_status to staged."""
+    doc = state.documents.get(doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found.")
+
+    if doc.kb_status != "promoted":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document '{doc_id}' is not in the Knowledge Base (status: {doc.kb_status}).",
+        )
+
+    if state.collection is not None:
+        try:
+            state.collection.delete(ids=[doc_id])
+            logger.info("[RAG] Removed %s from ChromaDB.", doc_id)
+        except Exception as exc:
+            logger.warning("[RAG] ChromaDB delete failed for %s: %s", doc_id, exc)
+            raise HTTPException(status_code=500, detail=f"ChromaDB delete failed: {exc}")
+    else:
+        raise HTTPException(status_code=503, detail="ChromaDB is unavailable.")
+
+    doc.kb_status = "staged"
+    state.documents[doc_id] = doc
+    if db.documents_col is not None:
+        await db.documents_col.update_one(
+            {"id": doc_id},
+            {"$set": {"kb_status": "staged"}},
+        )
+
+    await record_event("document.removed_from_kb", {"doc_id": doc_id})
+
+    return {
+        "status": "success",
+        "doc_id": doc_id,
+        "message": f"Document '{doc_id}' removed from Knowledge Base.",
+    }

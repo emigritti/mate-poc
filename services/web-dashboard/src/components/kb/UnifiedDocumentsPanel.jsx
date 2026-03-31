@@ -46,7 +46,7 @@ function filterDocs(docs = [], query = '') {
  *   onPreview   {Function} — called with the unified doc object
  *   onEditTags  {Function} — called with doc._kbDoc
  */
-export default function UnifiedDocumentsPanel({ docs, onDelete, deletingId, onPreview, onEditTags }) {
+export default function UnifiedDocumentsPanel({ docs, onDelete, onDeleteIntegration, deletingId, onPreview, onEditTags }) {
     const [query, setQuery] = useState('');
     const [displayed, setDisplayed] = useState(docs);
     const timerRef = useRef(null);
@@ -196,6 +196,21 @@ export default function UnifiedDocumentsPanel({ docs, onDelete, deletingId, onPr
                                                 disabled={deletingId === doc.id}
                                                 className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 disabled:opacity-50 transition-colors"
                                                 title="Delete"
+                                            >
+                                                {deletingId === doc.id
+                                                    ? <Loader2 size={14} className="animate-spin" />
+                                                    : <Trash2 size={14} />
+                                                }
+                                            </button>
+                                        )}
+
+                                        {/* Remove from KB — integration docs (generative flow + HITL) */}
+                                        {doc.source === 'integration' && (
+                                            <button
+                                                onClick={() => onDeleteIntegration(doc.id)}
+                                                disabled={deletingId === doc.id}
+                                                className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 disabled:opacity-50 transition-colors"
+                                                title="Remove from Knowledge Base"
                                             >
                                                 {deletingId === doc.id
                                                     ? <Loader2 size={14} className="animate-spin" />

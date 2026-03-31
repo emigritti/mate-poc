@@ -90,6 +90,10 @@ export const API = {
       fetch(`${AGENT}/api/v1/documents/${encodeURIComponent(docId)}/promote-to-kb`, {
         method: 'POST',
       }),
+    removeFromKB: (docId) =>
+      fetch(`${AGENT}/api/v1/documents/${encodeURIComponent(docId)}/from-kb`, {
+        method: 'DELETE',
+      }),
   },
 
   admin: {
