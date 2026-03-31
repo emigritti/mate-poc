@@ -19,6 +19,12 @@ from collectors.openapi.parser import OpenAPIParser, OpenAPIParseError
 from collectors.openapi.normalizer import OpenAPINormalizer
 from collectors.openapi.chunker import OpenAPIChunker
 from collectors.openapi.differ import OpenAPIDiffer
+from collectors.html.crawler import HTMLCrawler
+from collectors.html.cleaner import HTMLCleaner
+from collectors.html.extractor import HTMLRelevanceFilter
+from collectors.html.agent_extractor import HTMLAgentExtractor
+from collectors.html.normalizer import HTMLNormalizer
+from collectors.html.chunker import HTMLChunker
 from services.indexing_service import IndexingService
 from services.diff_service import DiffService
 from services.claude_service import get_claude_service
@@ -184,6 +190,104 @@ async def _run_openapi_ingestion(source_id: str, run: SourceRun) -> None:
     await _finish_run(run, chunks_created, changed, errors)
 
 
+# ── HTML ingestion pipeline ───────────────────────────────────────────────────
+
+async def _run_html_ingestion(source_id: str, run: SourceRun) -> None:
+    """Background task: crawl → clean → filter → extract → normalize → chunk → index."""
+    from hashlib import sha256
+
+    errors: list[str] = []
+    chunks_created = 0
+    changed = False
+
+    try:
+        # 1. Load source
+        doc = await state.sources_col.find_one({"id": source_id})
+        if not doc:
+            await _finish_run(run, 0, False, [f"Source {source_id} not found"])
+            return
+        source = _source_from_doc(doc)
+
+        # 2. Crawl entrypoints (httpx + BeautifulSoup BFS)
+        crawler = HTMLCrawler()
+        pages = await crawler.crawl(
+            source.entrypoints,
+            max_pages=settings.max_html_pages_per_crawl,
+        )
+        if not pages:
+            await _finish_run(run, 0, False, ["No pages fetched from entrypoints"])
+            return
+
+        # 3. Claude services (gracefully absent when ANTHROPIC_API_KEY not set)
+        claude = get_claude_service(
+            settings.anthropic_api_key,
+            settings.claude_extraction_model,
+            settings.claude_filter_model,
+        )
+        relevance_filter = HTMLRelevanceFilter(claude_service=claude)
+        agent_extractor = HTMLAgentExtractor(claude_service=claude)
+        normalizer = HTMLNormalizer()
+        cleaner = HTMLCleaner()
+
+        # 4. Per-page pipeline: clean → relevance filter → extract → normalize
+        all_capabilities = []
+        for page in pages:
+            clean_text = cleaner.clean(page.html)
+            if not clean_text.strip():
+                continue
+            if not await relevance_filter.is_relevant(clean_text, page.url):
+                logger.debug("Skipping irrelevant page: %s", page.url)
+                continue
+            raw_caps = await agent_extractor.extract(clean_text, page.url)
+            caps = normalizer.normalize(raw_caps, source_code=source.code)
+            all_capabilities.extend(caps)
+
+        if not all_capabilities:
+            logger.info("No capabilities extracted for source %s — crawl completed", source_id)
+            await _finish_run(run, 0, True, [])
+            return
+
+        changed = True
+
+        # 5. Hash-based dedup: skip re-index if content unchanged
+        content_hash = sha256(
+            "|".join(
+                f"{c.capability_id}:{c.description}" for c in all_capabilities
+            ).encode()
+        ).hexdigest()
+        prev_snap = await state.snapshots_col.find_one({"source_id": source_id, "is_current": True})
+        if prev_snap and prev_snap.get("content_hash") == content_hash:
+            await _finish_run(run, 0, False, [])
+            return
+
+        # 6. Chunk
+        chunker = HTMLChunker()
+        chunks = chunker.chunk(all_capabilities, source_code=source.code, tags=source.tags)
+
+        # 7. Index into shared ChromaDB (delete old chunks first)
+        kb_col = _get_chroma_collection()
+        indexer = IndexingService(kb_collection=kb_col)
+        indexer.delete_source_chunks(source.code)
+        chunks_created = indexer.upsert_chunks(chunks, snapshot_id=run.id)
+
+        # 8. Diff summary via Claude Haiku (best-effort)
+        diff_svc = DiffService(claude_service=claude)
+        diff_summary = await diff_svc.summarize(
+            source.code,
+            set(),
+            {c.name for c in all_capabilities},
+        )
+
+        # 9. Persist snapshot
+        await _save_snapshot(source_id, content_hash, len(all_capabilities), diff_summary)
+
+    except Exception as exc:
+        logger.exception("Unexpected error in HTML ingestion for %s", source_id)
+        errors.append(str(exc))
+
+    await _finish_run(run, chunks_created, changed, errors)
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/openapi/{source_id}", status_code=status.HTTP_202_ACCEPTED)
@@ -217,9 +321,8 @@ async def trigger_html_ingest(
     source_id: str,
     background_tasks: BackgroundTasks,
 ) -> dict:
-    """Trigger HTML crawler ingestion. Returns run_id immediately (Phase 4)."""
+    """Trigger HTML crawler ingestion. Returns run_id immediately (async background)."""
     await _get_source_or_404(source_id)
     run = await _start_run(source_id, RunTrigger.MANUAL, SourceType.HTML)
-    logger.info("HTML ingestion queued for source %s (run %s)", source_id, run.id)
-    await _finish_run(run, 0, False, ["HTML collector not yet implemented — Phase 4"])
+    background_tasks.add_task(_run_html_ingestion, source_id, run)
     return {"run_id": run.id, "status": "accepted", "source_id": source_id}

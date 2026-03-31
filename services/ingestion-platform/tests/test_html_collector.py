@@ -253,3 +253,215 @@ class TestHTMLNormalizer:
         }
         caps = norm.normalize([raw], source_code="html_docs")
         assert caps[0].confidence == 1.0
+
+
+# ── HTML Crawler tests ────────────────────────────────────────────────────────
+
+class TestHTMLCrawler:
+    """Tests for HTMLCrawler — httpx mocked, no real network calls."""
+
+    def _make_response(self, text: str, status_code: int = 200, content_type: str = "text/html"):
+        mock = MagicMock()
+        mock.status_code = status_code
+        mock.text = text
+        mock.headers = {"content-type": content_type}
+        return mock
+
+    def test_crawl_returns_page_for_single_entrypoint(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+        html = "<html><body><h1>API Docs</h1></body></html>"
+
+        async def mock_crawl():
+            with patch("httpx.AsyncClient") as MockClient:
+                instance = AsyncMock()
+                instance.__aenter__ = AsyncMock(return_value=instance)
+                instance.__aexit__ = AsyncMock(return_value=False)
+                instance.get = AsyncMock(return_value=self._make_response(html))
+                MockClient.return_value = instance
+                return await crawler.crawl(["https://docs.example.com/api"], max_pages=1)
+
+        import asyncio
+        pages = asyncio.get_event_loop().run_until_complete(mock_crawl())
+        assert len(pages) == 1
+        assert pages[0].url == "https://docs.example.com/api"
+        assert "API Docs" in pages[0].html
+
+    def test_crawl_respects_max_pages_limit(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+        # HTML with links to 5 sub-pages
+        html = """<html><body>
+            <a href="/p1">p1</a><a href="/p2">p2</a>
+            <a href="/p3">p3</a><a href="/p4">p4</a>
+            <a href="/p5">p5</a>
+        </body></html>"""
+        sub_html = "<html><body><p>sub</p></body></html>"
+
+        async def mock_crawl():
+            with patch("httpx.AsyncClient") as MockClient:
+                instance = AsyncMock()
+                instance.__aenter__ = AsyncMock(return_value=instance)
+                instance.__aexit__ = AsyncMock(return_value=False)
+                # First call returns links, subsequent calls return sub_html
+                instance.get = AsyncMock(side_effect=[
+                    self._make_response(html),
+                    self._make_response(sub_html),
+                    self._make_response(sub_html),
+                ])
+                MockClient.return_value = instance
+                return await crawler.crawl(["https://docs.example.com"], max_pages=3)
+
+        import asyncio
+        pages = asyncio.get_event_loop().run_until_complete(mock_crawl())
+        assert len(pages) <= 3
+
+    def test_crawl_skips_non_200_responses(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+
+        async def mock_crawl():
+            with patch("httpx.AsyncClient") as MockClient:
+                instance = AsyncMock()
+                instance.__aenter__ = AsyncMock(return_value=instance)
+                instance.__aexit__ = AsyncMock(return_value=False)
+                instance.get = AsyncMock(return_value=self._make_response("", status_code=404))
+                MockClient.return_value = instance
+                return await crawler.crawl(["https://docs.example.com/missing"])
+
+        import asyncio
+        pages = asyncio.get_event_loop().run_until_complete(mock_crawl())
+        assert pages == []
+
+    def test_crawl_skips_non_html_content_type(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+
+        async def mock_crawl():
+            with patch("httpx.AsyncClient") as MockClient:
+                instance = AsyncMock()
+                instance.__aenter__ = AsyncMock(return_value=instance)
+                instance.__aexit__ = AsyncMock(return_value=False)
+                instance.get = AsyncMock(
+                    return_value=self._make_response("{}", content_type="application/json")
+                )
+                MockClient.return_value = instance
+                return await crawler.crawl(["https://docs.example.com/api.json"])
+
+        import asyncio
+        pages = asyncio.get_event_loop().run_until_complete(mock_crawl())
+        assert pages == []
+
+    def test_normalize_url_strips_fragment(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+        result = crawler._normalize_url("https://docs.example.com/api#section-1")
+        assert result == "https://docs.example.com/api"
+        assert "#" not in result
+
+    def test_normalize_url_rejects_binary_extensions(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+        assert crawler._normalize_url("https://example.com/doc.pdf") is None
+        assert crawler._normalize_url("https://example.com/image.png") is None
+        assert crawler._normalize_url("https://example.com/styles.css") is None
+
+    def test_normalize_url_rejects_non_http_schemes(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+        assert crawler._normalize_url("ftp://example.com/doc") is None
+        assert crawler._normalize_url("mailto:user@example.com") is None
+
+    def test_is_allowed_rejects_cross_domain(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+        allowed = {"docs.example.com"}
+        assert crawler._is_allowed("https://docs.example.com/api", allowed) is True
+        assert crawler._is_allowed("https://evil.com/steal", allowed) is False
+
+    def test_crawl_handles_fetch_exception_gracefully(self):
+        from collectors.html.crawler import HTMLCrawler
+        crawler = HTMLCrawler()
+
+        async def mock_crawl():
+            with patch("httpx.AsyncClient") as MockClient:
+                instance = AsyncMock()
+                instance.__aenter__ = AsyncMock(return_value=instance)
+                instance.__aexit__ = AsyncMock(return_value=False)
+                instance.get = AsyncMock(side_effect=Exception("Connection refused"))
+                MockClient.return_value = instance
+                return await crawler.crawl(["https://docs.example.com"])
+
+        import asyncio
+        pages = asyncio.get_event_loop().run_until_complete(mock_crawl())
+        assert pages == []
+
+
+# ── HTML Chunker tests ────────────────────────────────────────────────────────
+
+class TestHTMLChunker:
+    """Tests for HTMLChunker — verifies CanonicalCapability → CanonicalChunk conversion."""
+
+    def _make_capability(self, name="create_payment", kind="endpoint",
+                         description="POST /payments", page_url="https://docs.example.com/api",
+                         section="Payments", confidence=0.9):
+        from collectors.html.normalizer import HTMLNormalizer
+        return HTMLNormalizer().normalize([{
+            "name": name,
+            "kind": kind,
+            "description": description,
+            "confidence": confidence,
+            "source_trace": {"page_url": page_url, "section": section},
+        }], source_code="test_source")[0]
+
+    def test_chunk_produces_one_chunk_per_capability(self):
+        from collectors.html.chunker import HTMLChunker
+        chunker = HTMLChunker()
+        caps = [self._make_capability("op1"), self._make_capability("op2")]
+        chunks = chunker.chunk(caps, source_code="test_source", tags=["payments"])
+        assert len(chunks) == 2
+
+    def test_chunk_text_contains_kind_name_description(self):
+        from collectors.html.chunker import HTMLChunker
+        chunker = HTMLChunker()
+        cap = self._make_capability(name="create_payment", kind="endpoint",
+                                    description="POST /payments — Creates a payment")
+        chunks = chunker.chunk([cap], source_code="test_source", tags=[])
+        assert "[ENDPOINT]" in chunks[0].text
+        assert "create_payment" in chunks[0].text
+        assert "POST /payments" in chunks[0].text
+
+    def test_chunk_includes_source_url(self):
+        from collectors.html.chunker import HTMLChunker
+        chunker = HTMLChunker()
+        cap = self._make_capability(page_url="https://docs.example.com/api/payments")
+        chunks = chunker.chunk([cap], source_code="test_source", tags=[])
+        assert "https://docs.example.com/api/payments" in chunks[0].text
+
+    def test_chunk_sets_correct_source_type(self):
+        from collectors.html.chunker import HTMLChunker
+        chunker = HTMLChunker()
+        cap = self._make_capability()
+        chunks = chunker.chunk([cap], source_code="payment_docs", tags=["payments"])
+        assert chunks[0].source_type == "html"
+        assert chunks[0].source_code == "payment_docs"
+
+    def test_chunk_preserves_confidence(self):
+        from collectors.html.chunker import HTMLChunker
+        chunker = HTMLChunker()
+        cap = self._make_capability(confidence=0.65)
+        chunks = chunker.chunk([cap], source_code="test_source", tags=[])
+        assert chunks[0].confidence == pytest.approx(0.65)
+
+    def test_chunk_empty_capabilities_returns_empty(self):
+        from collectors.html.chunker import HTMLChunker
+        chunker = HTMLChunker()
+        chunks = chunker.chunk([], source_code="test_source", tags=[])
+        assert chunks == []
+
+    def test_chunk_sequential_index(self):
+        from collectors.html.chunker import HTMLChunker
+        chunker = HTMLChunker()
+        caps = [self._make_capability(f"op{i}") for i in range(5)]
+        chunks = chunker.chunk(caps, source_code="test_source", tags=[])
+        assert [c.index for c in chunks] == list(range(5))
