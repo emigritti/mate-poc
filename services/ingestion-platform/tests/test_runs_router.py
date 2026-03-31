@@ -1,13 +1,14 @@
 """
-Tests for the runs/snapshots read-only router (routers/runs.py).
+Tests for the runs/snapshots/chunks read-only router (routers/runs.py).
 
 Endpoints:
   GET /api/v1/runs/{run_id}
   GET /api/v1/sources/{source_id}/runs
   GET /api/v1/sources/{source_id}/snapshots
+  GET /api/v1/sources/{source_id}/chunks
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 
@@ -167,3 +168,149 @@ class TestGetSourceSnapshots:
         mock_mongo_collection.find = MagicMock(return_value=_make_chain_mock([dict(VALID_SNAPSHOT_DOC)]))
         body = client.get("/api/v1/sources/src_abc123/snapshots").json()
         assert "_id" not in body[0]
+
+
+# ── GET /api/v1/sources/{source_id}/chunks ────────────────────────────────────
+
+VALID_SOURCE_DOC = {
+    "_id": "src_abc123",
+    "id": "src_abc123",
+    "code": "plm_api_v1",
+    "source_type": "openapi",
+    "entrypoints": ["http://mate-plm-mock:3001/openapi.json"],
+    "tags": ["plm", "product"],
+    "refresh_cron": "0 */6 * * *",
+    "description": "PLM Mock API",
+    "status": {"state": "active", "last_run_at": None, "last_success_at": None, "last_error": None},
+    "created_at": "2026-03-31T10:00:00",
+    "updated_at": "2026-03-31T10:00:00",
+}
+
+VALID_CHROMA_RESULT = {
+    "ids": ["src_plm_api_v1-chunk-0", "src_plm_api_v1-chunk-1"],
+    "documents": [
+        "GET /products — Returns a list of all products",
+        "POST /products — Creates a new product entry",
+    ],
+    "metadatas": [
+        {
+            "source_code": "plm_api_v1",
+            "capability_kind": "endpoint",
+            "section_header": "GET /products",
+            "low_confidence": False,
+            "chunk_index": 0,
+            "snapshot_id": "snap_20260331_src_abc1",
+            "tags_csv": "plm,product",
+        },
+        {
+            "source_code": "plm_api_v1",
+            "capability_kind": "endpoint",
+            "section_header": "POST /products",
+            "low_confidence": False,
+            "chunk_index": 1,
+            "snapshot_id": "snap_20260331_src_abc1",
+            "tags_csv": "plm,product",
+        },
+    ],
+}
+
+
+def _mock_chroma_collection(result):
+    """Build a MagicMock for a ChromaDB collection."""
+    col = MagicMock()
+    col.get = MagicMock(return_value=result)
+    return col
+
+
+class TestGetSourceChunks:
+    def test_returns_404_when_source_not_found(self, client, mock_mongo_collection):
+        mock_mongo_collection.find_one = AsyncMock(return_value=None)
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(VALID_CHROMA_RESULT)):
+            res = client.get("/api/v1/sources/nonexistent/chunks")
+        assert res.status_code == 404
+
+    def test_returns_200_when_source_exists(self, client, mock_mongo_collection):
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(VALID_CHROMA_RESULT)):
+            res = client.get("/api/v1/sources/src_abc123/chunks")
+        assert res.status_code == 200
+
+    def test_returns_list_of_chunks(self, client, mock_mongo_collection):
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(VALID_CHROMA_RESULT)):
+            body = client.get("/api/v1/sources/src_abc123/chunks").json()
+        assert isinstance(body, list)
+        assert len(body) == 2
+
+    def test_chunk_shape_contains_required_fields(self, client, mock_mongo_collection):
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(VALID_CHROMA_RESULT)):
+            body = client.get("/api/v1/sources/src_abc123/chunks").json()
+        chunk = body[0]
+        assert "id" in chunk
+        assert "text_preview" in chunk
+        assert "capability_kind" in chunk
+        assert "section_header" in chunk
+        assert "low_confidence" in chunk
+        assert "chunk_index" in chunk
+
+    def test_text_preview_truncated_to_300_chars(self, client, mock_mongo_collection):
+        long_text = "A" * 500
+        result = {
+            "ids": ["src_plm_api_v1-chunk-0"],
+            "documents": [long_text],
+            "metadatas": [{"source_code": "plm_api_v1", "capability_kind": "endpoint",
+                           "section_header": "test", "low_confidence": False,
+                           "chunk_index": 0, "snapshot_id": "", "tags_csv": ""}],
+        }
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(result)):
+            body = client.get("/api/v1/sources/src_abc123/chunks").json()
+        assert len(body[0]["text_preview"]) == 300
+        assert len(body[0]["text_full"]) == 500
+
+    def test_empty_list_when_no_chunks_indexed(self, client, mock_mongo_collection):
+        empty_result = {"ids": [], "documents": [], "metadatas": []}
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(empty_result)):
+            body = client.get("/api/v1/sources/src_abc123/chunks").json()
+        assert body == []
+
+    def test_chunks_sorted_by_chunk_index(self, client, mock_mongo_collection):
+        # Return chunks in reverse order — endpoint should sort them
+        result = {
+            "ids": ["src_plm_api_v1-chunk-1", "src_plm_api_v1-chunk-0"],
+            "documents": ["second chunk", "first chunk"],
+            "metadatas": [
+                {"source_code": "plm_api_v1", "capability_kind": "endpoint",
+                 "section_header": "B", "low_confidence": False,
+                 "chunk_index": 1, "snapshot_id": "", "tags_csv": ""},
+                {"source_code": "plm_api_v1", "capability_kind": "overview",
+                 "section_header": "A", "low_confidence": False,
+                 "chunk_index": 0, "snapshot_id": "", "tags_csv": ""},
+            ],
+        }
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(result)):
+            body = client.get("/api/v1/sources/src_abc123/chunks").json()
+        assert body[0]["chunk_index"] == 0
+        assert body[1]["chunk_index"] == 1
+
+    def test_low_confidence_flag_propagated(self, client, mock_mongo_collection):
+        result = {
+            "ids": ["src_plm_api_v1-chunk-0"],
+            "documents": ["Some text"],
+            "metadatas": [{"source_code": "plm_api_v1", "capability_kind": "endpoint",
+                           "section_header": "test", "low_confidence": True,
+                           "chunk_index": 0, "snapshot_id": "", "tags_csv": ""}],
+        }
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", return_value=_mock_chroma_collection(result)):
+            body = client.get("/api/v1/sources/src_abc123/chunks").json()
+        assert body[0]["low_confidence"] is True
+
+    def test_chromadb_503_on_connection_error(self, client, mock_mongo_collection):
+        mock_mongo_collection.find_one = AsyncMock(return_value=dict(VALID_SOURCE_DOC))
+        with patch("routers.runs._get_chroma_collection", side_effect=Exception("connection refused")):
+            res = client.get("/api/v1/sources/src_abc123/chunks")
+        assert res.status_code == 503

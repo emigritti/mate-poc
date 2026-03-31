@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import {
   DatabaseZap, Play, Pause, Trash2, ChevronDown, ChevronRight,
   Plus, X, AlertCircle, CheckCircle2, Loader2, Clock,
-  Hash, Activity, RefreshCw,
+  Hash, Activity, RefreshCw, Layers, Search, TriangleAlert,
+  ArrowRight, CheckCheck,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
@@ -35,6 +36,18 @@ const RUN_STATUS_VARIANT = {
 };
 
 const TRIGGER_VARIANT = { scheduler: 'slate', manual: 'primary', webhook: 'info' };
+
+const KIND_VARIANT = {
+  endpoint:         'primary',
+  schema:           'info',
+  overview:         'slate',
+  auth:             'warning',
+  integration_flow: 'success',
+  guide_step:       'success',
+  event:            'info',
+  tool:             'primary',
+  resource:         'slate',
+};
 
 const POLL_INTERVAL_MS  = 3000;
 const POLL_TIMEOUT_MS   = 60000;
@@ -89,35 +102,91 @@ function TagChips({ tags, onRemove }) {
   );
 }
 
+function RunPipelineLog({ run }) {
+  // Reconstruct a readable pipeline timeline from run metadata.
+  const steps = [
+    { label: 'Triggered',  time: run.started_at,  done: !!run.started_at },
+    { label: 'Fetched spec', done: run.status !== 'pending' },
+    { label: 'Diff check',
+      done: run.status !== 'pending',
+      note: run.changed === false ? 'Spec unchanged — skipped re-indexing' : run.changed ? 'Changes detected' : null },
+    { label: `Indexed ${run.chunks_created ?? 0} chunks`,
+      done: (run.chunks_created ?? 0) > 0,
+      skip: run.changed === false },
+    { label: 'Completed',  time: run.finished_at, done: !!run.finished_at },
+  ];
+
+  return (
+    <div className="space-y-1.5">
+      {steps.map((step, i) => (
+        <div key={i} className={`flex items-start gap-2 text-xs ${step.skip ? 'opacity-40' : ''}`}>
+          <div className="mt-0.5 flex-shrink-0">
+            {step.done && !step.skip
+              ? <CheckCheck size={13} className="text-emerald-500" />
+              : step.skip
+              ? <ArrowRight size={13} className="text-slate-400" />
+              : <div className="w-3 h-3 rounded-full border-2 border-slate-300" />}
+          </div>
+          <div>
+            <span className={`font-medium ${step.done && !step.skip ? 'text-slate-700' : 'text-slate-400'}`}>
+              {step.label}
+            </span>
+            {step.time && <span className="ml-2 text-slate-400 font-normal">{fmtDate(step.time)}</span>}
+            {step.note && <span className="ml-2 text-amber-600 font-normal">{step.note}</span>}
+          </div>
+        </div>
+      ))}
+
+      {run.errors?.length > 0 && (
+        <div className="mt-2">
+          <p className="text-xs font-semibold text-rose-600 mb-1 flex items-center gap-1">
+            <AlertCircle size={12} /> Errors
+          </p>
+          <pre className="text-xs bg-rose-50 border border-rose-200 rounded p-2 text-rose-700 whitespace-pre-wrap break-all">
+            {run.errors.join('\n')}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RunRow({ run }) {
-  const [showErrors, setShowErrors] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const hasErrors = run.errors?.length > 0;
+  const unchanged = run.changed === false && run.status === 'success';
+
   return (
     <>
-      <tr className="hover:bg-slate-50 text-sm">
-        <td className="px-3 py-2 font-mono text-xs text-slate-500">{run.id?.slice(0, 20)}…</td>
-        <td className="px-3 py-2">
+      <tr
+        className="hover:bg-white cursor-pointer text-sm border-b border-slate-100 last:border-0"
+        onClick={() => setExpanded(v => !v)}
+      >
+        <td className="px-3 py-2.5 w-5">
+          {expanded ? <ChevronDown size={13} className="text-slate-400" /> : <ChevronRight size={13} className="text-slate-400" />}
+        </td>
+        <td className="px-3 py-2.5 font-mono text-xs text-slate-500">{run.id?.slice(0, 22)}…</td>
+        <td className="px-3 py-2.5">
           <Badge variant={TRIGGER_VARIANT[run.trigger] ?? 'slate'}>{run.trigger}</Badge>
         </td>
-        <td className="px-3 py-2">
+        <td className="px-3 py-2.5">
           <Badge variant={RUN_STATUS_VARIANT[run.status] ?? 'slate'}>{run.status}</Badge>
         </td>
-        <td className="px-3 py-2 text-slate-600 text-xs">{fmtDate(run.started_at)}</td>
-        <td className="px-3 py-2 text-slate-600 text-xs">{fmtDuration(run.started_at, run.finished_at)}</td>
-        <td className="px-3 py-2 text-slate-700 text-xs text-right">{run.chunks_created ?? 0}</td>
-        <td className="px-3 py-2 text-right">
-          {run.errors?.length > 0 && (
-            <button onClick={() => setShowErrors(v => !v)} className="text-rose-500 hover:text-rose-600">
-              <AlertCircle size={14} />
-            </button>
-          )}
+        <td className="px-3 py-2.5 text-slate-500 text-xs">{fmtDate(run.started_at)}</td>
+        <td className="px-3 py-2.5 text-slate-500 text-xs">{fmtDuration(run.started_at, run.finished_at)}</td>
+        <td className="px-3 py-2.5 text-xs text-right">
+          {unchanged
+            ? <span className="text-slate-400 italic">unchanged</span>
+            : <span className="font-medium text-slate-700">{run.chunks_created ?? 0}</span>}
+        </td>
+        <td className="px-3 py-2.5 text-right">
+          {hasErrors && <AlertCircle size={13} className="text-rose-500 inline" />}
         </td>
       </tr>
-      {showErrors && run.errors?.length > 0 && (
+      {expanded && (
         <tr>
-          <td colSpan={7} className="px-3 pb-3">
-            <pre className="text-xs bg-rose-50 border border-rose-200 rounded p-2 text-rose-700 whitespace-pre-wrap break-all">
-              {run.errors.join('\n')}
-            </pre>
+          <td colSpan={8} className="px-4 pb-3 pt-1 bg-white border-b border-slate-100">
+            <RunPipelineLog run={run} />
           </td>
         </tr>
       )}
@@ -146,7 +215,168 @@ function SnapshotCard({ snap }) {
   );
 }
 
+// ── Chunks Preview Panel ─────────────────────────────────────────────────────
+
+function ChunksPanel({ sourceId }) {
+  const [search, setSearch] = useState('');
+  const [kindFilter, setKindFilter] = useState('all');
+  const [expandedChunk, setExpandedChunk] = useState(null);
+
+  const { data: chunks = [], isLoading, isError } = useQuery({
+    queryKey: ['ingestion', 'chunks', sourceId],
+    queryFn: () => API.ingestion.getSourceChunks(sourceId).then(r => r.json()),
+  });
+
+  const lowConfCount = chunks.filter(c => c.low_confidence).length;
+  const kinds = ['all', ...Array.from(new Set(chunks.map(c => c.capability_kind))).sort()];
+
+  const filtered = chunks.filter(c => {
+    if (kindFilter !== 'all' && c.capability_kind !== kindFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return c.section_header?.toLowerCase().includes(q) || c.text_preview?.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-slate-400 text-sm py-4">
+      <Loader2 size={14} className="animate-spin" /> Loading indexed content…
+    </div>
+  );
+
+  if (isError) return (
+    <div className="flex items-center gap-2 text-rose-500 text-sm py-4">
+      <AlertCircle size={14} /> Failed to load chunks — is ChromaDB reachable?
+    </div>
+  );
+
+  if (chunks.length === 0) return (
+    <div className="flex flex-col items-center gap-2 py-8 text-slate-400">
+      <Layers size={24} className="text-slate-300" />
+      <p className="text-sm">No content indexed yet.</p>
+      <p className="text-xs">Trigger a run to populate this source.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Stats bar */}
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <span className="font-semibold text-slate-700">{chunks.length} chunks</span>
+        {lowConfCount > 0 && (
+          <span className="flex items-center gap-1 text-amber-600 font-medium">
+            <TriangleAlert size={12} /> {lowConfCount} low confidence
+          </span>
+        )}
+        <span className="text-slate-400">·</span>
+        {kinds.filter(k => k !== 'all').map(k => (
+          <span key={k} className="text-slate-500">
+            <Badge variant={KIND_VARIANT[k] ?? 'slate'}>{k}</Badge>
+            <span className="ml-1">{chunks.filter(c => c.capability_kind === k).length}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search chunks…"
+            className="w-full pl-7 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 outline-none"
+          />
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          {kinds.map(k => (
+            <button
+              key={k}
+              onClick={() => setKindFilter(k)}
+              className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
+                kindFilter === k
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {k}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chunk list */}
+      {filtered.length === 0 ? (
+        <p className="text-xs text-slate-400 italic py-2">No chunks match the current filter.</p>
+      ) : (
+        <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
+          {filtered.map(chunk => (
+            <div
+              key={chunk.id}
+              className={`border rounded-lg bg-white transition-colors ${
+                chunk.low_confidence ? 'border-amber-200' : 'border-slate-200'
+              }`}
+            >
+              {/* Chunk header — always visible */}
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                onClick={() => setExpandedChunk(expandedChunk === chunk.id ? null : chunk.id)}
+              >
+                <Badge variant={KIND_VARIANT[chunk.capability_kind] ?? 'slate'}>
+                  {chunk.capability_kind}
+                </Badge>
+                <span className="flex-1 text-xs font-medium text-slate-700 truncate">
+                  {chunk.section_header || chunk.id}
+                </span>
+                {chunk.low_confidence && (
+                  <span title="Low extraction confidence">
+                    <TriangleAlert size={12} className="text-amber-500 flex-shrink-0" />
+                  </span>
+                )}
+                <span className="text-slate-400 flex-shrink-0">
+                  {expandedChunk === chunk.id
+                    ? <ChevronDown size={13} />
+                    : <ChevronRight size={13} />}
+                </span>
+              </button>
+
+              {/* Chunk body — expanded */}
+              {expandedChunk === chunk.id && (
+                <div className="px-3 pb-3 border-t border-slate-100">
+                  {chunk.low_confidence && (
+                    <p className="text-xs text-amber-600 flex items-center gap-1 mt-2 mb-1">
+                      <TriangleAlert size={11} /> Low confidence — this chunk may contain inaccurate data
+                    </p>
+                  )}
+                  <pre className="mt-2 text-xs text-slate-600 whitespace-pre-wrap break-words bg-slate-50 rounded p-2 max-h-48 overflow-y-auto leading-relaxed">
+                    {chunk.text_full || chunk.text_preview}
+                  </pre>
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
+                    <span>chunk #{chunk.chunk_index}</span>
+                    {chunk.snapshot_id && <span>snap: {chunk.snapshot_id.slice(0, 12)}…</span>}
+                    {chunk.tags?.filter(Boolean).length > 0 && (
+                      <span>tags: {chunk.tags.filter(Boolean).join(', ')}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Expanded Detail Panel ──────────────────────────────────────────────────
+
+const PANEL_TABS = [
+  { id: 'runs',      label: 'Run Log'          },
+  { id: 'chunks',    label: 'Indexed Content'  },
+  { id: 'snapshots', label: 'Snapshots'        },
+];
 
 function ExpandedPanel({ sourceId, panel, onPanelChange }) {
   const { data: runs = [], isLoading: runsLoading } = useQuery({
@@ -167,41 +397,42 @@ function ExpandedPanel({ sourceId, panel, onPanelChange }) {
         <div className="mt-2 space-y-3">
           {/* Tab bar */}
           <div className="flex gap-1 border-b border-slate-200 pb-2">
-            {['runs', 'snapshots'].map(p => (
+            {PANEL_TABS.map(({ id, label }) => (
               <button
-                key={p}
-                onClick={() => onPanelChange(p)}
+                key={id}
+                onClick={() => onPanelChange(id)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  panel === p
+                  panel === id
                     ? 'bg-indigo-600 text-white'
                     : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                {p === 'runs' ? 'Run History' : 'Snapshots'}
+                {label}
               </button>
             ))}
           </div>
 
-          {/* Run history */}
+          {/* Run log */}
           {panel === 'runs' && (
             runsLoading ? (
               <div className="flex items-center gap-2 text-slate-400 text-sm py-2">
                 <Loader2 size={14} className="animate-spin" /> Loading runs…
               </div>
             ) : runs.length === 0 ? (
-              <p className="text-sm text-slate-400 italic py-2">No runs yet.</p>
+              <p className="text-sm text-slate-400 italic py-2">No runs yet — trigger an ingestion to see the log.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-slate-500 font-semibold border-b border-slate-200">
+                      <th className="px-3 py-1.5 w-5" />
                       <th className="px-3 py-1.5 text-left">Run ID</th>
                       <th className="px-3 py-1.5 text-left">Trigger</th>
                       <th className="px-3 py-1.5 text-left">Status</th>
                       <th className="px-3 py-1.5 text-left">Started</th>
                       <th className="px-3 py-1.5 text-left">Duration</th>
                       <th className="px-3 py-1.5 text-right">Chunks</th>
-                      <th className="px-3 py-1.5 text-right">Errors</th>
+                      <th className="px-3 py-1.5 text-right" />
                     </tr>
                   </thead>
                   <tbody>
@@ -211,6 +442,9 @@ function ExpandedPanel({ sourceId, panel, onPanelChange }) {
               </div>
             )
           )}
+
+          {/* Indexed content (chunks preview) */}
+          {panel === 'chunks' && <ChunksPanel sourceId={sourceId} />}
 
           {/* Snapshots */}
           {panel === 'snapshots' && (
@@ -619,7 +853,7 @@ export default function IngestionSourcesPage() {
       setExpandedSourceId(null);
     } else {
       setExpandedSourceId(sourceId);
-      setExpandedPanel('runs');
+      setExpandedPanel('chunks');
     }
   }
 

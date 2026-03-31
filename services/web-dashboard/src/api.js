@@ -155,6 +155,7 @@ export const API = {
     getRun:             (runId)    => fetch(`${INGESTION}/api/v1/runs/${encodeURIComponent(runId)}`),
     getSourceRuns:      (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}/runs`),
     getSourceSnapshots: (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}/snapshots`),
+    getSourceChunks:    (id)       => fetch(`${INGESTION}/api/v1/sources/${encodeURIComponent(id)}/chunks`),
     health:             ()         => fetch(`${INGESTION}/health`),
   },
 
