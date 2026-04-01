@@ -6,7 +6,7 @@ const RESET_ACTIONS = [
   {
     id: 'requirements',
     label: 'Reset Requirements',
-    description: 'Clear uploaded CSV data and agent logs. Does not affect MongoDB or ChromaDB.',
+    description: 'Clear uploaded CSV data and agent logs. Client project codes are NOT cleared — use Reset MongoDB to free up project codes.',
     icon: FileText,
     colorKey: 'amber',
     confirm: 'Delete requirements and logs?',
@@ -14,10 +14,10 @@ const RESET_ACTIONS = [
   {
     id: 'mongodb',
     label: 'Reset MongoDB',
-    description: 'Wipe all integrations, approvals, and documents from the catalog database.',
+    description: 'Wipe all integrations, approvals, documents, and client project codes from the database. Use this to reuse a project prefix.',
     icon: Database,
     colorKey: 'orange',
-    confirm: 'Wipe all MongoDB data?',
+    confirm: 'Wipe all MongoDB data including client project codes?',
   },
   {
     id: 'chromadb',
