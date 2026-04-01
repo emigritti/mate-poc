@@ -45,7 +45,10 @@ def _load_meta_prompt() -> str:
     """Extract the fenced ``text`` block from the meta-prompt markdown file."""
     try:
         raw = _PROMPT_FILE.read_text(encoding="utf-8")
-        match = re.search(r"```text\n(.*?)```", raw, re.DOTALL)
+        # Greedy match so nested backtick fences inside the block (e.g. ```mermaid)
+        # don't cause early termination.  The engine backtracks to the LAST ```
+        # in the file, which is the closing fence of the text block.
+        match = re.search(r"```text\n(.*)```", raw, re.DOTALL)
         if match:
             logger.info("[PromptBuilder] Loaded meta-prompt from %s", _PROMPT_FILE)
             return match.group(1).strip()
