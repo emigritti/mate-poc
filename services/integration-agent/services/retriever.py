@@ -33,8 +33,9 @@ class ScoredChunk:
     """A retrieved text chunk with its relevance score and source metadata."""
     text: str
     score: float
-    source_label: str   # "approved" | "kb_file" | "kb_url"
+    source_label: str   # "approved" | "kb_document" | "ingestion_openapi" | "ingestion_html" | "kb_url"
     tags: list[str] = field(default_factory=list)
+    doc_id: str = ""    # document_id from ChromaDB metadata (for attribution)
 
 
 class HybridRetriever:
@@ -189,10 +190,18 @@ class HybridRetriever:
 
                 for doc, dist, meta in zip(docs, dists, metas):
                     score = 1.0 / (1.0 + dist)   # metric-agnostic distance → similarity score
-                    doc_id = (meta or {}).get("doc_id", doc[:50])
+                    m = meta or {}
+                    doc_id = m.get("document_id", doc[:50])
+                    # Derive source label from ingestion-platform metadata when present.
+                    source_type = m.get("source_type", "")
+                    if source_type:
+                        label = f"ingestion_{source_type}"    # e.g. "ingestion_openapi"
+                    else:
+                        label = "kb_document"
                     if doc_id not in seen or seen[doc_id].score < score:
                         seen[doc_id] = ScoredChunk(
-                            text=doc, score=score, source_label="approved", tags=tags
+                            text=doc, score=score, source_label=label,
+                            tags=tags, doc_id=doc_id,
                         )
                     if tags and self._tags_match_meta(meta, tags):
                         matched_ids.add(doc_id)
@@ -257,6 +266,7 @@ class HybridRetriever:
                     score=(c.score / max_s) * weight,
                     source_label=c.source_label,
                     tags=c.tags,
+                    doc_id=c.doc_id,
                 )
                 for c in chunks
             ]
@@ -279,6 +289,7 @@ class HybridRetriever:
                     score=existing.score + chunk.score,
                     source_label=existing.source_label,
                     tags=existing.tags,
+                    doc_id=existing.doc_id,
                 )
 
         return list(merged.values())

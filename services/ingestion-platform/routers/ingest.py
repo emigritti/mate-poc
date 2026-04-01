@@ -33,6 +33,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
 
+async def _rebuild_agent_bm25(source_code: str) -> None:
+    """Fire-and-forget: ask integration-agent to rebuild its BM25 index.
+
+    Called after a successful ingest run so newly indexed chunks are
+    immediately available for hybrid retrieval without an agent restart.
+    Failures are logged but never propagate — ingestion success must not
+    depend on the agent being reachable.
+    """
+    import httpx
+    url = f"{settings.integration_agent_url}/api/v1/kb/rebuild-bm25"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url)
+            if resp.status_code == 200:
+                logger.info("[BM25] Agent BM25 rebuild triggered for source=%s: %s", source_code, resp.json())
+            else:
+                logger.warning("[BM25] Agent BM25 rebuild returned %d for source=%s", resp.status_code, source_code)
+    except Exception as exc:
+        logger.warning("[BM25] Failed to trigger BM25 rebuild for source=%s: %s", source_code, exc)
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _now() -> datetime:
@@ -169,6 +190,10 @@ async def _run_openapi_ingestion(source_id: str, run: SourceRun) -> None:
         indexer.delete_source_chunks(source.code)
         chunks_created = indexer.upsert_chunks(chunks, snapshot_id=run.id)
 
+        # 8b. Notify integration-agent to rebuild BM25 (includes new ingestion chunks)
+        if chunks_created > 0:
+            await _rebuild_agent_bm25(source.code)
+
         # 9. Diff summary (Claude Haiku if available)
         claude = get_claude_service(
             settings.anthropic_api_key,
@@ -269,6 +294,10 @@ async def _run_html_ingestion(source_id: str, run: SourceRun) -> None:
         indexer = IndexingService(kb_collection=kb_col)
         indexer.delete_source_chunks(source.code)
         chunks_created = indexer.upsert_chunks(chunks, snapshot_id=run.id)
+
+        # 7b. Notify integration-agent to rebuild BM25 (includes new ingestion chunks)
+        if chunks_created > 0:
+            await _rebuild_agent_bm25(source.code)
 
         # 8. Diff summary via Claude Haiku (best-effort)
         diff_svc = DiffService(claude_service=claude)

@@ -505,6 +505,37 @@ async def kb_search(
     ).model_dump()
 
 
+@router.post("/kb/rebuild-bm25")
+async def kb_rebuild_bm25(
+    _token: str = Depends(require_token),
+) -> dict:
+    """
+    Rebuild the BM25 sparse index from all current ChromaDB chunks.
+
+    Called by the ingestion-platform after a successful ingest run so that
+    newly indexed API/HTML chunks are included in hybrid retrieval immediately
+    (without waiting for an integration-agent container restart).
+    """
+    if state.kb_collection is None:
+        raise HTTPException(status_code=503, detail="ChromaDB unavailable.")
+    try:
+        result = state.kb_collection.get(include=["documents", "metadatas"])
+        docs  = result.get("documents") or []
+        metas = result.get("metadatas") or []
+        new_chunks: dict[str, list[str]] = {}
+        for doc_text, meta in zip(docs, metas):
+            doc_id = (meta or {}).get("document_id", "unknown")
+            new_chunks.setdefault(doc_id, []).append(doc_text)
+        state.kb_chunks.clear()
+        state.kb_chunks.update(new_chunks)
+        hybrid_retriever.build_bm25_index(state.kb_chunks)
+        logger.info("[BM25] Rebuilt from %d chunks (%d sources).", len(docs), len(new_chunks))
+        return {"status": "ok", "chunks": len(docs), "sources": len(new_chunks)}
+    except Exception as exc:
+        logger.error("[BM25] Rebuild failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"BM25 rebuild failed: {exc}")
+
+
 @router.get("/kb/stats")
 async def kb_stats() -> dict:
     """Return Knowledge Base statistics."""

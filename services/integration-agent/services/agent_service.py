@@ -126,8 +126,8 @@ def _chunks_to_source_info(
     result: list[SourceChunkInfo] = []
     for i, c in enumerate(chunks):
         label = label_override or c.source_label
-        # Use tags or index as a doc_id fallback when no explicit id is available
-        doc_id = " / ".join(c.tags) if c.tags else f"chunk-{i}"
+        # Prefer explicit doc_id from ChromaDB metadata; fall back to tags or index
+        doc_id = c.doc_id or (" / ".join(c.tags) if c.tags else f"chunk-{i}")
         preview = c.text[:150].replace("\n", " ").strip()
         if preview in seen_previews:
             continue
@@ -242,7 +242,7 @@ async def generate_integration_doc(
     quality = assess_quality(enriched)
     all_sources: list[SourceChunkInfo] = (
         _chunks_to_source_info(approved_chunks, label_override="approved_example")
-        + _chunks_to_source_info(kb_scored_chunks, label_override="kb_document")
+        + _chunks_to_source_info(kb_scored_chunks)   # label derived from metadata: kb_document | ingestion_*
         + _chunks_to_source_info(url_chunks, label_override="kb_url")
         + _chunks_to_source_info(summary_chunks, label_override="summary")
     )

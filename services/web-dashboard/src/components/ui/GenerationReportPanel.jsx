@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import {
   ChevronDown, ChevronRight, BookOpen, Database, Link, Layers,
-  Cpu, BarChart2, Sparkles, AlertTriangle, CheckCircle,
+  Cpu, BarChart2, Sparkles, AlertTriangle, CheckCircle, Code2, Globe,
 } from 'lucide-react';
 
 const SOURCE_META = {
-  approved_example: { label: 'Approved Example',  color: 'bg-emerald-100 text-emerald-700', icon: BookOpen  },
-  kb_document:      { label: 'KB Document',        color: 'bg-indigo-100 text-indigo-700',   icon: Database  },
-  kb_url:           { label: 'KB URL',             color: 'bg-sky-100 text-sky-700',         icon: Link      },
-  summary:          { label: 'Section Summary',    color: 'bg-violet-100 text-violet-700',   icon: Layers    },
+  approved_example:  { label: 'Approved Example',  color: 'bg-emerald-100 text-emerald-700', icon: BookOpen  },
+  kb_document:       { label: 'KB Document',        color: 'bg-indigo-100 text-indigo-700',   icon: Database  },
+  kb_url:            { label: 'KB URL',             color: 'bg-sky-100 text-sky-700',         icon: Link      },
+  summary:           { label: 'Section Summary',    color: 'bg-violet-100 text-violet-700',   icon: Layers    },
+  ingestion_openapi: { label: 'API Spec (OpenAPI)', color: 'bg-cyan-100 text-cyan-700',       icon: Code2     },
+  ingestion_html:    { label: 'Web Source (HTML)',  color: 'bg-teal-100 text-teal-700',       icon: Globe     },
+  ingestion_mcp:     { label: 'MCP Tool',           color: 'bg-orange-100 text-orange-700',   icon: Cpu       },
 };
 
 function ScoreBar({ value }) {
@@ -108,7 +111,7 @@ export default function GenerationReportPanel({ report }) {
               ? 'text-indigo-600 bg-indigo-50 border-indigo-200'
               : 'text-slate-400 bg-slate-50 border-slate-200'
           }`}>
-            {totalSources} KB chunks
+            {totalSources} context chunks
           </span>
           {report.claude_enriched && (
             <span className="inline-flex items-center gap-0.5 text-xs text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full">

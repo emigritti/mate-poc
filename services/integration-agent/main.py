@@ -119,10 +119,13 @@ async def lifespan(app: FastAPI):
             docs  = kb_result.get("documents") or []
             metas = kb_result.get("metadatas") or []
             for doc_text, meta in zip(docs, metas):
-                doc_id = (meta or {}).get("doc_id", "unknown")
+                doc_id = (meta or {}).get("document_id", "unknown")
                 state.kb_chunks.setdefault(doc_id, []).append(doc_text)
             hybrid_retriever.build_bm25_index(state.kb_chunks)
-            logger.info("[BM25] Index built from %d KB chunks at startup.", len(docs))
+            logger.info(
+                "[BM25] Index built from %d chunks (%d sources, includes ingestion-platform data) at startup.",
+                len(docs), len(state.kb_chunks),
+            )
         except Exception as exc:
             logger.warning("[BM25] Failed to build index at startup: %s", exc)
 
