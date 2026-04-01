@@ -38,7 +38,7 @@ class CatalogEntry(BaseModel):
     target: Dict[str, str]
     requirements: List[str]
     status: str
-    tags: List[str] = []          # confirmed tags (max 5)
+    tags: List[str] = []          # confirmed tags (max 15)
     project_id: str = "LEGACY"    # FK to Project.prefix; "LEGACY" for pre-ADR-025 entries
     created_at: str
 
@@ -119,8 +119,8 @@ class ConfirmTagsRequest(BaseModel):
     """Body for POST /api/v1/catalog/integrations/{id}/confirm-tags."""
     tags: List[str] = Field(
         min_length=1,
-        max_length=5,
-        description="Confirmed tags (1–5 items). Each tag max 50 chars.",
+        max_length=15,
+        description="Confirmed tags (1–15 items). Each tag max 50 chars.",
     )
 
 
