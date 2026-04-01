@@ -19,29 +19,36 @@ class Settings(BaseSettings):
 
     # ── LLM ──────────────────────────────────────────────────────────
     ollama_host: str                             # required — no default
-    ollama_model: str = "llama3.1:8b"
-    ollama_timeout_seconds: int = 120
-    # num_predict caps generated tokens — prevents timeout on slow CPU instances.
-    # llama3.2:3b on CPU (~10 tok/s): 2000 tokens ≈ 200s, within 600s timeout.
-    # llama3.1:8b on CPU (~3 tok/s): 2000 tokens ≈ 667s — raise OLLAMA_TIMEOUT_SECONDS
-    # to 900 if using 8b on CPU-only. For GPU instances set OLLAMA_NUM_PREDICT=-1.
-    # The 16-section template needs ~2000-3000 tokens for a full document.
-    # Sections beyond the limit are completed by _enrich_with_claude() if API key is set.
+    # Default model tuned for t3.2xlarge (8 vCPU, 32 GB RAM, no GPU):
+    #   qwen2.5:32b  Q4_K_M (~19 GB RAM) @ ~1.5-2 tok/s → best quality, ~17-22 min/doc
+    #   qwen2.5:14b  Q4_K_M  (~9 GB RAM) @ ~4-5 tok/s   → good quality, ~7-9 min/doc
+    #   llama3.1:8b  Q4_K_M  (~6 GB RAM) @ ~5-7 tok/s   → baseline, ~5-7 min/doc
+    # Override via OLLAMA_MODEL env var (also controls ollama-init pull in docker-compose).
+    ollama_model: str = "qwen2.5:32b"
+    # httpx timeout for the Ollama /api/generate call.
+    # qwen2.5:32b @ 1.5 tok/s × 2000 tokens ≈ 1333s — set with margin above that.
+    ollama_timeout_seconds: int = 1500
+    # num_predict caps generated tokens — prevents runaway generation on slow CPU.
+    # qwen2.5:32b generates denser, higher-quality content so 2000 tokens is sufficient
+    # for all 16 template sections. Residual n/a sections filled by Claude API if set.
+    # For GPU instances set OLLAMA_NUM_PREDICT=-1 (unlimited).
     ollama_num_predict: int = 2000
-    # temperature controls randomness; lower = more deterministic and slightly faster.
-    ollama_temperature: float = 0.3
-    # RAG context injected into the prompt is truncated to this many chars.
-    # Full approved documents (~4800 chars) double the prompt and slow CPU inference.
-    # 3000 chars (raised from 1500) to accommodate summaries + chunks + figures (ADR-031/032).
-    ollama_rag_max_chars: int = 3000
+    # temperature: lower = more deterministic and structured output; 0.2 suits document
+    # generation where consistency matters more than creativity.
+    ollama_temperature: float = 0.2
+    # RAG context injected into the prompt (chars). Raised to 5000 for qwen2.5:32b which
+    # handles a larger effective context window and benefits from richer examples.
+    # Override via OLLAMA_RAG_MAX_CHARS.
+    ollama_rag_max_chars: int = 5000
 
     # ── Tag Suggestion LLM (lightweight — overrides for tag-only calls) ───────
-    # Tag output is a JSON array of ≤2 items (~15 tokens).
-    # num_predict=20 caps well above that to avoid truncation.
-    # timeout=15s is generous even on slow CPU. temperature=0 = deterministic.
+    # Tag output is a JSON array of ≤15 items (~30 tokens max).
+    # num_predict=50 caps well above that to avoid truncation.
+    # qwen2.5:32b on CPU is slower (~1.5 tok/s) — timeout raised to 60s.
+    # temperature=0 = fully deterministic tags.
     # Override via TAG_NUM_PREDICT / TAG_TIMEOUT_SECONDS / TAG_TEMPERATURE.
-    tag_num_predict: int = 20
-    tag_timeout_seconds: int = 15
+    tag_num_predict: int = 50
+    tag_timeout_seconds: int = 60
     tag_temperature: float = 0.0
 
     # ── Vector DB ─────────────────────────────────────────────────────
