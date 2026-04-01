@@ -142,6 +142,22 @@ export default function DocumentsPage() {
                       </span>
                     )}
 
+                    {/* Tags — always shown */}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {(int.tags || []).length > 0 ? (
+                        int.tags.map(tag => (
+                          <span
+                            key={tag}
+                            className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full text-xs font-medium"
+                          >
+                            {tag}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">No tags</span>
+                      )}
+                    </div>
+
                     <div className="mt-2">
                       <button
                         onClick={() => handleSelect(int.id)}

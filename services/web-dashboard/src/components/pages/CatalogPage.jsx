@@ -141,6 +141,22 @@ function IntegrationCard({ integration, onRefresh }) {
               {integration.type}
             </span>
           )}
+
+          {/* Tags — always shown */}
+          <div className="flex flex-wrap gap-1 mt-2.5">
+            {(integration.tags || []).length > 0 ? (
+              integration.tags.map(tag => (
+                <span
+                  key={tag}
+                  className="px-2 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full text-xs font-medium"
+                >
+                  {tag}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-slate-400 italic">No tags</span>
+            )}
+          </div>
         </div>
 
         {integration.requirement_ids?.length > 0 && (

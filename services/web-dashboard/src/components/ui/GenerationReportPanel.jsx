@@ -95,18 +95,25 @@ export default function GenerationReportPanel({ report }) {
           <span className="text-xs text-slate-400">
             {report.sections_count} sections
           </span>
-          {report.na_count > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-              <AlertTriangle size={9} /> {report.na_count} n/a
-            </span>
-          )}
+          <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full border ${
+            report.na_count > 0
+              ? 'text-amber-600 bg-amber-50 border-amber-200'
+              : 'text-slate-400 bg-slate-50 border-slate-200'
+          }`}>
+            {report.na_count > 0 && <AlertTriangle size={9} />}
+            {report.na_count} n/a
+          </span>
+          <span className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full border ${
+            totalSources > 0
+              ? 'text-indigo-600 bg-indigo-50 border-indigo-200'
+              : 'text-slate-400 bg-slate-50 border-slate-200'
+          }`}>
+            {totalSources} KB chunks
+          </span>
           {report.claude_enriched && (
             <span className="inline-flex items-center gap-0.5 text-xs text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full">
               <Sparkles size={9} /> Claude
             </span>
-          )}
-          {totalSources === 0 && (
-            <span className="text-xs text-slate-400">no KB context</span>
           )}
         </div>
       </button>
