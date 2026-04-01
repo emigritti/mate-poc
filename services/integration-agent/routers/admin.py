@@ -124,10 +124,13 @@ async def reset_mongodb(
         await db.approvals_col.delete_many({})
     if db.documents_col is not None:
         await db.documents_col.delete_many({})
+    if db.projects_col is not None:
+        await db.projects_col.delete_many({})
     state.catalog.clear()
     state.approvals.clear()
     state.documents.clear()
-    logger.info("[ADMIN] MongoDB collections and in-memory caches cleared.")
+    state.projects.clear()
+    logger.info("[ADMIN] MongoDB collections and in-memory caches cleared (including projects).")
     return {"status": "success", "message": "MongoDB collections cleared."}
 
 
@@ -164,10 +167,13 @@ async def reset_all(
         await db.documents_col.delete_many({})
     if db.kb_documents_col is not None:
         await db.kb_documents_col.delete_many({})
+    if db.projects_col is not None:
+        await db.projects_col.delete_many({})
     state.catalog.clear()
     state.approvals.clear()
     state.documents.clear()
     state.kb_docs.clear()
+    state.projects.clear()
 
     llm_overrides.clear()
     if db.llm_settings_col is not None:
