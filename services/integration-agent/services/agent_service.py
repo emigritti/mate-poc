@@ -219,7 +219,8 @@ async def generate_integration_doc(
         rag_context=rag_context,
         reviewer_feedback=reviewer_feedback,
     )
-    _log(f"[LLM] Prompt ready for {entry.id} — {len(prompt)} chars. Calling {settings.ollama_model}...")
+    model_used = llm_overrides.get("model", settings.ollama_model)
+    _log(f"[LLM] Prompt ready for {entry.id} — {len(prompt)} chars. Calling {model_used}...")
 
     raw = await generate_with_retry(prompt, log_fn=_log)
     # The prompt ends with "# Integration Design" as a continuation seed so the
