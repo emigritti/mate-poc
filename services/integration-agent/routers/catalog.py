@@ -95,7 +95,7 @@ async def suggest_tags(id: str) -> dict:
     for t in llm_tags:
         if t not in merged:
             merged.append(t)
-    suggested = merged[:5]
+    suggested = merged
 
     return SuggestTagsResponse(
         integration_id=id,

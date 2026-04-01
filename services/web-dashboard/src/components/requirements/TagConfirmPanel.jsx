@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import { CheckCircle, Plus, X, Loader2, AlertCircle } from 'lucide-react';
 import { API } from '../../api.js';
 
-const MAX_TAGS = 3;
-
 function TagChip({ tag, selected, onToggle }) {
   return (
     <button
@@ -34,7 +32,7 @@ function TagConfirmPanel({ integrationId, onConfirmed }) {
         const data = await res.json();
         const tags = data.suggested_tags || [];
         setSuggested(tags);
-        setSelected(tags.slice(0, MAX_TAGS));
+        setSelected(tags);
       } catch {
         setError('Failed to load suggested tags');
       } finally {
@@ -45,14 +43,12 @@ function TagConfirmPanel({ integrationId, onConfirmed }) {
 
   const toggleTag = (tag) =>
     setSelected(prev =>
-      prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : prev.length < MAX_TAGS ? [...prev, tag] : prev
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     );
 
   const addCustom = () => {
     const t = custom.trim();
-    if (t && !selected.includes(t) && selected.length < MAX_TAGS) {
+    if (t && !selected.includes(t)) {
       setSelected(prev => [...prev, t]);
       setCustom('');
     }
@@ -98,7 +94,7 @@ function TagConfirmPanel({ integrationId, onConfirmed }) {
 
       <div>
         <p className="text-xs text-slate-500 mb-2 font-medium">
-          Suggested tags — select up to {MAX_TAGS}
+          Suggested tags — select any
         </p>
         <div className="flex flex-wrap gap-2">
           {suggested.map(tag => (
@@ -119,12 +115,11 @@ function TagConfirmPanel({ integrationId, onConfirmed }) {
           value={custom}
           onChange={e => setCustom(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && addCustom()}
-          disabled={selected.length >= MAX_TAGS}
-          className="flex-1 text-sm px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 disabled:opacity-50"
+          className="flex-1 text-sm px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
         />
         <button
           onClick={addCustom}
-          disabled={!custom.trim() || selected.length >= MAX_TAGS}
+          disabled={!custom.trim()}
           className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-40 transition-colors"
         >
           <Plus size={16} />
