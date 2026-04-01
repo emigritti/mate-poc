@@ -72,11 +72,6 @@ services:
       - ollama-data:/root/.ollama
     networks:
       - integration-mate-net
-    deploy:
-      resources:
-        limits:
-          cpus: "4.0"
-          memory: 8G
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
