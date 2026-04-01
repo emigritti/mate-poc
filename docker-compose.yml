@@ -87,7 +87,7 @@ services:
     # Idempotent: if the model is already present, exits in seconds.
     # integration-agent depends on service_completed_successfully so it
     # never starts a generation job against a missing model.
-    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:32b}"]
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:14b}"]
     environment:
       - OLLAMA_HOST=http://mate-ollama:11434
     depends_on:
@@ -270,13 +270,13 @@ services:
     environment:
       - OLLAMA_HOST=http://mate-ollama:11434
       # OLLAMA_MODEL: model selection for t3.2xlarge (8 vCPU, 32 GB RAM, no GPU)
-      # qwen2.5:32b  → best quality  (~19 GB RAM, ~1.5 tok/s, ~20 min/doc) ← DEFAULT
-      # qwen2.5:14b  → good quality  ( ~9 GB RAM, ~4 tok/s,  ~8 min/doc)
+      # qwen2.5:14b  → good quality  ( ~9 GB RAM, ~4 tok/s,  ~8 min/doc)  ← DEFAULT
+      # qwen2.5:32b  → best quality  (~19 GB RAM, ~1.5 tok/s, ~20 min/doc) — needs GPU
       # llama3.1:8b  → baseline      ( ~6 GB RAM, ~6 tok/s,  ~6 min/doc)
-      # Override: OLLAMA_MODEL=qwen2.5:14b docker compose up -d integration-agent
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:32b}
-      # httpx timeout for Ollama call: qwen2.5:32b @ 1.5 tok/s × 2000 tok ≈ 1333s
-      - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-1500}
+      # Override: OLLAMA_MODEL=qwen2.5:32b docker compose up -d integration-agent
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b}
+      # httpx timeout for Ollama call: qwen2.5:14b @ 4 tok/s × 2000 tok ≈ 500s — 900s with margin
+      - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-900}
       - CHROMA_HOST=mate-chromadb
       - MONGO_URI=mongodb://mate-mongodb:27017
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}

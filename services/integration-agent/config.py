@@ -20,17 +20,17 @@ class Settings(BaseSettings):
     # ── LLM ──────────────────────────────────────────────────────────
     ollama_host: str                             # required — no default
     # Default model tuned for t3.2xlarge (8 vCPU, 32 GB RAM, no GPU):
-    #   qwen2.5:32b  Q4_K_M (~19 GB RAM) @ ~1.5-2 tok/s → best quality, ~17-22 min/doc
-    #   qwen2.5:14b  Q4_K_M  (~9 GB RAM) @ ~4-5 tok/s   → good quality, ~7-9 min/doc
+    #   qwen2.5:14b  Q4_K_M  (~9 GB RAM) @ ~4-5 tok/s   → good quality, ~7-9 min/doc ← DEFAULT
+    #   qwen2.5:32b  Q4_K_M (~19 GB RAM) @ ~0.5-1 tok/s → best quality, needs GPU for practical use
     #   llama3.1:8b  Q4_K_M  (~6 GB RAM) @ ~5-7 tok/s   → baseline, ~5-7 min/doc
     # Override via OLLAMA_MODEL env var (also controls ollama-init pull in docker-compose).
-    ollama_model: str = "qwen2.5:32b"
+    ollama_model: str = "qwen2.5:14b"
     # httpx timeout for the Ollama /api/generate call.
-    # qwen2.5:32b @ 1.5 tok/s × 2000 tokens ≈ 1333s — set with margin above that.
-    ollama_timeout_seconds: int = 1500
+    # qwen2.5:14b @ 4 tok/s × 2000 tokens ≈ 500s — 900s gives comfortable margin.
+    ollama_timeout_seconds: int = 900
     # num_predict caps generated tokens — prevents runaway generation on slow CPU.
-    # qwen2.5:32b generates denser, higher-quality content so 2000 tokens is sufficient
-    # for all 16 template sections. Residual n/a sections filled by Claude API if set.
+    # 2000 tokens covers all 16 template sections for qwen2.5:14b.
+    # Residual n/a sections filled by Claude API if ANTHROPIC_API_KEY is set.
     # For GPU instances set OLLAMA_NUM_PREDICT=-1 (unlimited).
     ollama_num_predict: int = 2000
     # temperature: lower = more deterministic and structured output; 0.2 suits document
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # ── Tag Suggestion LLM (lightweight — overrides for tag-only calls) ───────
     # Tag output is a JSON array of ≤15 items (~30 tokens max).
     # num_predict=50 caps well above that to avoid truncation.
-    # qwen2.5:32b on CPU is slower (~1.5 tok/s) — timeout raised to 60s.
+    # qwen2.5:14b on CPU (~4 tok/s) — 60s is more than enough for ~30 tag tokens.
     # temperature=0 = fully deterministic tags.
     # Override via TAG_NUM_PREDICT / TAG_TIMEOUT_SECONDS / TAG_TEMPERATURE.
     tag_num_predict: int = 50
