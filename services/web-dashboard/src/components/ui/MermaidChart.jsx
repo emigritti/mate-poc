@@ -14,14 +14,15 @@ let _counter = 0;
 const SPECIAL_CHARS = /[\/\(\)&<>#:;|*]/;
 
 /**
- * Pre-processes LLM-generated Mermaid code to fix the most common syntax
- * errors produced by llama3.1:8b:
+ * Pre-processes LLM-generated Mermaid code to fix common syntax errors.
  *
- *  1. Unquoted flowchart node labels containing special characters
+ *  1. Unquoted flowchart node labels with special characters
  *     e.g.  SAP[SAP S/4HANA]  →  SAP["SAP S/4HANA"]
  *
- *  2. Unquoted sequenceDiagram participant aliases
- *     e.g.  participant S as SAP S/4HANA  →  participant S as "SAP S/4HANA"
+ *  2. Quoted strings used as sequenceDiagram message sources/targets
+ *     e.g.  "AWS S3"->>INT  →  AWS_S3->>INT
+ *     e.g.  INT->>"AWS S3"  →  INT->>AWS_S3
+ *     (Mermaid v11 only accepts plain alphanumeric IDs in message lines)
  */
 function sanitizeMermaid(raw) {
   return raw
@@ -32,11 +33,13 @@ function sanitizeMermaid(raw) {
         ? `${id}["${label.replace(/"/g, "'")}"]`
         : match
     )
-    // sequenceDiagram: participant X as UnquotedAlias → participant X as "alias"
-    .replace(/^(\s*participant\s+\w+\s+as\s+)([^"\n][^\n]*)$/gm, (match, prefix, alias) =>
-      SPECIAL_CHARS.test(alias)
-        ? `${prefix}"${alias.trim().replace(/"/g, "'")}"`
-        : match
+    // sequenceDiagram: "Quoted Name"->> → QuotedName->> (source side)
+    .replace(/"([^"]+)"(\s*-)/g, (_, name, dash) =>
+      `${name.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')}${dash}`
+    )
+    // sequenceDiagram: ->>"Quoted Name" → ->>QuotedName (target side)
+    .replace(/(-[>.]+\s*)"([^"]+)"/g, (_, arrow, name) =>
+      `${arrow}${name.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')}`
     );
 }
 
