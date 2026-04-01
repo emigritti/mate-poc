@@ -31,11 +31,12 @@ You are an elite Subject Matter Expert in the Product domain area and you are ex
 ### OUTPUT FORMAT:
 CRITICAL RULES — you MUST follow these exactly:
 - Output ONLY the filled Markdown document. NO preamble, NO intro, NO commentary.
-- Do NOT write "Here is", "Sure!", "Certainly", "Of course" or any similar phrase.
+- Do NOT write "Here is", "Sure!", "Certainly", "Of course", "I'll provide", "I will", "Below is" or any similar phrase.
 - Preserve EVERY section heading from the template exactly as written.
 - Your response MUST start with the exact characters: `# Integration Design`
 - The very first character of your response must be `#`.
 - Immediately begin the document with no preceding text whatsoever.
+- NEVER explain what you are about to do. Just do it. Start writing the document immediately.
 
-START YOUR RESPONSE NOW WITH: # Integration Design
+# Integration Design
 ```

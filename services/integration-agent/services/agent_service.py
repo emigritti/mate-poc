@@ -198,6 +198,11 @@ async def generate_integration_doc(
     _log(f"[LLM] Prompt ready for {entry.id} — {len(prompt)} chars. Calling {settings.ollama_model}...")
 
     raw = await generate_with_retry(prompt, log_fn=_log)
+    # The prompt ends with "# Integration Design" as a continuation seed so the
+    # model generates the document body directly (no preamble).  Ollama returns
+    # only the continuation — prepend the heading so the guard always finds it.
+    if not raw.lstrip().startswith("# Integration Design"):
+        raw = "# Integration Design\n" + raw
     sanitized = sanitize_llm_output(raw, doc_type="integration")
 
     # Optional: enrich residual n/a sections with Claude API (ANTHROPIC_API_KEY required)

@@ -85,7 +85,7 @@ def sanitize_llm_output(raw: str, doc_type: str = "integration") -> str:
     if text.startswith(required_prefix):
         return _apply_bleach_and_truncate(text)
 
-    # Fallback — strip preamble added by the model
+    # Fallback 1 — exact heading present but preceded by a preamble
     idx = text.find(required_prefix)
     if idx != -1:
         logger.warning(
@@ -95,7 +95,23 @@ def sanitize_llm_output(raw: str, doc_type: str = "integration") -> str:
         )
         return _apply_bleach_and_truncate(text[idx:])
 
-    # Hard fail — heading not found at all
+    # Fallback 2 — model used a slightly different heading (case / extra words).
+    # Matches: "# Integration Design", "# Integration Design Document",
+    # "# PLM to SAP Integration Design", etc. — any H1 containing the key phrase.
+    relaxed = re.search(r"^#[^#].*Integration\s+Design", text, re.MULTILINE | re.IGNORECASE)
+    if relaxed:
+        stripped_chars = relaxed.start()
+        logger.warning(
+            "[OutputGuard] Relaxed heading match '%s' at offset %d — preamble stripped.",
+            text[relaxed.start(): relaxed.start() + 60].replace("\n", " "),
+            stripped_chars,
+        )
+        return _apply_bleach_and_truncate(text[relaxed.start():])
+
+    # Hard fail — no integration design heading found anywhere
+    logger.error(
+        "[OutputGuard] Structural guard hard-fail. First 300 chars: %r", text[:300]
+    )
     raise LLMOutputValidationError(
         f"Output must contain '{required_prefix}'. "
         "Got: {!r}".format(text[:120])
