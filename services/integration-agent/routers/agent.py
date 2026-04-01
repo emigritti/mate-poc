@@ -69,8 +69,9 @@ async def run_agentic_rag_flow() -> None:
         log_agent(f"Processing entry: {entry.id} ({entry.name}) -- {len(reqs)} reqs.")
 
         # RAG retrieval + LLM generation + optional Claude enrichment
+        gen_report = None
         try:
-            spec_content = await generate_integration_doc(
+            spec_content, gen_report = await generate_integration_doc(
                 entry=entry,
                 requirements=reqs,
                 reviewer_feedback="",
@@ -80,7 +81,7 @@ async def run_agentic_rag_flow() -> None:
                 f"[LLM] Integration Spec generated for {entry.id} — "
                 f"{len(spec_content)} chars."
             )
-            # R14: non-destructive quality assessment
+            # R14: quality assessment already computed inside generate_integration_doc
             quality = assess_quality(spec_content)
             if not quality.passed:
                 log_agent(
@@ -122,6 +123,7 @@ async def run_agentic_rag_flow() -> None:
             content=spec_content,
             status="PENDING",
             generated_at=_now_iso(),
+            generation_report=gen_report,
         )
         state.approvals[app_id] = approval
         if db.approvals_col is not None:

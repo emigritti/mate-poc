@@ -14,9 +14,10 @@ import re
 from typing import Callable
 
 from config import settings
-from output_guard import sanitize_llm_output
+from output_guard import assess_quality, sanitize_llm_output
 from prompt_builder import build_prompt, get_integration_template
-from services.llm_service import generate_with_retry
+from schemas import GenerationReport, SourceChunkInfo
+from services.llm_service import generate_with_retry, llm_overrides
 from services.rag_service import ContextAssembler, fetch_url_kb_context
 from services.retriever import ScoredChunk, hybrid_retriever
 import state
@@ -116,12 +117,36 @@ async def _enrich_with_claude(
         return content
 
 
+def _chunks_to_source_info(
+    chunks: list[ScoredChunk],
+    label_override: str | None = None,
+) -> list[SourceChunkInfo]:
+    """Convert a list of ScoredChunk objects into SourceChunkInfo records."""
+    seen_previews: set[str] = set()
+    result: list[SourceChunkInfo] = []
+    for i, c in enumerate(chunks):
+        label = label_override or c.source_label
+        # Use tags or index as a doc_id fallback when no explicit id is available
+        doc_id = " / ".join(c.tags) if c.tags else f"chunk-{i}"
+        preview = c.text[:150].replace("\n", " ").strip()
+        if preview in seen_previews:
+            continue
+        seen_previews.add(preview)
+        result.append(SourceChunkInfo(
+            source_label=label,
+            doc_id=doc_id,
+            score=round(c.score, 3),
+            preview=preview,
+        ))
+    return result
+
+
 async def generate_integration_doc(
     entry,                                         # CatalogEntry (avoid circular import with schemas)
     requirements: list,                            # list[Requirement]
     reviewer_feedback: str = "",
     log_fn: Callable[[str], None] | None = None,
-) -> str:
+) -> tuple[str, GenerationReport]:
     """
     Run the full RAG + LLM pipeline for a single catalog entry.
 
@@ -143,8 +168,7 @@ async def generate_integration_doc(
         log_fn:             Optional logging callback (defaults to module logger.info).
 
     Returns:
-        Sanitized (and optionally enriched) markdown string starting with
-        '# Integration Design'.
+        Tuple of (sanitized markdown string, GenerationReport).
 
     Raises:
         LLMOutputValidationError: if sanitize_llm_output() rejects the output.
@@ -212,4 +236,27 @@ async def generate_integration_doc(
         target=target,
         requirements_text=query_text,
     )
-    return enriched
+    claude_was_applied = enriched != sanitized
+
+    # ── Build GenerationReport for traceability ──────────────────────────────
+    quality = assess_quality(enriched)
+    all_sources: list[SourceChunkInfo] = (
+        _chunks_to_source_info(approved_chunks, label_override="approved_example")
+        + _chunks_to_source_info(kb_scored_chunks, label_override="kb_document")
+        + _chunks_to_source_info(url_chunks, label_override="kb_url")
+        + _chunks_to_source_info(summary_chunks, label_override="summary")
+    )
+    model_used = llm_overrides.get("model", settings.ollama_model)
+    report = GenerationReport(
+        model=model_used,
+        prompt_chars=len(prompt),
+        context_chars=len(rag_context),
+        sources=all_sources,
+        sections_count=quality.section_count,
+        na_count=len(re.findall(r"\bn/a\b", enriched, re.IGNORECASE)),
+        quality_score=quality.quality_score,
+        quality_issues=quality.issues,
+        claude_enriched=claude_was_applied,
+    )
+
+    return enriched, report

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle, XCircle, AlertCircle, Loader2, Clock, ChevronRight, RefreshCw } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
+import GenerationReportPanel from '../ui/GenerationReportPanel.jsx';
 import { useApprovals } from '../../hooks/useApprovals';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -225,6 +226,11 @@ export default function ApprovalsPage() {
               </span>
               <span className="text-xs text-slate-400">(editable before approval)</span>
             </div>
+
+            {/* Source Report — collapsible traceability panel */}
+            <GenerationReportPanel
+              report={approvals.find(a => a.id === selectedId)?.generation_report}
+            />
 
             {/* Textarea */}
             <textarea

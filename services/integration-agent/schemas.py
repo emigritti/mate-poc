@@ -52,6 +52,34 @@ class Document(BaseModel):
     kb_status: Literal["staged", "promoted"] = "staged"
 
 
+# ── Generation Source Report (traceability for each generated document) ────────
+
+class SourceChunkInfo(BaseModel):
+    """Metadata for a single retrieved chunk used during generation."""
+    source_label: str   # "approved_example" | "kb_document" | "kb_url" | "summary"
+    doc_id: str         # ChromaDB / KB document identifier
+    score: float        # relevance score
+    preview: str        # first 150 chars of the chunk text
+
+
+class GenerationReport(BaseModel):
+    """
+    Traceability report attached to every generated Approval.
+
+    Captures which sources informed the LLM, quality metrics,
+    and whether Claude API enrichment was applied.
+    """
+    model: str
+    prompt_chars: int
+    context_chars: int
+    sources: List[SourceChunkInfo]
+    sections_count: int
+    na_count: int
+    quality_score: float
+    quality_issues: List[str]
+    claude_enriched: bool
+
+
 class Approval(BaseModel):
     id: str
     integration_id: str
@@ -60,6 +88,7 @@ class Approval(BaseModel):
     status: str  # 'PENDING', 'APPROVED', 'REJECTED'
     generated_at: str
     feedback: Optional[str] = None
+    generation_report: Optional[GenerationReport] = None
 
 
 # ── Typed request bodies (replaces bare dict — ADR-016 / OWASP A03) ──────────

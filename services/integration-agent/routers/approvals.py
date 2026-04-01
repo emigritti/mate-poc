@@ -152,7 +152,7 @@ async def regenerate_doc(
     requirements = [r for r in state.parsed_requirements if r.req_id in entry.requirements]
 
     try:
-        new_content = await generate_integration_doc(
+        new_content, gen_report = await generate_integration_doc(
             entry=entry,
             requirements=requirements,
             reviewer_feedback=app_entry.feedback,
@@ -179,6 +179,7 @@ async def regenerate_doc(
         content=new_content,
         status="PENDING",
         generated_at=_now_iso(),
+        generation_report=gen_report,
     )
     state.approvals[new_id] = new_approval
     if db.approvals_col is not None:
