@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from typing import List
 
 import db
@@ -44,8 +44,72 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["knowledge-base"])
 
 
+async def _run_raptor_summarization(
+    doc_id: str,
+    filename: str,
+    docling_chunks: list,
+    auto_tags: list[str],
+    tags_csv: str,
+) -> None:
+    """
+    RAPTOR-lite section summarization (ADR-032).
+
+    Groups docling_chunks by section_header and generates LLM summaries for
+    sections with >= 3 chunks. Capped at settings.kb_max_summarize_sections
+    to prevent runaway LLM calls on large documents.
+
+    Designed for use as a FastAPI BackgroundTask (fire-and-forget): all
+    exceptions are caught and logged so a background failure never crashes
+    the worker process.
+    """
+    if state.summaries_col is None:
+        return
+
+    from itertools import groupby
+
+    sorted_chunks = sorted(docling_chunks, key=lambda c: c.section_header)
+    sections_done = 0
+
+    for section_header, group_iter in groupby(sorted_chunks, key=lambda c: c.section_header):
+        if sections_done >= settings.kb_max_summarize_sections:
+            logger.info(
+                "[RAPTOR] Section cap (%d) reached for doc=%s — skipping remaining sections.",
+                settings.kb_max_summarize_sections,
+                doc_id,
+            )
+            break
+
+        section_chunks = list(group_iter)
+        try:
+            summary = await summarize_section(section_chunks, doc_id=doc_id, tags=auto_tags)
+        except Exception as exc:
+            logger.warning("[RAPTOR] summarize_section failed for %s: %s", doc_id, exc)
+            sections_done += 1
+            continue
+
+        sections_done += 1
+
+        if summary is not None:
+            summary_id = f"{doc_id}-summary-{abs(hash(section_header)) % 100000}"
+            try:
+                state.summaries_col.upsert(
+                    documents=[summary.text],
+                    metadatas=[{
+                        "document_id": doc_id,
+                        "filename": filename,
+                        "section_header": summary.section_header,
+                        "tags_csv": tags_csv,
+                    }],
+                    ids=[summary_id],
+                )
+                logger.info("[RAPTOR] Summary stored for doc=%s section='%s'.", doc_id, section_header)
+            except Exception as exc:
+                logger.warning("[RAPTOR] summaries_col upsert failed for %s: %s", doc_id, exc)
+
+
 @router.post("/kb/upload")
 async def kb_upload(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     _token: str = Depends(require_token),
 ) -> dict:
@@ -109,30 +173,18 @@ async def kb_upload(
         logger.warning("[KB] ChromaDB upsert failed for %s: %s", doc_id, exc)
         raise HTTPException(status_code=500, detail=f"Vector store failed: {exc}")
 
-    # RAPTOR-lite: group chunks by section and generate summaries (ADR-032).
-    # Summaries are stored in summaries_col for multi-granularity retrieval.
-    if state.summaries_col is not None:
-        from itertools import groupby
-        sorted_chunks = sorted(docling_chunks, key=lambda c: c.section_header)
-        for section_header, group_iter in groupby(sorted_chunks, key=lambda c: c.section_header):
-            section_chunks = list(group_iter)
-            summary = await summarize_section(section_chunks, doc_id=doc_id, tags=auto_tags)
-            if summary is not None:
-                summary_id = f"{doc_id}-summary-{abs(hash(section_header)) % 100000}"
-                try:
-                    state.summaries_col.upsert(
-                        documents=[summary.text],
-                        metadatas=[{
-                            "document_id": doc_id,
-                            "filename": filename,
-                            "section_header": summary.section_header,
-                            "tags_csv": tags_csv,
-                        }],
-                        ids=[summary_id],
-                    )
-                    logger.info("[RAPTOR] Summary stored for doc=%s section='%s'.", doc_id, section_header)
-                except Exception as exc:
-                    logger.warning("[RAPTOR] summaries_col upsert failed: %s", exc)
+    # RAPTOR-lite: run summarization in the background so the response is sent
+    # immediately after ChromaDB/BM25/MongoDB (< 5s). This eliminates 504 errors
+    # on large PDFs where sequential LLM calls would exceed nginx proxy_read_timeout.
+    background_tasks.add_task(
+        _run_raptor_summarization,
+        doc_id=doc_id,
+        filename=filename,
+        docling_chunks=docling_chunks,
+        auto_tags=auto_tags,
+        tags_csv=tags_csv,
+    )
+    logger.info("[RAPTOR] Summarization enqueued as background task for doc=%s.", doc_id)
 
     # Determine file_type from first chunk metadata (Docling knows the real type)
     detected_file_type = file_type
@@ -163,6 +215,7 @@ async def kb_upload(
         file_type=detected_file_type,
         chunks_created=len(docling_chunks),
         auto_tags=auto_tags,
+        raptor_status="pending",
     ).model_dump()
 
 
@@ -244,27 +297,15 @@ async def kb_batch_upload(
             results.append({"filename": filename, "status": "error", "chunks_created": 0, "error": f"Vector store failed: {exc}"})
             continue
 
-        if state.summaries_col is not None:
-            from itertools import groupby
-            sorted_chunks = sorted(docling_chunks, key=lambda c: c.section_header)
-            for section_header, group_iter in groupby(sorted_chunks, key=lambda c: c.section_header):
-                section_chunks = list(group_iter)
-                summary = await summarize_section(section_chunks, doc_id=doc_id, tags=auto_tags)
-                if summary is not None:
-                    summary_id = f"{doc_id}-summary-{abs(hash(section_header)) % 100000}"
-                    try:
-                        state.summaries_col.upsert(
-                            documents=[summary.text],
-                            metadatas=[{
-                                "document_id": doc_id,
-                                "filename": filename,
-                                "section_header": summary.section_header,
-                                "tags_csv": tags_csv,
-                            }],
-                            ids=[summary_id],
-                        )
-                    except Exception as exc:
-                        logger.warning("[RAPTOR] summaries_col upsert failed for %s: %s", doc_id, exc)
+        # RAPTOR-lite summarization — runs inline (batch stays synchronous) but
+        # the section cap (kb_max_summarize_sections) prevents runaway LLM calls.
+        await _run_raptor_summarization(
+            doc_id=doc_id,
+            filename=filename,
+            docling_chunks=docling_chunks,
+            auto_tags=auto_tags,
+            tags_csv=tags_csv,
+        )
 
         kb_doc = KBDocument(
             id=doc_id,

@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     vision_model_name: str = "llava:7b"
     # RAPTOR-lite: set to False to skip section summarization at KB upload time.
     raptor_summarization_enabled: bool = True
+    # Max sections to summarize per KB document upload. Acts as a safety cap so
+    # a very large PDF (50+ sections) cannot queue hours of sequential LLM calls.
+    # Override via KB_MAX_SUMMARIZE_SECTIONS.
+    kb_max_summarize_sections: int = 15
     # Char budget reserved for DOCUMENT SUMMARIES section in ContextAssembler.
     rag_summary_max_chars: int = 500
 

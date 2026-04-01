@@ -159,6 +159,7 @@ class KBUploadResponse(BaseModel):
     file_type: str
     chunks_created: int
     auto_tags: List[str]
+    raptor_status: str = "done"  # "pending" = summarization in background; "done" = completed inline
 
 
 class KBAddUrlRequest(BaseModel):
