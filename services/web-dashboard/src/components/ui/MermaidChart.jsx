@@ -24,8 +24,15 @@ const SPECIAL_CHARS = /[\/\(\)&<>#:;|*]/;
  *     e.g.  INT->>"AWS S3"  →  INT->>AWS_S3
  *     (Mermaid v11 only accepts plain alphanumeric IDs in message lines)
  */
+// Decode common HTML entities that LLMs sometimes emit inside code blocks.
+const HTML_ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
+
+function decodeHtmlEntities(str) {
+  return str.replace(/&(?:amp|lt|gt|quot|#39);/g, m => HTML_ENTITIES[m]);
+}
+
 function sanitizeMermaid(raw) {
-  return raw
+  return decodeHtmlEntities(raw)
     .trim()
     // flowchart: NodeId[unquoted label with special chars] → NodeId["label"]
     .replace(/\b(\w+)\[(?!")([^\]]+)\]/g, (match, id, label) =>
