@@ -15,8 +15,16 @@ import db
 import state
 from auth import require_token
 from output_guard import sanitize_human_content, LLMOutputValidationError
-from schemas import Approval, ApproveRequest, Document, RejectRequest
+from schemas import (
+    Approval,
+    ApproveRequest,
+    Document,
+    RejectRequest,
+    SectionPromptRequest,
+    SectionImprovementRequest,
+)
 from services.agent_service import generate_integration_doc
+from services.llm_service import generate_with_retry
 from services.event_logger import record_event
 from utils import _now_iso
 
@@ -196,3 +204,70 @@ async def regenerate_doc(
         "message": f"Regenerated from feedback. New approval {new_id} is PENDING.",
         "data": {"new_approval_id": new_id, "previous_approval_id": id},
     }
+
+
+# ── ADR-040: AI-assisted section improvement ──────────────────────────────────
+
+_IMPROVEMENT_PROMPT_TEMPLATE = """\
+You are a technical writer reviewing an Integration Design Specification.
+The section below titled "{title}" needs to be improved for clarity,
+completeness, and professional quality.
+
+CURRENT SECTION CONTENT:
+---
+{content}
+---
+
+Please rewrite this section to:
+- Fix any vague, incomplete, or placeholder text (e.g. "n/a", "TBD")
+- Add concrete technical detail where missing
+- Improve structure and readability
+- Keep all existing information that is accurate
+- Output ONLY the improved section markdown, starting with the original heading
+"""
+
+
+@router.post("/approvals/build-improvement-prompt")
+async def build_improvement_prompt(body: SectionPromptRequest) -> dict:
+    """
+    ADR-040 — Phase 1: build an improvement prompt from section context.
+
+    Returns the prompt text for the reviewer to inspect and optionally edit
+    before executing it against the LLM.  No LLM call is made here.
+    """
+    prompt = _IMPROVEMENT_PROMPT_TEMPLATE.format(
+        title=body.section_title,
+        content=body.section_content,
+    )
+    return {"status": "success", "data": {"prompt": prompt}}
+
+
+@router.post("/approvals/run-improvement")
+async def run_improvement(body: SectionImprovementRequest) -> dict:
+    """
+    ADR-040 — Phase 2: execute the (reviewer-approved) improvement prompt.
+
+    Calls the LLM via generate_with_retry and returns the suggested improved
+    section as raw markdown.  Nothing is written to DB or state — the reviewer
+    must explicitly Accept in the UI to overwrite their section.
+
+    Raises:
+        503: LLM unavailable.
+    """
+    try:
+        suggestion = await generate_with_retry(
+            body.improvement_prompt,
+            num_predict=1500,
+            log_fn=logger.info,
+        )
+    except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"LLM unavailable during section improvement: {exc}",
+        )
+
+    logger.info(
+        "[SECTION-IMPROVE] section='%s' prompt_chars=%d suggestion_chars=%d",
+        body.section_title, len(body.improvement_prompt), len(suggestion),
+    )
+    return {"status": "success", "data": {"suggested_content": suggestion.strip()}}

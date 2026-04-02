@@ -85,6 +85,22 @@ export const API = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       }),
+    buildImprovementPrompt: (sectionTitle, sectionContent) =>
+      fetch(`${AGENT}/api/v1/approvals/build-improvement-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section_title: sectionTitle, section_content: sectionContent }),
+      }),
+    runImprovement: (sectionTitle, sectionContent, improvementPrompt) =>
+      fetch(`${AGENT}/api/v1/approvals/run-improvement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_title: sectionTitle,
+          section_content: sectionContent,
+          improvement_prompt: improvementPrompt,
+        }),
+      }),
   },
 
   documents: {

@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { CheckCircle, XCircle, AlertCircle, Loader2, Clock, ChevronRight, RefreshCw, BookOpen, X, RotateCcw } from 'lucide-react';
+import {
+  CheckCircle, XCircle, AlertCircle, Loader2, Clock, ChevronRight, RefreshCw,
+  BookOpen, X, RotateCcw, Sparkles, ChevronLeft, ThumbsUp, ThumbsDown,
+} from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import GenerationReportPanel from '../ui/GenerationReportPanel.jsx';
 import { useApprovals } from '../../hooks/useApprovals';
 import { useQueryClient } from '@tanstack/react-query';
+import { API } from '../../api.js';
 
 /** Parse markdown into blocks preserving structure.
  *  Returns array of { title: string|null, content: string }
@@ -42,6 +46,11 @@ function reconstructDoc(blocks) {
   return blocks.map(b => b.content).join('\n');
 }
 
+// ── Section modal phase labels ────────────────────────────────────────────────
+// 'edit'       — section editor (default)
+// 'prompt'     — AI improvement prompt preview/edit (phase 1)
+// 'suggestion' — LLM suggestion review (phase 2)
+
 export default function ApprovalsPage() {
   const {
     approvals,
@@ -62,7 +71,7 @@ export default function ApprovalsPage() {
   const [rejectMode, setRejectMode] = useState(false);
   const [error, setError]           = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [rejected, setRejected] = useState([]);
+  const [rejected, setRejected]     = useState([]);
 
   // Section modal state
   const [sectionModalOpen, setSectionModalOpen] = useState(false);
@@ -70,6 +79,13 @@ export default function ApprovalsPage() {
   const [selectedSection, setSelectedSection]   = useState(null);
   const [sectionEdit, setSectionEdit]           = useState('');
   const [sectionOriginal, setSectionOriginal]   = useState('');
+
+  // AI improvement state (phases)
+  const [modalPhase, setModalPhase]         = useState('edit');   // 'edit' | 'prompt' | 'suggestion'
+  const [improvementPrompt, setImprovementPrompt] = useState('');
+  const [suggestion, setSuggestion]         = useState('');
+  const [aiLoading, setAiLoading]           = useState(false);
+  const [aiError, setAiError]               = useState(null);
 
   const loadDocument = (id) => {
     setSelectedId(id);
@@ -135,16 +151,20 @@ export default function ApprovalsPage() {
     );
   };
 
-  // Section modal handlers
+  // ── Section modal helpers ──────────────────────────────────────────────────
+
   const openSectionModal = () => {
     const blocks = parseDocBlocks(content);
-    const sections = blocks.filter(b => b.title !== null);
     setSectionBlocks(blocks);
     const firstIdx = blocks.findIndex(b => b.title !== null);
-    if (firstIdx === -1) return; // no headings found
+    if (firstIdx === -1) return;
     setSelectedSection(firstIdx);
     setSectionEdit(blocks[firstIdx].content);
     setSectionOriginal(blocks[firstIdx].content);
+    setModalPhase('edit');
+    setImprovementPrompt('');
+    setSuggestion('');
+    setAiError(null);
     setSectionModalOpen(true);
   };
 
@@ -152,6 +172,10 @@ export default function ApprovalsPage() {
     setSelectedSection(idx);
     setSectionEdit(sectionBlocks[idx].content);
     setSectionOriginal(sectionBlocks[idx].content);
+    setModalPhase('edit');
+    setImprovementPrompt('');
+    setSuggestion('');
+    setAiError(null);
   };
 
   const handleSectionSave = () => {
@@ -167,7 +191,210 @@ export default function ApprovalsPage() {
     setSectionEdit(sectionOriginal);
   };
 
+  // ── ADR-040 AI improvement ─────────────────────────────────────────────────
+
+  const handleRequestPrompt = async () => {
+    if (selectedSection === null) return;
+    const block = sectionBlocks[selectedSection];
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await API.approvals.buildImprovementPrompt(block.title, sectionEdit);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail || 'Failed to build prompt');
+      setImprovementPrompt(json.data.prompt);
+      setModalPhase('prompt');
+    } catch (e) {
+      setAiError(e.message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleRunImprovement = async () => {
+    if (selectedSection === null) return;
+    const block = sectionBlocks[selectedSection];
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await API.approvals.runImprovement(block.title, sectionEdit, improvementPrompt);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail || 'LLM call failed');
+      setSuggestion(json.data.suggested_content);
+      setModalPhase('suggestion');
+    } catch (e) {
+      setAiError(e.message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAcceptSuggestion = () => {
+    setSectionEdit(suggestion);
+    // Sync the update into sectionBlocks so Save reflects it
+    setSectionBlocks(prev =>
+      prev.map((b, i) => i === selectedSection ? { ...b, content: suggestion } : b)
+    );
+    setModalPhase('edit');
+    setSuggestion('');
+  };
+
+  const handleRejectSuggestion = () => {
+    setModalPhase('prompt');
+    setSuggestion('');
+  };
+
+  const closeModal = () => {
+    setSectionModalOpen(false);
+    setModalPhase('edit');
+    setImprovementPrompt('');
+    setSuggestion('');
+    setAiError(null);
+  };
+
   const submitting = isApproving || isRejecting;
+
+  // ── Modal phase-specific content ───────────────────────────────────────────
+
+  const renderModalBody = () => {
+    if (modalPhase === 'prompt') {
+      return (
+        <>
+          {aiError && (
+            <div className="mx-6 mt-3 flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 text-xs flex-shrink-0">
+              <AlertCircle size={12} /> {aiError}
+            </div>
+          )}
+          <div className="px-6 pt-4 pb-1 flex-shrink-0">
+            <p className="text-xs text-slate-500">
+              Review and edit the improvement prompt before sending it to the LLM.
+            </p>
+          </div>
+          <textarea
+            value={improvementPrompt}
+            onChange={e => setImprovementPrompt(e.target.value)}
+            className="flex-1 resize-none px-6 py-3 text-sm font-mono text-slate-700 outline-none border-0 focus:ring-0 min-h-0"
+            spellCheck={false}
+          />
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center gap-2 flex-shrink-0 rounded-b-2xl">
+            <button
+              onClick={handleRunImprovement}
+              disabled={aiLoading || !improvementPrompt.trim()}
+              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-xl text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+            >
+              {aiLoading
+                ? <Loader2 size={13} className="animate-spin" />
+                : <Sparkles size={13} />
+              }
+              {aiLoading ? 'Generating…' : 'Generate'}
+            </button>
+            <button
+              onClick={() => { setModalPhase('edit'); setAiError(null); }}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-100 transition-colors"
+            >
+              <ChevronLeft size={13} />
+              Back
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    if (modalPhase === 'suggestion') {
+      return (
+        <>
+          {aiError && (
+            <div className="mx-6 mt-3 flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 text-xs flex-shrink-0">
+              <AlertCircle size={12} /> {aiError}
+            </div>
+          )}
+          <div className="px-6 pt-4 pb-1 flex-shrink-0">
+            <p className="text-xs text-slate-500">
+              AI suggestion — accept to overwrite the section, or go back to edit the prompt.
+            </p>
+          </div>
+          <textarea
+            value={suggestion}
+            readOnly
+            className="flex-1 resize-none px-6 py-3 text-sm font-mono text-slate-700 bg-violet-50 outline-none border-0 focus:ring-0 min-h-0"
+            spellCheck={false}
+          />
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center gap-2 flex-shrink-0 rounded-b-2xl">
+            <button
+              onClick={handleAcceptSuggestion}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors"
+            >
+              <ThumbsUp size={13} />
+              Accept
+            </button>
+            <button
+              onClick={handleRejectSuggestion}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-100 transition-colors"
+            >
+              <ThumbsDown size={13} />
+              Back to Prompt
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    // default: 'edit'
+    return (
+      <>
+        {aiError && (
+          <div className="mx-6 mt-3 flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 text-xs flex-shrink-0">
+            <AlertCircle size={12} /> {aiError}
+          </div>
+        )}
+        <textarea
+          value={sectionEdit}
+          onChange={e => setSectionEdit(e.target.value)}
+          className="flex-1 resize-none px-6 py-4 text-sm font-mono text-slate-700 outline-none border-0 focus:ring-0 min-h-0"
+          spellCheck={false}
+        />
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center gap-2 flex-shrink-0 rounded-b-2xl">
+          <button
+            onClick={handleSectionSave}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors"
+          >
+            <CheckCircle size={13} />
+            Save
+          </button>
+          <button
+            onClick={handleRequestPrompt}
+            disabled={aiLoading || !sectionEdit.trim()}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-violet-300 text-violet-700 rounded-xl text-sm font-semibold hover:bg-violet-50 disabled:opacity-50 transition-colors"
+          >
+            {aiLoading
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Sparkles size={13} />
+            }
+            {aiLoading ? 'Analyzing…' : 'Improve with AI'}
+          </button>
+          <button
+            onClick={handleSectionReset}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-100 transition-colors"
+          >
+            <RotateCcw size={13} />
+            Reset
+          </button>
+          <button
+            onClick={closeModal}
+            className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </>
+    );
+  };
+
+  const modalTitle = {
+    edit: 'Review Section',
+    prompt: 'Improvement Prompt',
+    suggestion: 'AI Suggestion',
+  }[modalPhase];
 
   return (
     <div className="flex gap-5" style={{ height: 'calc(100vh - 200px)' }}>
@@ -386,7 +613,7 @@ export default function ApprovalsPage() {
       {sectionModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => setSectionModalOpen(false)}
+          onClick={closeModal}
         >
           <div
             className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 flex flex-col"
@@ -396,68 +623,51 @@ export default function ApprovalsPage() {
             {/* Modal header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2">
-                <BookOpen size={15} className="text-indigo-500" />
+                {modalPhase === 'suggestion'
+                  ? <Sparkles size={15} className="text-violet-500" />
+                  : modalPhase === 'prompt'
+                    ? <Sparkles size={15} className="text-violet-400" />
+                    : <BookOpen size={15} className="text-indigo-500" />
+                }
                 <span className="font-semibold text-slate-800 text-sm" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                  Review Section
+                  {modalTitle}
                 </span>
+                {modalPhase !== 'edit' && (
+                  <span className="text-xs text-slate-400 font-mono truncate max-w-[220px]">
+                    — {sectionBlocks[selectedSection]?.title}
+                  </span>
+                )}
               </div>
               <button
-                onClick={() => setSectionModalOpen(false)}
+                onClick={closeModal}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
               >
                 <X size={16} />
               </button>
             </div>
 
-            {/* Section selector */}
-            <div className="px-6 py-3 border-b border-slate-100 flex-shrink-0">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
-                Section
-              </label>
-              <select
-                value={selectedSection ?? ''}
-                onChange={e => handleSectionSelect(Number(e.target.value))}
-                className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 bg-white text-slate-700"
-              >
-                {sectionBlocks.map((b, i) =>
-                  b.title !== null ? (
-                    <option key={i} value={i}>{b.title}</option>
-                  ) : null
-                )}
-              </select>
-            </div>
+            {/* Section selector — only in edit phase */}
+            {modalPhase === 'edit' && (
+              <div className="px-6 py-3 border-b border-slate-100 flex-shrink-0">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Section
+                </label>
+                <select
+                  value={selectedSection ?? ''}
+                  onChange={e => handleSectionSelect(Number(e.target.value))}
+                  className="w-full text-sm px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 bg-white text-slate-700"
+                >
+                  {sectionBlocks.map((b, i) =>
+                    b.title !== null ? (
+                      <option key={i} value={i}>{b.title}</option>
+                    ) : null
+                  )}
+                </select>
+              </div>
+            )}
 
-            {/* Editable section content */}
-            <textarea
-              value={sectionEdit}
-              onChange={e => setSectionEdit(e.target.value)}
-              className="flex-1 resize-none px-6 py-4 text-sm font-mono text-slate-700 outline-none border-0 focus:ring-0 min-h-0"
-              spellCheck={false}
-            />
-
-            {/* Modal action bar */}
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center gap-2 flex-shrink-0 rounded-b-2xl">
-              <button
-                onClick={handleSectionSave}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors"
-              >
-                <CheckCircle size={13} />
-                Save
-              </button>
-              <button
-                onClick={handleSectionReset}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-100 transition-colors"
-              >
-                <RotateCcw size={13} />
-                Reset
-              </button>
-              <button
-                onClick={() => setSectionModalOpen(false)}
-                className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+            {/* Phase-specific body */}
+            {renderModalBody()}
           </div>
         </div>
       )}

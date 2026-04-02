@@ -115,6 +115,45 @@ class RejectRequest(BaseModel):
     )
 
 
+class SectionPromptRequest(BaseModel):
+    """Body for POST /api/v1/approvals/build-improvement-prompt.
+
+    The backend builds a contextual LLM prompt to improve the section,
+    returning it for the reviewer to read and edit before execution.
+    """
+    section_title: str = Field(
+        min_length=1,
+        max_length=300,
+        description="Heading text of the section (without leading # characters).",
+    )
+    section_content: str = Field(
+        min_length=1,
+        max_length=20_000,
+        description="Current markdown content of the section (including the heading line).",
+    )
+
+
+class SectionImprovementRequest(BaseModel):
+    """Body for POST /api/v1/approvals/run-improvement.
+
+    Executes the (possibly reviewer-edited) prompt against the LLM and
+    returns the suggested improved markdown for the section.
+    """
+    section_title: str = Field(
+        min_length=1,
+        max_length=300,
+    )
+    section_content: str = Field(
+        min_length=1,
+        max_length=20_000,
+    )
+    improvement_prompt: str = Field(
+        min_length=1,
+        max_length=4_000,
+        description="The improvement prompt the reviewer approved (may have been edited).",
+    )
+
+
 class ConfirmTagsRequest(BaseModel):
     """Body for POST /api/v1/catalog/integrations/{id}/confirm-tags."""
     tags: List[str] = Field(
