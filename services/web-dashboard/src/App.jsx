@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
+import { LoadingProvider } from './context/LoadingContext.jsx';
+import GlobalLoadingBar from './components/ui/GlobalLoadingBar.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import TopBar from './components/layout/TopBar.jsx';
 import WorkflowStepper from './components/WorkflowStepper.jsx';
@@ -85,6 +87,8 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <LoadingProvider>
+      <GlobalLoadingBar />
       <Toaster position="top-right" richColors closeButton />
       <div className="flex h-screen bg-slate-50 overflow-hidden">
         <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
@@ -102,6 +106,7 @@ export default function App() {
           </main>
         </div>
       </div>
+      </LoadingProvider>
     </QueryClientProvider>
   );
 }
