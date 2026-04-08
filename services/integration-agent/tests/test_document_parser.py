@@ -6,7 +6,12 @@ Coverage:
   - _parse_markdown: valid, empty
   - chunk_text: basic chunking, overlap, empty input
   - Full parse_document flow for MD
+  - Image file type detection (PNG, JPG, SVG)
+  - Standalone image parsing via parse_with_docling (PNG/JPG → caption_figure, SVG → XML text)
 """
+
+import asyncio
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -15,6 +20,7 @@ from document_parser import (
     chunk_text,
     detect_file_type,
     parse_document,
+    parse_with_docling,
 )
 
 
@@ -63,6 +69,30 @@ class TestDetectFileType:
     def test_no_extension_no_mime_raises(self):
         with pytest.raises(DocumentParseError):
             detect_file_type("noext", None)
+
+    # ── Image types ──────────────────────────────────────────────────────────
+
+    def test_mime_png(self):
+        assert detect_file_type("image.png", "image/png") == "png"
+
+    def test_mime_jpeg(self):
+        assert detect_file_type("photo.jpg", "image/jpeg") == "jpg"
+
+    def test_mime_svg(self):
+        assert detect_file_type("diagram.svg", "image/svg+xml") == "svg"
+
+    def test_extension_fallback_jpeg(self):
+        assert detect_file_type("photo.jpeg", None) == "jpg"
+
+    def test_extension_fallback_png_with_octet_stream(self):
+        assert detect_file_type("image.png", "application/octet-stream") == "png"
+
+    def test_extension_fallback_svg(self):
+        assert detect_file_type("diagram.svg", None) == "svg"
+
+    def test_unsupported_error_message_lists_image_types(self):
+        with pytest.raises(DocumentParseError, match="PNG"):
+            detect_file_type("file.bmp", "image/bmp")
 
 
 class TestParseMarkdown:
@@ -135,3 +165,76 @@ class TestParseDocumentDispatch:
     def test_unsupported_type_raises(self):
         with pytest.raises(DocumentParseError, match="Unsupported"):
             parse_document(b"binary data", "file.zip", "application/zip")
+
+
+class TestParseImageStandalone:
+    """Tests for standalone image parsing via parse_with_docling (early-return path for _IMAGE_TYPES)."""
+
+    def test_png_returns_single_figure_chunk_with_caption(self):
+        fake_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        with patch(
+            "services.vision_service.caption_figure",
+            new=AsyncMock(return_value="A diagram showing integration flow"),
+        ) as mock_cap:
+            chunks = asyncio.run(parse_with_docling(fake_bytes, "png"))
+
+        assert len(chunks) == 1
+        assert chunks[0].chunk_type == "figure"
+        assert chunks[0].text == "A diagram showing integration flow"
+        assert chunks[0].page_num == 1
+        assert chunks[0].index == 0
+        mock_cap.assert_awaited_once_with(fake_bytes)
+
+    def test_jpg_returns_single_figure_chunk_with_caption(self):
+        fake_bytes = b"\xff\xd8\xff" + b"\x00" * 50
+        with patch(
+            "services.vision_service.caption_figure",
+            new=AsyncMock(return_value="Product catalogue image"),
+        ) as mock_cap:
+            chunks = asyncio.run(parse_with_docling(fake_bytes, "jpg"))
+
+        assert len(chunks) == 1
+        assert chunks[0].chunk_type == "figure"
+        assert chunks[0].text == "Product catalogue image"
+        mock_cap.assert_awaited_once_with(fake_bytes)
+
+    def test_svg_extracts_text_nodes(self):
+        svg = (
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b"<title>Integration Flow</title>"
+            b"<text>PLM to PIM sync</text>"
+            b"</svg>"
+        )
+        chunks = asyncio.run(parse_with_docling(svg, "svg"))
+
+        assert len(chunks) == 1
+        assert chunks[0].chunk_type == "text"
+        assert "Integration Flow" in chunks[0].text
+        assert "PLM to PIM sync" in chunks[0].text
+        assert chunks[0].page_num == 1
+
+    def test_svg_no_text_returns_placeholder(self):
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100"/></svg>'
+        chunks = asyncio.run(parse_with_docling(svg, "svg"))
+
+        assert len(chunks) == 1
+        assert chunks[0].text == "[SVG: no text content]"
+        assert chunks[0].chunk_type == "text"
+
+    def test_svg_malformed_xml_returns_parse_error_placeholder(self):
+        chunks = asyncio.run(parse_with_docling(b"NOT VALID XML <<>>", "svg"))
+
+        assert len(chunks) == 1
+        assert chunks[0].text == "[SVG: parse error]"
+
+    def test_png_vision_placeholder_on_error(self):
+        """If caption_figure returns the placeholder, the chunk still contains it."""
+        fake_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        with patch(
+            "services.vision_service.caption_figure",
+            new=AsyncMock(return_value="[FIGURE: no caption available]"),
+        ):
+            chunks = asyncio.run(parse_with_docling(fake_bytes, "png"))
+
+        assert chunks[0].chunk_type == "figure"
+        assert chunks[0].text == "[FIGURE: no caption available]"

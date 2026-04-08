@@ -8,6 +8,8 @@ Supported formats:
   - XLSX (via openpyxl)
   - PPTX (via python-pptx)
   - MD   (plain text read)
+  - PNG / JPG (via vision_service.caption_figure — LLaVA)
+  - SVG  (text extraction via stdlib xml.etree.ElementTree)
 
 Each parser returns the full text content as a string.  The chunker then
 splits the text into overlapping fragments ready for ChromaDB insertion.
@@ -37,6 +39,11 @@ ALLOWED_KB_MIME: dict[str, str] = {
     "text/markdown": "md",
     "text/plain": "md",
     "text/x-markdown": "md",
+    # Images
+    "image/png":     "png",
+    "image/jpeg":    "jpg",
+    "image/jpg":     "jpg",
+    "image/svg+xml": "svg",
 }
 
 # Also accept by file extension (fallback when MIME is unreliable)
@@ -50,7 +57,15 @@ ALLOWED_KB_EXTENSIONS: dict[str, str] = {
     ".ppt": "pptx",
     ".md": "md",
     ".txt": "md",
+    # Images
+    ".png":  "png",
+    ".jpg":  "jpg",
+    ".jpeg": "jpg",
+    ".svg":  "svg",
 }
+
+# Image file types handled by the standalone image parser (bypass Docling)
+_IMAGE_TYPES: frozenset[str] = frozenset({"png", "jpg", "svg"})
 
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
@@ -258,7 +273,7 @@ _PARSERS: dict[str, callable] = {
 def detect_file_type(filename: str, content_type: str | None) -> str:
     """Determine file type from MIME type or extension.
 
-    Returns one of: pdf, docx, xlsx, pptx, md.
+    Returns one of: pdf, docx, xlsx, pptx, md, png, jpg, svg.
     Raises DocumentParseError if not supported.
     """
     # Try MIME type first
@@ -272,7 +287,7 @@ def detect_file_type(filename: str, content_type: str | None) -> str:
 
     raise DocumentParseError(
         f"Unsupported file type: MIME='{content_type}', filename='{filename}'. "
-        f"Supported: PDF, DOCX, XLSX, PPTX, MD."
+        f"Supported: PDF, DOCX, XLSX, PPTX, MD, PNG, JPG, SVG."
     )
 
 
@@ -444,6 +459,53 @@ def _pil_to_bytes(pil_image) -> bytes:
     return buf.getvalue()
 
 
+def _extract_svg_text(svg_bytes: bytes) -> str:
+    """Extract all visible text from an SVG file using stdlib XML parsing.
+
+    Iterates every element in the SVG tree and collects non-empty .text and
+    .tail strings (covers <title>, <desc>, <text>, <tspan>, and similar).
+    Returns a placeholder when the file contains no text or is malformed XML.
+    """
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(svg_bytes)
+        parts: list[str] = []
+        for elem in root.iter():
+            if elem.text and elem.text.strip():
+                parts.append(elem.text.strip())
+            if elem.tail and elem.tail.strip():
+                parts.append(elem.tail.strip())
+        return " ".join(parts) if parts else "[SVG: no text content]"
+    except ET.ParseError as exc:
+        logger.warning("[KB] SVG XML parse error: %s", exc)
+        return "[SVG: parse error]"
+
+
+async def _parse_image_standalone(file_bytes: bytes, file_type: str) -> list[DoclingChunk]:
+    """Parse a standalone image file into a single DoclingChunk.
+
+    PNG/JPG: captions the image via vision_service.caption_figure() (LLaVA).
+             Falls back to a placeholder when vision is disabled or fails.
+    SVG:     extracts text nodes from the XML tree (stdlib — no extra deps).
+    """
+    if file_type == "svg":
+        text = _extract_svg_text(file_bytes)
+        chunk_type = "text"
+    else:
+        from services.vision_service import caption_figure
+        text = await caption_figure(file_bytes)
+        chunk_type = "figure"
+
+    return [DoclingChunk(
+        text=text,
+        chunk_type=chunk_type,
+        page_num=1,
+        section_header="",
+        index=0,
+        metadata={},
+    )]
+
+
 async def parse_with_docling(file_bytes: bytes, file_type: str) -> list[DoclingChunk]:
     """Parse a document using IBM Docling for layout-aware chunking (ADR-031).
 
@@ -453,9 +515,16 @@ async def parse_with_docling(file_bytes: bytes, file_type: str) -> list[DoclingC
       - section_header: nearest parent section heading
       - index: 0-based sequential index across all chunks
 
+    Standalone image files (png, jpg, svg) bypass Docling entirely and are
+    handled by _parse_image_standalone().
+
     Falls back to legacy text-only parsing when Docling is not installed.
     Figure captions are generated via vision_service.caption_figure() (llava:7b).
     """
+    # Standalone images bypass Docling — handle them directly.
+    if file_type in _IMAGE_TYPES:
+        return await _parse_image_standalone(file_bytes, file_type)
+
     import asyncio as _asyncio
     import io as _io
 

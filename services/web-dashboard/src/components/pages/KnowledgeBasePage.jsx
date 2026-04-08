@@ -28,7 +28,7 @@ const FILE_TYPE_LABELS = {
     md: 'Markdown',
 };
 
-const ACCEPTED_EXTENSIONS = '.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.md,.txt';
+const ACCEPTED_EXTENSIONS = '.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.md,.txt,.png,.jpg,.jpeg,.svg';
 
 // ── Unified KB helpers ───────────────────────────────────────────────────────
 
