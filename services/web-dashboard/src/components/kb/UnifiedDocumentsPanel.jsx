@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import {
     Search, Tag, FileText, Loader2, Eye, BookOpen,
-    Trash2, Link, Cpu,
+    Trash2, Link, Cpu, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import { formatBytes, getDocumentStatus } from './kbHelpers';
+
+const PAGE_SIZE = 10;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,15 +51,20 @@ function filterDocs(docs = [], query = '') {
 export default function UnifiedDocumentsPanel({ docs, onDelete, onDeleteIntegration, deletingId, onPreview, onEditTags }) {
     const [query, setQuery] = useState('');
     const [displayed, setDisplayed] = useState(docs);
+    const [page, setPage] = useState(1);
     const timerRef = useRef(null);
 
     useEffect(() => {
         clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
             setDisplayed(filterDocs(docs, query));
+            setPage(1);
         }, 200);
         return () => clearTimeout(timerRef.current);
     }, [query, docs]);
+
+    const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
+    const pageItems = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     return (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -107,7 +114,7 @@ export default function UnifiedDocumentsPanel({ docs, onDelete, onDeleteIntegrat
                                 </td>
                             </tr>
                         )}
-                        {displayed.map(doc => (
+                        {pageItems.map(doc => (
                             <tr key={doc.id} className="hover:bg-slate-50/70 transition-colors">
                                 {/* Name */}
                                 <td className="px-4 py-3">
@@ -225,6 +232,46 @@ export default function UnifiedDocumentsPanel({ docs, onDelete, onDeleteIntegrat
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination */}
+            {displayed.length > PAGE_SIZE && (
+                <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between text-sm text-slate-500">
+                    <span>
+                        {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, displayed.length)} of {displayed.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors"
+                            aria-label="Previous page"
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
+                            <button
+                                key={n}
+                                onClick={() => setPage(n)}
+                                className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                                    n === page
+                                        ? 'bg-indigo-500 text-white'
+                                        : 'hover:bg-slate-100 text-slate-600'
+                                }`}
+                            >
+                                {n}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 transition-colors"
+                            aria-label="Next page"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
