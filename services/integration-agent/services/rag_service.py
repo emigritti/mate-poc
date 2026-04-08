@@ -221,6 +221,8 @@ class ContextAssembler:
         *,
         summary_chunks: list[ScoredChunk] | None = None,
         summary_max_chars: int | None = None,
+        pinned_chunks: list[ScoredChunk] | None = None,
+        pinned_max_chars: int = 1200,
     ) -> str:
         """Assemble a structured context string for the LLM prompt.
 
@@ -233,6 +235,9 @@ class ContextAssembler:
                                 as the first section when provided and non-empty.
             summary_max_chars:  Char budget for the DOCUMENT SUMMARIES section.
                                 Defaults to settings.rag_summary_max_chars.
+            pinned_chunks:      Explicitly pinned KB chunks (score=1.0). Injected
+                                as the very first section regardless of RAG score.
+            pinned_max_chars:   Hard char budget for the PINNED REFERENCES section.
 
         Returns:
             Formatted context string, or empty string if no chunks provided.
@@ -244,6 +249,7 @@ class ContextAssembler:
             and not kb_chunks
             and not url_chunks
             and not summary_chunks
+            and not pinned_chunks
         )
         if all_empty:
             return ""
@@ -251,7 +257,23 @@ class ContextAssembler:
         sections: list[str] = []
         chars_used = 0
 
-        # ── DOCUMENT SUMMARIES (ADR-032 — RAPTOR-lite) — first section ────────
+        # ── PINNED REFERENCES — injected before all other sections ────────────
+        if pinned_chunks:
+            header = "## PINNED REFERENCES (mandatory — always incorporate these in your output):"
+            section_parts = [header]
+            pinned_chars = 0
+            per_chunk_cap = pinned_max_chars // max(len(pinned_chunks), 1)
+            for chunk in pinned_chunks:
+                text = chunk.text[:per_chunk_cap] + ("…" if len(chunk.text) > per_chunk_cap else "")
+                entry_str = f"### Source: pinned · doc: {chunk.doc_id}\n{text}"
+                if pinned_chars + len(entry_str) > pinned_max_chars:
+                    break
+                section_parts.append(entry_str)
+                pinned_chars += len(entry_str)
+            if len(section_parts) > 1:
+                sections.append("\n\n".join(section_parts))
+
+        # ── DOCUMENT SUMMARIES (ADR-032 — RAPTOR-lite) — second section ───────
         if summary_chunks:
             summary_sorted = sorted(summary_chunks, key=lambda c: c.score, reverse=True)
             header = "## DOCUMENT SUMMARIES (overview context):"

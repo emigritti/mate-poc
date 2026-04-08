@@ -146,6 +146,7 @@ async def generate_integration_doc(
     requirements: list,                            # list[Requirement]
     reviewer_feedback: str = "",
     log_fn: Callable[[str], None] | None = None,
+    pinned_chunks: list | None = None,
 ) -> tuple[str, GenerationReport]:
     """
     Run the full RAG + LLM pipeline for a single catalog entry.
@@ -206,6 +207,7 @@ async def generate_integration_doc(
         approved_chunks, kb_scored_chunks, url_chunks,
         max_chars=settings.ollama_rag_max_chars,
         summary_chunks=summary_chunks,
+        pinned_chunks=pinned_chunks or [],
     )
     _log(
         f"[RAG] Assembled context: {len(rag_context)} chars"

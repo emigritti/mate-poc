@@ -9,7 +9,8 @@ import asyncio
 import logging
 import uuid
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 
 import db
 import state
@@ -20,20 +21,30 @@ from log_helpers import log_agent
 from output_guard import LLMOutputValidationError, assess_quality
 from schemas import Approval, LogEntry
 from services.agent_service import generate_integration_doc
+from services.retriever import ScoredChunk
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["agent"])
 
 
+class TriggerRequest(BaseModel):
+    """Optional request body for POST /agent/trigger."""
+    pinned_doc_ids: list[str] = []
+
+
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
 
-async def run_agentic_rag_flow() -> None:
+async def run_agentic_rag_flow(pinned_chunks: list[ScoredChunk] | None = None) -> None:
     """
     Core agentic loop: read TAG_CONFIRMED catalog entries → RAG → LLM → guard → HITL queue.
 
     Generates a single unified Integration Spec per entry using the
     integration_base_template.md. Optionally enriches n/a sections via Claude API.
+
+    Args:
+        pinned_chunks: KB chunks explicitly selected by the user to be injected
+                       in the PINNED REFERENCES section of every generated document.
     """
     confirmed = [e for e in state.catalog.values() if e.status == "TAG_CONFIRMED"]
     total = len(confirmed)
@@ -76,6 +87,7 @@ async def run_agentic_rag_flow() -> None:
                 requirements=reqs,
                 reviewer_feedback="",
                 log_fn=log_agent,
+                pinned_chunks=pinned_chunks or [],
             )
             log_agent(
                 f"[LLM] Integration Spec generated for {entry.id} — "
@@ -152,10 +164,15 @@ async def run_agentic_rag_flow() -> None:
 
 @router.post("/agent/trigger")
 async def trigger_agent(
+    request: TriggerRequest = Body(default_factory=TriggerRequest),
     _token: str = Depends(require_token),
 ) -> dict:
     """
     Trigger the Agentic RAG flow asynchronously.
+
+    Accepts an optional JSON body with ``pinned_doc_ids`` — a list of KB document
+    IDs whose chunks will be injected as a mandatory PINNED REFERENCES section in
+    every generated document, regardless of RAG retrieval score.
 
     Guarded by:
       - require_token (G-10)
@@ -184,6 +201,24 @@ async def trigger_agent(
             ),
         )
 
+    # Resolve pinned chunks from the in-memory BM25 corpus (state.kb_chunks).
+    # URL-type KB docs are not chunked (fetched live); they are silently skipped.
+    pinned_chunks: list[ScoredChunk] = []
+    for doc_id in request.pinned_doc_ids:
+        texts = state.kb_chunks.get(doc_id, [])
+        if not texts:
+            logger.warning("[PINNED] doc_id %s not found in kb_chunks — skipped", doc_id)
+            continue
+        pinned_chunks.extend(
+            ScoredChunk(text=t, score=1.0, source_label="pinned", doc_id=doc_id)
+            for t in texts
+        )
+    if pinned_chunks:
+        log_agent(
+            f"[PINNED] {len(pinned_chunks)} chunk(s) pinned from "
+            f"{len(request.pinned_doc_ids)} doc(s): {request.pinned_doc_ids}"
+        )
+
     state.agent_logs.clear()
     log_agent("Started Agent Processing Task")
 
@@ -191,7 +226,7 @@ async def trigger_agent(
 
     async def _guarded_flow() -> None:
         async with state.agent_lock:
-            await run_agentic_rag_flow()
+            await run_agentic_rag_flow(pinned_chunks=pinned_chunks)
 
     task = asyncio.create_task(_guarded_flow(), name=task_id)
     state.running_tasks[task_id] = task

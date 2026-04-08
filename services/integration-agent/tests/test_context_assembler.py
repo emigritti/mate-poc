@@ -143,3 +143,52 @@ def test_context_assembler_summary_section_respects_summary_budget():
     summary_section = result.split("## PAST")[0] if "## PAST" in result else result
     assert summary_section.count("summary_0") == 1   # first fits
     assert summary_section.count("summary_2") == 0   # third doesn't fit
+
+
+# ── PINNED REFERENCES tests ────────────────────────────────────────────────────
+
+def test_pinned_section_present():
+    """PINNED REFERENCES section is added when pinned_chunks is provided."""
+    from services.rag_service import ContextAssembler
+    pinned = [_make_chunk("Architecture diagram: PLM→PIM sync flow", 1.0, "pinned")]
+    result = ContextAssembler().assemble([], [], [], max_chars=2000, pinned_chunks=pinned)
+    assert "PINNED REFERENCES" in result
+
+
+def test_pinned_section_before_summaries_and_kb():
+    """PINNED REFERENCES appears before DOCUMENT SUMMARIES and BEST PRACTICE PATTERNS."""
+    from services.rag_service import ContextAssembler
+    pinned    = [_make_chunk("Pinned content", 1.0, "pinned")]
+    summaries = [_make_chunk("Summary content", 0.9, "summary")]
+    kb        = [_make_chunk("KB content", 0.8, "kb_file")]
+    result = ContextAssembler().assemble(
+        [], kb, [], max_chars=2000,
+        summary_chunks=summaries,
+        pinned_chunks=pinned,
+    )
+    assert result.index("PINNED REFERENCES") < result.index("DOCUMENT SUMMARIES")
+    assert result.index("DOCUMENT SUMMARIES") < result.index("BEST PRACTICE PATTERNS")
+
+
+def test_empty_pinned_produces_no_section():
+    """Empty or None pinned_chunks must not produce a PINNED REFERENCES section."""
+    from services.rag_service import ContextAssembler
+    kb = [_make_chunk("Some KB content", 0.8, "kb_file")]
+    for pinned in ([], None):
+        result = ContextAssembler().assemble([], kb, [], max_chars=2000, pinned_chunks=pinned)
+        assert "PINNED REFERENCES" not in result
+
+
+def test_pinned_respects_budget():
+    """Pinned text is truncated per-chunk so total stays within pinned_max_chars."""
+    from services.rag_service import ContextAssembler
+    long_text = "X" * 2000
+    pinned = [_make_chunk(long_text, 1.0, "pinned")] * 3
+    result = ContextAssembler().assemble(
+        [], [], [], max_chars=2000,
+        pinned_chunks=pinned,
+        pinned_max_chars=500,
+    )
+    assert "PINNED REFERENCES" in result
+    # Per-chunk cap = 500 // 3 ≈ 166 chars; no 600-char block of X's should appear
+    assert "X" * 600 not in result

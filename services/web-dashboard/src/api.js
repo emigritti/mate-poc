@@ -49,7 +49,11 @@ export const API = {
   },
 
   agent: {
-    trigger: () => fetch(`${AGENT}/api/v1/agent/trigger`, { method: 'POST' }),
+    trigger: (pinnedDocIds = []) => fetch(`${AGENT}/api/v1/agent/trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinned_doc_ids: pinnedDocIds }),
+    }),
     logs: (offset = 0) => fetch(`${AGENT}/api/v1/agent/logs?offset=${offset}`),
     cancel: () => fetch(`${AGENT}/api/v1/agent/cancel`, { method: 'POST' }),
   },

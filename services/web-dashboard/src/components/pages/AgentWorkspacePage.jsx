@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Play, Square, Terminal, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAgentLogs } from '../../hooks/useAgentLogs';
+import { API } from '../../api.js';
+import PinnedRefsSelector from '../kb/PinnedRefsSelector';
 
 const TIMEOUT_SECS = 120; // matches ollama_timeout_seconds default
 
@@ -54,10 +56,20 @@ function ProgressBar({ elapsed, progress }) {
 export default function AgentWorkspacePage() {
   const { logs, isRunning, trigger, cancel, triggerError, progress: apiProgress } = useAgentLogs();
 
-  const [status,   setStatus]   = useState('idle'); // idle | running | done | error
-  const [elapsed,  setElapsed]  = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [localError, setLocalError] = useState(null);
+  const [status,       setStatus]       = useState('idle'); // idle | running | done | error
+  const [elapsed,      setElapsed]      = useState(0);
+  const [progress,     setProgress]     = useState(0);
+  const [localError,   setLocalError]   = useState(null);
+  const [pinnedDocIds, setPinnedDocIds] = useState([]);
+  const [kbDocs,       setKbDocs]       = useState([]);
+
+  // Load KB docs (exclude URL-type; those have no chunks to pin)
+  useEffect(() => {
+    API.kb.list()
+      .then(r => r.json())
+      .then(d => setKbDocs((d.data || []).filter(doc => doc.file_type !== 'url')))
+      .catch(() => {});
+  }, []);
 
   // Real progress from API
   const overall     = apiProgress?.overall;
@@ -114,7 +126,7 @@ export default function AgentWorkspacePage() {
 
   const handleStart = () => {
     setLocalError(null);
-    trigger(undefined, {
+    trigger(pinnedDocIds, {
       onError: (e) => {
         setLocalError(e.message || 'Failed to start agent');
         setStatus('error');
@@ -141,6 +153,15 @@ export default function AgentWorkspacePage() {
 
   return (
     <div className="space-y-4">
+      {/* Pinned references selector — only shown when idle/done and KB has docs */}
+      {!isRunning && kbDocs.length > 0 && (
+        <PinnedRefsSelector
+          docs={kbDocs}
+          selected={pinnedDocIds}
+          onChange={setPinnedDocIds}
+        />
+      )}
+
       {/* Control panel */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <div className="flex items-center justify-between gap-6">
