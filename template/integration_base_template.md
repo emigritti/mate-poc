@@ -13,19 +13,11 @@ Explain the value delivered by the integration (outcomes, KPIs, user impact).
 
 \### 1.3 Intended Audience
 
-\- Product Owner
-
-\- Business Stakeholders
-
-\- Solution / Integration Architects
-
-\- Delivery \& QA Teams
+List all figures that should review or approave this interface specificiation
 
 \### 1.4 Reference Documents
 
-\- Architecture Decision Records (ADR)
-
-\- OpenAPI / AsyncAPI specs / Components
+List all documents that was used or shoudl be used to validate this interface specification (ie ADR, API specs, Architecture diagrams, etc..)
 
 \---
 
@@ -106,11 +98,8 @@ Describe key alternative scenarios.
 
 \### 6.1 Integration Pattern
 
-\- Sync (API)
+List used Integration Pattern (Sync, Async, Batch, Files, etc..)
 
-\- Async (Event)
-
-\- Batch / File
 
 \### 6.2 Architecture Diagram
 
