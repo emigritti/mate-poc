@@ -56,6 +56,9 @@ from routers.requirements import (
     _parse_paragraphs_as_requirements,
     _parse_docx_requirements,
     _is_unstructured,
+    _has_subsection_headings,
+    _has_fr_code_structure,
+    _normalize_doc_headings,
 )
 
 
@@ -300,6 +303,69 @@ class TestIsUnstructured:
         assert _is_unstructured("") is True
 
 
+class TestHasSubsectionHeadings:
+    def test_h3_detected(self):
+        assert _has_subsection_headings("## Section\n### Sub\ntext") is True
+
+    def test_h4_detected(self):
+        assert _has_subsection_headings("#### FR-4.1 – Name\ntext") is True
+
+    def test_h2_only_not_subsection(self):
+        assert _has_subsection_headings("## Section\n- bullet") is False
+
+    def test_empty_body_false(self):
+        assert _has_subsection_headings("") is False
+
+
+class TestHasFrCodeStructure:
+    def test_bold_fr_code_detected(self):
+        assert _has_fr_code_structure("**FR-4.1 – Asset Approval Event**\n") is True
+
+    def test_plain_fr_code_line_detected(self):
+        assert _has_fr_code_structure("FR-4.5 – SKU Extraction\n") is True
+
+    def test_fr_code_inside_bullet_not_detected(self):
+        assert _has_fr_code_structure("- FR-4.5 – SKU\n") is False
+
+    def test_normal_bullet_doc_not_detected(self):
+        body = "## Mandatory\n- REQ-1 | Cat | Desc\n"
+        assert _has_fr_code_structure(body) is False
+
+
+class TestNormalizeDocHeadings:
+    def test_bold_fr_code_becomes_h4(self):
+        body = "**FR-4.1 – Asset Approval Event**\n"
+        result = _normalize_doc_headings(body)
+        assert "#### FR-4.1" in result
+
+    def test_bold_section_title_becomes_h3(self):
+        body = "**12. Optional Functional Requirements**\n"
+        result = _normalize_doc_headings(body)
+        assert "### 12. Optional" in result
+
+    def test_plain_fr_code_line_becomes_h4(self):
+        body = "FR-4.5 – SKU Extraction from Metadata\n"
+        result = _normalize_doc_headings(body)
+        assert "#### FR-4.5" in result
+
+    def test_bullet_fr_code_not_promoted(self):
+        # FR-code inside a bullet should NOT become a heading
+        body = "- FR-4.5 – SKU\n"
+        result = _normalize_doc_headings(body)
+        assert "####" not in result
+
+    def test_code_fence_markers_stripped(self):
+        body = "Some text\n```\n/2026/\n```\nAfter\n"
+        result = _normalize_doc_headings(body)
+        assert "```" not in result
+        assert "/2026/" in result
+
+    def test_normal_markdown_heading_unchanged(self):
+        body = "### 3. Triggering Event\n"
+        result = _normalize_doc_headings(body)
+        assert "### 3. Triggering Event" in result
+
+
 # ── _parse_prose_requirements ─────────────────────────────────────────────────
 
 _PROSE_H1_H2 = """\
@@ -401,6 +467,107 @@ class TestParseParagraphsAsRequirements:
 
 
 # ── _parse_markdown unstructured mode ────────────────────────────────────────
+
+class TestMultiLevelProseParser:
+    """Tests for the H2+H3+H4 three-level hierarchy (e.g. FR-coded documents)."""
+
+    _FR_DOC = """\
+## Integration Requirements
+
+### 1. Objective
+Define the integration scope between ERP and S3.
+
+### 3. Triggering Event
+
+**FR-4.1 – Asset Approval Event**
+
+- The integration shall trigger on asset approval.
+- Draft assets must not trigger it.
+
+**FR-4.2 – Taxonomy Scope Filtering**
+
+- Only assets in the Product taxonomy shall be eligible.
+
+### 9. Error Handling
+
+**FR-4.12 – Error Scenarios**
+
+- Missing SKU must generate an error.
+
+### 10. Out of Scope
+
+- Asset creation workflows
+- Metadata enrichment
+"""
+
+    def test_fr_coded_section_creates_one_req_per_fr(self):
+        reqs = _parse_prose_requirements(self._FR_DOC, "AEM", "S3")
+        fr_reqs = [r for r in reqs if r.category.startswith("FR-")]
+        assert len(fr_reqs) == 3  # FR-4.1, FR-4.2, FR-4.12
+
+    def test_section_without_fr_codes_becomes_single_req(self):
+        reqs = _parse_prose_requirements(self._FR_DOC, "AEM", "S3")
+        obj_reqs = [r for r in reqs if "Objective" in r.category]
+        oos_reqs = [r for r in reqs if "Out of Scope" in r.category]
+        assert len(obj_reqs) == 1
+        assert len(oos_reqs) == 1
+
+    def test_out_of_scope_bullets_aggregated_in_description(self):
+        reqs = _parse_prose_requirements(self._FR_DOC, "AEM", "S3")
+        oos = next(r for r in reqs if "Out of Scope" in r.category)
+        assert "Asset creation" in oos.description
+        assert "Metadata enrichment" in oos.description
+
+    def test_fr_section_content_aggregated_in_description(self):
+        reqs = _parse_prose_requirements(self._FR_DOC, "AEM", "S3")
+        fr1 = next(r for r in reqs if "FR-4.1" in r.category)
+        assert "trigger on asset approval" in fr1.description
+        assert "Draft assets" in fr1.description
+
+    def test_total_req_count_is_reasonable(self):
+        reqs = _parse_prose_requirements(self._FR_DOC, "AEM", "S3")
+        # 1 (Objective) + 2 (FR-4.1, FR-4.2) + 1 (FR-4.12) + 1 (Out of Scope) = 5
+        assert len(reqs) == 5
+
+    def test_markdown_routing_via_subsection_headings(self):
+        # Even though the doc has bullets, ### headings trigger prose parser
+        reqs = _parse_markdown(self._FR_DOC)
+        fr_reqs = [r for r in reqs if r.category.startswith("FR-")]
+        assert len(fr_reqs) == 3
+
+    def test_bold_fr_code_routing_when_no_markdown_heading(self):
+        # Document with ## + bold FR codes + no ### headings and no bullets.
+        # Routed via _has_fr_code_structure() → prose parser.
+        doc = (
+            "## Integration\n\n"
+            "**FR-4.1 – First Req**\n\n"
+            "The asset must be approved.\n\n"
+            "**FR-4.2 – Second Req**\n\n"
+            "Only product assets are in scope.\n"
+        )
+        reqs = _parse_markdown(doc)
+        assert len(reqs) == 2
+        assert reqs[0].category.startswith("FR-4.1")
+        assert reqs[1].category.startswith("FR-4.2")
+
+    def test_fr_code_with_bullets_as_content(self):
+        # Document with ## + bold FR codes + bullet CONTENT.
+        # _has_fr_code_structure=True → prose parser even with bullets.
+        doc = (
+            "## Section\n\n"
+            "**FR-4.1 – Approval**\n\n"
+            "- Approved assets only.\n"
+            "- Draft assets excluded.\n\n"
+            "**FR-4.2 – Scope**\n\n"
+            "- Only product taxonomy.\n"
+        )
+        reqs = _parse_markdown(doc)
+        # Bullets are content, NOT separate requirements
+        assert len(reqs) == 2
+        fr1 = next(r for r in reqs if "FR-4.1" in r.category)
+        assert "Approved assets" in fr1.description
+        assert "Draft assets" in fr1.description
+
 
 class TestParseMarkdownUnstructured:
     def test_prose_md_routes_to_prose_parser(self):

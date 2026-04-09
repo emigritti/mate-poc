@@ -55,6 +55,85 @@ def _is_unstructured(body: str) -> bool:
     return True
 
 
+def _has_subsection_headings(body: str) -> bool:
+    """Return True if body contains heading level 3 or deeper (### or more).
+
+    Documents with sub-section headings use section-based parsing regardless
+    of whether they also contain bullet items (bullets are treated as content).
+    """
+    for line in body.splitlines():
+        if re.match(r'^#{3,}\s+', line.strip()):
+            return True
+    return False
+
+
+def _has_fr_code_structure(body: str) -> bool:
+    """Return True if body has standalone **FR-code** lines or bare FR-code lines.
+
+    FR-code lines act as requirement boundaries regardless of whether bullets
+    appear in the document, so they trigger section-based parsing.
+    """
+    for line in body.splitlines():
+        stripped = line.strip()
+        # Skip actual bullet list items (- item, * item, + item) but NOT **bold** lines
+        if re.match(r'^[-*+]\s+', stripped):
+            continue
+        bold_m = _BOLD_LINE_RE.match(stripped)
+        if bold_m and _FR_CODE_RE.match(bold_m.group(1).strip()):
+            return True
+        if _FR_CODE_RE.match(stripped):
+            return True
+    return False
+
+
+# Matches a line whose entire content is wrapped in **…**
+_BOLD_LINE_RE = re.compile(r'^\*\*(.+?)\*\*\s*$')
+# Matches FR-code identifiers (e.g. "FR-4.1", "FR‑4.O2")
+_FR_CODE_RE = re.compile(r'^FR[\u2010-\u2015\u2212\-\.]\S', re.IGNORECASE)
+
+
+def _normalize_doc_headings(body: str) -> str:
+    """Pre-process standalone bold/FR-code lines into markdown headings.
+
+    Two classes of lines are promoted:
+    - Standalone **FR-code** lines → #### (treated as requirement-level H4)
+      e.g.  **FR-4.1 – Asset Approval Event**   or   FR-4.5 – SKU Extraction
+    - Other standalone **bold** lines → ### (treated as section-level H3)
+      e.g.  **12. Optional Functional Requirements**
+
+    Fenced code blocks (``` … ```) have their fence markers stripped so the
+    content inside is treated as plain text rather than being parsed as headings.
+    """
+    result = []
+    in_code_block = False
+    for line in body.splitlines():
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue  # Drop the fence marker itself
+
+        if in_code_block:
+            result.append(stripped)
+            continue
+
+        bold_m = _BOLD_LINE_RE.match(stripped)
+        if bold_m:
+            content = bold_m.group(1).strip()
+            level = "####" if _FR_CODE_RE.match(content) else "###"
+            result.append(f"{level} {content}")
+            continue
+
+        # Plain (non-bold) FR-code lines that are not inside a bullet
+        if _FR_CODE_RE.match(stripped) and not stripped.startswith(("-", "*", "+")):
+            result.append(f"#### {stripped}")
+            continue
+
+        result.append(line)
+
+    return "\n".join(result)
+
+
 def _parse_paragraphs_as_requirements(
     body: str, source: str, target: str
 ) -> list[Requirement]:
@@ -63,7 +142,7 @@ def _parse_paragraphs_as_requirements(
     current_lines: list[str] = []
 
     def _flush() -> None:
-        text = ' '.join(current_lines).strip()
+        text = " ".join(current_lines).strip()
         if text:
             reqs.append(Requirement(
                 req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
@@ -89,17 +168,39 @@ def _parse_paragraphs_as_requirements(
 def _parse_prose_requirements(
     body: str, source: str, target: str
 ) -> list[Requirement]:
-    """Parse a prose (non-bullet) markdown/text document into requirements.
+    """Parse a prose/section-based document into requirements.
 
-    Groups content at the first sub-heading level:
-    - H1 + H2 in document → each H2 section = one requirement
-    - Only H1 → each H1 section = one requirement
-    - No headings → each paragraph (blank-line-separated) = one requirement
+    Pre-processing
+    --------------
+    Standalone **bold** lines and bare FR-code lines are promoted to markdown
+    headings via _normalize_doc_headings():
+      **FR-4.1 – Name**           →  #### FR-4.1 – Name   (requirement-level)
+      **12. Optional Section**    →  ### 12. Optional Section  (section-level)
+      FR-4.5 – Name (plain text)  →  #### FR-4.5 – Name   (requirement-level)
 
-    The heading text becomes the requirement category; all accumulated text
-    under that heading (including deeper sub-headings) becomes the description.
-    The mandatory flag is inferred from the parent section heading.
+    Heading-level strategy
+    ----------------------
+    After normalisation the document may have 1, 2, or 3+ distinct heading
+    levels.  The *deepest* heading level becomes the requirement boundary; the
+    level immediately above it becomes the parent-section level.
+
+    | Levels present      | Req boundary | Parent section |
+    |---------------------|--------------|----------------|
+    | H4 only             | H4           | —              |
+    | H3 + H4             | H4           | H3             |
+    | H2 + H3 + H4        | H4           | H3  (H2 = ancestor) |
+    | H3 only             | H3           | —              |
+    | H2 + H3             | H3           | H2             |
+    | H2 only             | H2           | —              |
+
+    Parent sections without any requirement-level children produce a single
+    requirement from their aggregated content (prose + bullets).
+    Empty sections (no prose, no children) are silently skipped.
+
+    Mandatory flag is inferred from section heading text.
     """
+    body = _normalize_doc_headings(body)
+
     # Collect (level: int|None, heading: str|None, lines: list[str])
     sections: list[tuple[int | None, str | None, list[str]]] = []
     cur_level: int | None = None
@@ -108,7 +209,7 @@ def _parse_prose_requirements(
 
     for line in body.splitlines():
         stripped = line.strip()
-        m = re.match(r'^(#{1,4})\s+(.+)$', stripped)
+        m = re.match(r"^(#{1,6})\s+(.+)$", stripped)
         if m:
             if cur_heading is not None or cur_lines:
                 sections.append((cur_level, cur_heading, cur_lines))
@@ -128,57 +229,102 @@ def _parse_prose_requirements(
     if not heading_levels:
         return _parse_paragraphs_as_requirements(body, source, target)
 
-    min_level = heading_levels[0]
-    # Use first sub-level if it exists, otherwise use the top level
-    target_level = heading_levels[1] if len(heading_levels) > 1 else min_level
+    # Determine requirement boundary and parent level
+    req_level = heading_levels[-1]                        # deepest = requirements
+    parent_level = heading_levels[-2] if len(heading_levels) >= 2 else None
+    ancestor_levels = set(heading_levels[:-2]) if len(heading_levels) >= 3 else set()
 
     reqs: list[Requirement] = []
     current_mandatory = False
-    req_heading: str | None = None
-    req_texts: list[str] = []
 
-    def _flush() -> None:
-        nonlocal req_heading, req_texts
-        if not (req_heading or req_texts):
+    # Parent-section state (one level above req_level)
+    cur_parent_heading: str | None = None
+    cur_parent_texts: list[str] = []
+    has_req_children = False          # True once a req_level section is seen under cur_parent
+
+    # Requirement state (at req_level)
+    cur_req_heading: str | None = None
+    cur_req_texts: list[str] = []
+
+    def _flush_req() -> None:
+        nonlocal cur_req_heading, cur_req_texts
+        if not (cur_req_heading or cur_req_texts):
             return
-        description = ' '.join(req_texts).strip() or req_heading or ""
+        description = " ".join(cur_req_texts).strip() or cur_req_heading or ""
         if description:
             reqs.append(Requirement(
                 req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
                 source_system=source,
                 target_system=target,
-                category=req_heading or "General",
+                category=cur_req_heading or "General",
                 description=description,
                 mandatory=current_mandatory,
             ))
-        req_heading = None
-        req_texts = []
+        cur_req_heading = None
+        cur_req_texts = []
+
+    def _flush_parent_as_req() -> None:
+        nonlocal cur_parent_heading, cur_parent_texts, has_req_children
+        # Only emit a requirement for the parent when it had no req-level children
+        if not has_req_children and (cur_parent_heading or cur_parent_texts):
+            description = " ".join(cur_parent_texts).strip() or cur_parent_heading or ""
+            if description:
+                reqs.append(Requirement(
+                    req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
+                    source_system=source,
+                    target_system=target,
+                    category=cur_parent_heading or "General",
+                    description=description,
+                    mandatory=current_mandatory,
+                ))
+        cur_parent_heading = None
+        cur_parent_texts = []
+        has_req_children = False
 
     for level, heading, lines in sections:
         if level is None:
-            if req_heading is not None:
-                req_texts.extend(lines)
+            # Headingless prose: append to innermost active context
+            if cur_req_heading is not None:
+                cur_req_texts.extend(lines)
+            elif cur_parent_heading is not None:
+                cur_parent_texts.extend(lines)
             continue
 
-        if level < target_level:
-            # Parent section: sets mandatory flag; is NOT itself a requirement
-            _flush()
+        if level in ancestor_levels:
+            # Top-most level (e.g. H2 when H2+H3+H4 exist): only sets context
+            _flush_req()
+            _flush_parent_as_req()
             current_mandatory = _mandatory_from_heading(heading or "")
-        elif level == target_level:
-            _flush()
-            req_heading = heading
-            req_texts = lines[:]
-        else:
-            # Deeper sub-section: fold into current requirement
-            if req_heading is not None:
-                if heading:
-                    req_texts.append(f"{heading}:")
-                req_texts.extend(lines)
-            else:
-                req_heading = heading
-                req_texts = lines[:]
 
-    _flush()
+        elif parent_level is not None and level == parent_level:
+            # Section boundary: flush everything, start a new parent section
+            _flush_req()
+            _flush_parent_as_req()
+            cur_parent_heading = heading
+            cur_parent_texts = lines[:]
+            has_req_children = False
+            current_mandatory = _mandatory_from_heading(heading or "")
+
+        elif level == req_level:
+            # Requirement boundary
+            _flush_req()
+            has_req_children = True
+            cur_req_heading = heading
+            cur_req_texts = lines[:]
+
+        else:
+            # Deeper than req_level: fold content into current requirement
+            if cur_req_heading is not None:
+                if heading:
+                    cur_req_texts.append(f"{heading}:")
+                cur_req_texts.extend(lines)
+            elif cur_parent_heading is not None:
+                if heading:
+                    cur_parent_texts.append(f"{heading}:")
+                cur_parent_texts.extend(lines)
+
+    _flush_req()
+    _flush_parent_as_req()
     return reqs
 
 
@@ -219,7 +365,6 @@ def _parse_docx_requirements(data: bytes) -> list[Requirement]:
 
     heading_levels = sorted(set(lv for lv, _ in items if lv is not None))
     if not heading_levels:
-        # No heading styles: each paragraph = one requirement
         return [
             Requirement(
                 req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
@@ -232,51 +377,17 @@ def _parse_docx_requirements(data: bytes) -> list[Requirement]:
             for _, text in items
         ]
 
-    min_level = heading_levels[0]
-    target_level = heading_levels[1] if len(heading_levels) > 1 else min_level
-
-    reqs: list[Requirement] = []
-    current_mandatory = False
-    req_heading: str | None = None
-    req_texts: list[str] = []
-
-    def _flush() -> None:
-        nonlocal req_heading, req_texts
-        if not (req_heading or req_texts):
-            return
-        description = ' '.join(req_texts).strip() or req_heading or ""
-        if description:
-            reqs.append(Requirement(
-                req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
-                source_system=source,
-                target_system=target,
-                category=req_heading or "General",
-                description=description,
-                mandatory=current_mandatory,
-            ))
-        req_heading = None
-        req_texts = []
-
+    # Convert to pseudo-markdown and delegate to _parse_prose_requirements
+    # so that the same multi-level grouping logic is reused.
+    lines: list[str] = []
     for level, text in items:
         if level is None:
-            if req_heading is not None:
-                req_texts.append(text)
-            continue
-
-        if level < target_level:
-            _flush()
-            current_mandatory = _mandatory_from_heading(text)
-        elif level == target_level:
-            _flush()
-            req_heading = text
+            lines.append(text)
         else:
-            if req_heading is not None:
-                req_texts.append(f"{text}:")
-            else:
-                req_heading = text
+            lines.append(f"{'#' * level} {text}")
 
-    _flush()
-    return reqs
+    pseudo_md = "\n".join(lines)
+    return _parse_prose_requirements(pseudo_md, source, target)
 
 
 def _parse_csv(text: str) -> list[Requirement]:
@@ -339,7 +450,11 @@ def _parse_markdown(text: str, filename: str = "unknown.md") -> list[Requirement
             source, target = parts[0].strip(), parts[1].strip()
 
     # ── Route to appropriate parser ───────────────────────────────────────────
-    if _is_unstructured(body):
+    # Section-based docs: has ### headings OR standalone **FR-code** lines
+    #                     (bullets are treated as content, not requirement IDs)
+    # Pure-prose docs:    no bullets at all
+    # Bullet-format docs: bullets ARE the requirement identifiers
+    if _has_subsection_headings(body) or _has_fr_code_structure(body) or _is_unstructured(body):
         return _parse_prose_requirements(body, source, target)
 
     # ── Structured: parse sections + bullet items ─────────────────────────────
