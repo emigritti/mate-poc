@@ -24,6 +24,12 @@ export const API = {
       return fetch(`${AGENT}/api/v1/requirements/upload`, { method: 'POST', body: fd });
     },
     list: () => fetch(`${AGENT}/api/v1/requirements`),
+    patch: (reqId, mandatory) =>
+      fetch(`${AGENT}/api/v1/requirements/${encodeURIComponent(reqId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mandatory }),
+      }),
     finalize: (projectId, fieldOverrides = null) =>
       fetch(`${AGENT}/api/v1/requirements/finalize`, {
         method: 'POST',

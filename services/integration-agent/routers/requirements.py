@@ -10,7 +10,7 @@ import io
 import re
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 import logging
 
 import db
@@ -267,3 +267,17 @@ async def finalize_requirements(body: FinalizeRequirementsRequest) -> dict:
 @router.get("/requirements")
 async def get_requirements() -> dict:
     return {"status": "success", "data": [r.model_dump() for r in state.parsed_requirements]}
+
+
+@router.patch("/requirements/{req_id}")
+async def patch_requirement(
+    req_id: str,
+    mandatory: bool = Body(..., embed=True),
+) -> dict:
+    """Toggle the mandatory flag on an in-memory parsed requirement."""
+    for i, r in enumerate(state.parsed_requirements):
+        if r.req_id == req_id:
+            state.parsed_requirements[i] = r.model_copy(update={"mandatory": mandatory})
+            logger.info("[PATCH] Requirement '%s' mandatory set to %s.", req_id, mandatory)
+            return {"status": "success", "req_id": req_id, "mandatory": mandatory}
+    raise HTTPException(status_code=404, detail=f"Requirement '{req_id}' not found.")

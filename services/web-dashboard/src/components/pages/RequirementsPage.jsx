@@ -21,6 +21,7 @@ export default function RequirementsPage() {
   const [uploading, setUploading]       = useState(false);
   const [dragOver, setDragOver]         = useState(false);
   const [error, setError]               = useState(null);
+  const [togglingIds, setTogglingIds]   = useState(new Set());
   // null = no modal; array = upload preview → modal open
   const [uploadPreview, setUploadPreview] = useState(null);
   // validation modal state
@@ -120,6 +121,31 @@ export default function RequirementsPage() {
 
   const onTagConfirmed = (id) =>
     setConfirmedIds(prev => new Set([...prev, id]));
+
+  const handleToggleMandatory = async (req) => {
+    const { req_id, mandatory } = req;
+    if (togglingIds.has(req_id)) return;
+    // Optimistic update
+    setRequirements(prev =>
+      prev.map(r => r.req_id === req_id ? { ...r, mandatory: !mandatory } : r)
+    );
+    setTogglingIds(prev => new Set([...prev, req_id]));
+    try {
+      const res = await API.requirements.patch(req_id, !mandatory);
+      if (!res.ok) {
+        // Revert on failure
+        setRequirements(prev =>
+          prev.map(r => r.req_id === req_id ? { ...r, mandatory } : r)
+        );
+      }
+    } catch {
+      setRequirements(prev =>
+        prev.map(r => r.req_id === req_id ? { ...r, mandatory } : r)
+      );
+    } finally {
+      setTogglingIds(prev => { const s = new Set(prev); s.delete(req_id); return s; });
+    }
+  };
 
   const pendingTagsList  = pendingTags.filter(p => !confirmedIds.has(p.id));
   const allTagsConfirmed = pendingTags.length > 0 && pendingTagsList.length === 0;
@@ -228,10 +254,18 @@ export default function RequirementsPage() {
                     <td className="px-4 py-3 text-slate-600">{req.target_system || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{req.category || '—'}</td>
                     <td className="px-4 py-3">
-                      {req.mandatory
-                        ? <Badge variant="error">Mandatory</Badge>
-                        : <Badge variant="slate">Optional</Badge>
-                      }
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMandatory(req)}
+                        disabled={togglingIds.has(req.req_id)}
+                        title="Click to toggle mandatory / optional"
+                        className="cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed rounded focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      >
+                        {req.mandatory
+                          ? <Badge variant="error">Mandatory</Badge>
+                          : <Badge variant="slate">Optional</Badge>
+                        }
+                      </button>
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant="primary" dot>Parsed</Badge>
