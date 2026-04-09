@@ -2,7 +2,12 @@
 Requirements Router — upload, finalize, list endpoints.
 
 Extracted from main.py (R15).
-Supports CSV and Markdown (.md) requirement files.
+Supports CSV (.csv), Markdown (.md), plain text (.txt), and Word (.docx) files.
+
+Unstructured documents (prose, no bullet lists) are parsed by grouping content
+at the first sub-heading level:
+  - H1 + H2 present → each H2 section = one requirement
+  - Only H1 (or no headings) → each H1 section (or paragraph) = one requirement
 """
 
 import csv
@@ -29,10 +34,250 @@ _ALLOWED_CSV_MIME = frozenset({
     "text/csv", "application/csv", "text/plain", "application/vnd.ms-excel",
     "text/markdown", "text/x-markdown",
 })
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _MAX_BYTES = 1_048_576  # 1 MB
 
 
 # ── Parsers ───────────────────────────────────────────────────────────────────
+
+def _mandatory_from_heading(heading: str) -> bool:
+    """Return True if a heading signals mandatory requirements."""
+    h = heading.lower()
+    is_non = bool(re.search(r'\bnon[-\s]?mandatory\b|\boptional\b', h))
+    return bool(re.search(r'\bmandatory\b', h)) and not is_non
+
+
+def _is_unstructured(body: str) -> bool:
+    """Return True if body contains no bullet items (purely prose document)."""
+    for line in body.splitlines():
+        if re.match(r'^[-*+]\s+', line.strip()):
+            return False
+    return True
+
+
+def _parse_paragraphs_as_requirements(
+    body: str, source: str, target: str
+) -> list[Requirement]:
+    """Fallback: each blank-line-separated paragraph becomes one requirement."""
+    reqs: list[Requirement] = []
+    current_lines: list[str] = []
+
+    def _flush() -> None:
+        text = ' '.join(current_lines).strip()
+        if text:
+            reqs.append(Requirement(
+                req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
+                source_system=source,
+                target_system=target,
+                category="General",
+                description=text,
+                mandatory=False,
+            ))
+        current_lines.clear()
+
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped:
+            current_lines.append(stripped)
+        else:
+            _flush()
+
+    _flush()
+    return reqs
+
+
+def _parse_prose_requirements(
+    body: str, source: str, target: str
+) -> list[Requirement]:
+    """Parse a prose (non-bullet) markdown/text document into requirements.
+
+    Groups content at the first sub-heading level:
+    - H1 + H2 in document → each H2 section = one requirement
+    - Only H1 → each H1 section = one requirement
+    - No headings → each paragraph (blank-line-separated) = one requirement
+
+    The heading text becomes the requirement category; all accumulated text
+    under that heading (including deeper sub-headings) becomes the description.
+    The mandatory flag is inferred from the parent section heading.
+    """
+    # Collect (level: int|None, heading: str|None, lines: list[str])
+    sections: list[tuple[int | None, str | None, list[str]]] = []
+    cur_level: int | None = None
+    cur_heading: str | None = None
+    cur_lines: list[str] = []
+
+    for line in body.splitlines():
+        stripped = line.strip()
+        m = re.match(r'^(#{1,4})\s+(.+)$', stripped)
+        if m:
+            if cur_heading is not None or cur_lines:
+                sections.append((cur_level, cur_heading, cur_lines))
+            cur_level = len(m.group(1))
+            cur_heading = m.group(2).strip()
+            cur_lines = []
+        elif stripped:
+            cur_lines.append(stripped)
+
+    if cur_heading is not None or cur_lines:
+        sections.append((cur_level, cur_heading, cur_lines))
+
+    if not sections:
+        return []
+
+    heading_levels = sorted(set(s[0] for s in sections if s[0] is not None))
+    if not heading_levels:
+        return _parse_paragraphs_as_requirements(body, source, target)
+
+    min_level = heading_levels[0]
+    # Use first sub-level if it exists, otherwise use the top level
+    target_level = heading_levels[1] if len(heading_levels) > 1 else min_level
+
+    reqs: list[Requirement] = []
+    current_mandatory = False
+    req_heading: str | None = None
+    req_texts: list[str] = []
+
+    def _flush() -> None:
+        nonlocal req_heading, req_texts
+        if not (req_heading or req_texts):
+            return
+        description = ' '.join(req_texts).strip() or req_heading or ""
+        if description:
+            reqs.append(Requirement(
+                req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
+                source_system=source,
+                target_system=target,
+                category=req_heading or "General",
+                description=description,
+                mandatory=current_mandatory,
+            ))
+        req_heading = None
+        req_texts = []
+
+    for level, heading, lines in sections:
+        if level is None:
+            if req_heading is not None:
+                req_texts.extend(lines)
+            continue
+
+        if level < target_level:
+            # Parent section: sets mandatory flag; is NOT itself a requirement
+            _flush()
+            current_mandatory = _mandatory_from_heading(heading or "")
+        elif level == target_level:
+            _flush()
+            req_heading = heading
+            req_texts = lines[:]
+        else:
+            # Deeper sub-section: fold into current requirement
+            if req_heading is not None:
+                if heading:
+                    req_texts.append(f"{heading}:")
+                req_texts.extend(lines)
+            else:
+                req_heading = heading
+                req_texts = lines[:]
+
+    _flush()
+    return reqs
+
+
+def _parse_docx_requirements(data: bytes) -> list[Requirement]:
+    """Parse a Word (.docx) document into requirements.
+
+    Uses paragraph heading styles (Heading 1, Heading 2, …) to determine
+    structure, then applies the same grouping logic as _parse_prose_requirements:
+    - Heading 1 + Heading 2 → each Heading 2 section = one requirement
+    - Only Heading 1 → each Heading 1 section = one requirement
+    - No headings → each paragraph = one requirement
+
+    Source/target default to "Unknown" (user fills them via the validation modal).
+    """
+    try:
+        from docx import Document as DocxDocument
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="python-docx is required to parse .docx files.",
+        ) from exc
+
+    doc = DocxDocument(io.BytesIO(data))
+    source, target = "Unknown", "Unknown"
+
+    # Collect (level: int|None, text: str)
+    items: list[tuple[int | None, str]] = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        style_name = (para.style.name or "").lower() if para.style else ""
+        m = re.match(r'heading\s+(\d+)', style_name)
+        items.append((int(m.group(1)) if m else None, text))
+
+    if not items:
+        return []
+
+    heading_levels = sorted(set(lv for lv, _ in items if lv is not None))
+    if not heading_levels:
+        # No heading styles: each paragraph = one requirement
+        return [
+            Requirement(
+                req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
+                source_system=source,
+                target_system=target,
+                category="General",
+                description=text,
+                mandatory=False,
+            )
+            for _, text in items
+        ]
+
+    min_level = heading_levels[0]
+    target_level = heading_levels[1] if len(heading_levels) > 1 else min_level
+
+    reqs: list[Requirement] = []
+    current_mandatory = False
+    req_heading: str | None = None
+    req_texts: list[str] = []
+
+    def _flush() -> None:
+        nonlocal req_heading, req_texts
+        if not (req_heading or req_texts):
+            return
+        description = ' '.join(req_texts).strip() or req_heading or ""
+        if description:
+            reqs.append(Requirement(
+                req_id=f"R-{uuid.uuid4().hex[:6].upper()}",
+                source_system=source,
+                target_system=target,
+                category=req_heading or "General",
+                description=description,
+                mandatory=current_mandatory,
+            ))
+        req_heading = None
+        req_texts = []
+
+    for level, text in items:
+        if level is None:
+            if req_heading is not None:
+                req_texts.append(text)
+            continue
+
+        if level < target_level:
+            _flush()
+            current_mandatory = _mandatory_from_heading(text)
+        elif level == target_level:
+            _flush()
+            req_heading = text
+        else:
+            if req_heading is not None:
+                req_texts.append(f"{text}:")
+            else:
+                req_heading = text
+
+    _flush()
+    return reqs
+
 
 def _parse_csv(text: str) -> list[Requirement]:
     reader = csv.DictReader(io.StringIO(text))
@@ -50,25 +295,27 @@ def _parse_csv(text: str) -> list[Requirement]:
 
 
 def _parse_markdown(text: str, filename: str = "unknown.md") -> list[Requirement]:
-    """Parse a Markdown integration requirements file into Requirement objects.
+    """Parse a Markdown (or plain-text) requirements file into Requirement objects.
 
-    Expected format:
+    Structured mode (file contains bullet items):
         ---
         source: ERP
         target: Salsify
         ---
-
         ## Mandatory Requirements
         - REQ-M01 | Product Collection | Sync daily articles from ERP to PLM
-
         ## Non-Mandatory Requirements
         - REQ-O01 | Reporting | Generate weekly sync status report
 
-    Rules:
+    Unstructured mode (no bullet items — prose document):
+        Paragraphs grouped at the first sub-heading level.  Each H2 (or H1 if
+        no H2 exists) section becomes one requirement with the heading as
+        category and the accumulated prose as description.
+
+    Rules (both modes):
     - YAML frontmatter (---...---) provides source/target.
       Fallback: filename stem split on "-to-", "→", or "->".
     - Section heading containing "mandatory" but NOT "non" → mandatory=True.
-    - Bullet items: [REQ-ID |] [Category |] Description  (1–3 pipe parts).
     """
     source, target = "Unknown", "Unknown"
 
@@ -86,12 +333,16 @@ def _parse_markdown(text: str, filename: str = "unknown.md") -> list[Requirement
             target = m.group(1).strip()
     else:
         # Fallback: parse "erp-to-salsify.md" or "erp→salsify.md"
-        stem = re.sub(r'\.md$', '', filename, flags=re.IGNORECASE)
+        stem = re.sub(r'\.(md|txt)$', '', filename, flags=re.IGNORECASE)
         parts = re.split(r'\s*-to-\s*|\s*→\s*|\s*->\s*', stem, maxsplit=1, flags=re.IGNORECASE)
         if len(parts) == 2:
             source, target = parts[0].strip(), parts[1].strip()
 
-    # ── Parse sections + bullet items ─────────────────────────────────────────
+    # ── Route to appropriate parser ───────────────────────────────────────────
+    if _is_unstructured(body):
+        return _parse_prose_requirements(body, source, target)
+
+    # ── Structured: parse sections + bullet items ─────────────────────────────
     reqs = []
     current_mandatory = False
 
@@ -101,9 +352,7 @@ def _parse_markdown(text: str, filename: str = "unknown.md") -> list[Requirement
         # Section heading detection
         heading = re.match(r'^#{1,4}\s+(.+)$', stripped)
         if heading:
-            h = heading.group(1).lower()
-            is_non = bool(re.search(r'\bnon[-\s]?mandatory\b|\boptional\b', h))
-            current_mandatory = bool(re.search(r'\bmandatory\b', h)) and not is_non
+            current_mandatory = _mandatory_from_heading(heading.group(1))
             continue
 
         # Bullet item detection
@@ -143,16 +392,19 @@ def _parse_markdown(text: str, filename: str = "unknown.md") -> list[Requirement
 
 @router.post("/requirements/upload")
 async def upload_requirements(file: UploadFile = File(...)) -> dict:
-    """Parse a CSV or Markdown file of integration requirements."""
+    """Parse a CSV, Markdown, plain-text, or Word document of integration requirements."""
     filename = file.filename or ""
-    is_markdown = filename.lower().endswith(".md")
+    lower = filename.lower()
+    is_prose = lower.endswith(".md") or lower.endswith(".txt")
+    is_docx = lower.endswith(".docx")
 
-    if not is_markdown and file.content_type not in _ALLOWED_CSV_MIME:
+    if not is_prose and not is_docx and file.content_type not in _ALLOWED_CSV_MIME:
         raise HTTPException(
             status_code=415,
             detail=(
                 f"Unsupported media type '{file.content_type}'. "
-                "Only CSV (.csv) and Markdown (.md) files are accepted."
+                "Accepted formats: CSV (.csv), Markdown (.md), "
+                "plain text (.txt), Word (.docx)."
             ),
         )
 
@@ -164,16 +416,21 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
             detail=f"File exceeds the 1 MB limit ({len(content):,} bytes received).",
         )
 
-    try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File must be UTF-8 encoded.")
-
     state.parsed_requirements.clear()
 
-    if is_markdown:
+    if is_docx:
+        state.parsed_requirements.extend(_parse_docx_requirements(content))
+    elif is_prose:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="File must be UTF-8 encoded.")
         state.parsed_requirements.extend(_parse_markdown(text, filename))
     else:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="File must be UTF-8 encoded.")
         state.parsed_requirements.extend(_parse_csv(text))
 
     seen: dict[str, dict] = {}
@@ -182,10 +439,11 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
         if key not in seen:
             seen[key] = {"source": r.source_system, "target": r.target_system}
 
+    fmt = "docx" if is_docx else ("prose" if is_prose else "csv")
     logger.info(
         "[UPLOAD] Parsed %d requirements from %s, %d integration pair(s) detected.",
         len(state.parsed_requirements),
-        "markdown" if is_markdown else "CSV",
+        fmt,
         len(seen),
     )
     return {

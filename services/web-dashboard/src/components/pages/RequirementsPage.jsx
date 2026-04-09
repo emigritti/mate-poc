@@ -37,8 +37,9 @@ export default function RequirementsPage() {
 
   const handleFile = async (file) => {
     const lowerName = file?.name?.toLowerCase() ?? '';
-    if (!lowerName.endsWith('.csv') && !lowerName.endsWith('.md')) {
-      setError('Please upload a CSV (.csv) or Markdown (.md) file');
+    const validExt = ['.csv', '.md', '.txt', '.docx'].some(ext => lowerName.endsWith(ext));
+    if (!validExt) {
+      setError('Please upload a CSV (.csv), Markdown (.md), text (.txt), or Word (.docx) file');
       return;
     }
     setError(null);
@@ -185,7 +186,7 @@ export default function RequirementsPage() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,.md"
+          accept=".csv,.md,.txt,.docx"
           className="hidden"
           onChange={e => handleFile(e.target.files[0])}
         />
@@ -205,7 +206,7 @@ export default function RequirementsPage() {
               <p className="font-semibold text-slate-700" style={{ fontFamily: 'Outfit, sans-serif' }}>
                 Drop your requirements file here
               </p>
-              <p className="text-sm text-slate-400 mt-1">or click to browse — accepts .csv and .md files</p>
+              <p className="text-sm text-slate-400 mt-1">or click to browse — accepts .csv, .md, .txt and .docx files</p>
             </div>
           </div>
         )}

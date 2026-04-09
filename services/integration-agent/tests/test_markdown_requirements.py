@@ -1,9 +1,9 @@
 """
-Unit tests — Markdown requirements parsing (routers/requirements.py).
+Unit tests — Requirements parsing (routers/requirements.py).
 CLAUDE.md §7: Business logic, edge cases, validation.
 
 Coverage:
-  _parse_markdown():
+  _parse_markdown() — structured (bullet) mode:
   - Valid frontmatter → correct source/target
   - Mandatory section heading → mandatory=True
   - Non-mandatory / Optional heading → mandatory=False
@@ -12,7 +12,23 @@ Coverage:
   - No frontmatter → fallback filename parsing ("erp-to-salsify.md")
   - No frontmatter, unparseable filename → source/target = "Unknown"
   - Empty body → empty list
-  - Skips non-bullet lines in sections
+  - Skips non-bullet lines in sections (structured mode)
+
+  _parse_markdown() — unstructured (prose) mode:
+  - H1 + H2 → each H2 section = one requirement
+  - Only H1 → each H1 section = one requirement
+  - No headings → each paragraph = one requirement
+  - Parent H1 "mandatory" heading propagates mandatory flag to H2 children
+  - H2 heading text used as category; prose body as description
+
+  _parse_prose_requirements() / _parse_paragraphs_as_requirements():
+  - Direct unit tests for prose grouping logic
+
+  _parse_docx_requirements():
+  - Heading 1 + Heading 2 → each H2 section = one requirement
+  - Only Heading 1 → each H1 section = one requirement
+  - No heading styles → each paragraph = one requirement
+  - Returns "Unknown" for source/target (user fills via validation modal)
 
   _parse_csv():
   - Mandatory column "true" / "yes" / "1" → mandatory=True
@@ -21,18 +37,26 @@ Coverage:
   Upload endpoint:
   - .md file accepted (200)
   - .md with text/plain MIME accepted (200)
+  - .txt file accepted (200)
   - Parsed mandatory flags visible via GET /requirements
 """
 
 import io
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from fastapi.testclient import TestClient
 
 # ── Parser unit tests (no HTTP) ───────────────────────────────────────────────
 
-from routers.requirements import _parse_markdown, _parse_csv
+from routers.requirements import (
+    _parse_markdown,
+    _parse_csv,
+    _parse_prose_requirements,
+    _parse_paragraphs_as_requirements,
+    _parse_docx_requirements,
+    _is_unstructured,
+)
 
 
 _SAMPLE_MD = """\
@@ -248,3 +272,270 @@ class TestUploadMarkdown:
             files={"file": ("data.bin", io.BytesIO(b"\x00\x01"), "application/octet-stream")},
         )
         assert res.status_code == 415
+
+    def test_txt_file_accepted(self, client):
+        txt = b"## Feature A\nSync products daily.\n\n## Feature B\nArchive old assets.\n"
+        res = client.post(
+            "/api/v1/requirements/upload",
+            files={"file": ("reqs.txt", io.BytesIO(txt), "text/plain")},
+        )
+        assert res.status_code == 200
+        assert res.json()["total_parsed"] == 2
+
+
+# ── _is_unstructured ──────────────────────────────────────────────────────────
+
+class TestIsUnstructured:
+    def test_bullet_body_is_structured(self):
+        assert _is_unstructured("## Section\n- item one\n- item two\n") is False
+
+    def test_pure_prose_is_unstructured(self):
+        assert _is_unstructured("## Section\nSome prose text.\nMore prose.\n") is True
+
+    def test_mixed_prefers_structured(self):
+        # Even one bullet → structured
+        assert _is_unstructured("Prose line.\n- bullet\n") is False
+
+    def test_empty_body_is_unstructured(self):
+        assert _is_unstructured("") is True
+
+
+# ── _parse_prose_requirements ─────────────────────────────────────────────────
+
+_PROSE_H1_H2 = """\
+# Mandatory Requirements
+
+## Product Sync
+Sync all products from ERP to Salsify daily.
+Only active SKUs should be included.
+
+## Asset Archive
+Archive obsolete digital assets to cold storage.
+
+# Non-Mandatory Requirements
+
+## Reporting
+Generate a weekly sync status report.
+"""
+
+_PROSE_H1_ONLY = """\
+## Product Sync
+Transfer product master data from ERP.
+
+## Asset Management
+Manage digital assets lifecycle.
+"""
+
+_PROSE_NO_HEADINGS = """\
+Transfer product master data from ERP.
+
+Archive obsolete digital assets.
+
+Generate a weekly sync status report.
+"""
+
+
+class TestParseProseRequirements:
+    def test_h1_h2_creates_one_req_per_h2(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_H2, "ERP", "Salsify")
+        assert len(reqs) == 3
+
+    def test_h2_heading_becomes_category(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_H2, "ERP", "Salsify")
+        categories = {r.category for r in reqs}
+        assert "Product Sync" in categories
+        assert "Asset Archive" in categories
+        assert "Reporting" in categories
+
+    def test_prose_body_becomes_description(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_H2, "ERP", "Salsify")
+        sync_req = next(r for r in reqs if r.category == "Product Sync")
+        assert "Sync all products" in sync_req.description
+        assert "Only active SKUs" in sync_req.description
+
+    def test_mandatory_flag_from_parent_h1(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_H2, "ERP", "Salsify")
+        sync_req = next(r for r in reqs if r.category == "Product Sync")
+        report_req = next(r for r in reqs if r.category == "Reporting")
+        assert sync_req.mandatory is True
+        assert report_req.mandatory is False
+
+    def test_h1_only_creates_one_req_per_h1(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_ONLY, "A", "B")
+        assert len(reqs) == 2
+
+    def test_h1_only_heading_becomes_category(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_ONLY, "A", "B")
+        assert reqs[0].category == "Product Sync"
+        assert reqs[1].category == "Asset Management"
+
+    def test_source_target_propagated(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_ONLY, "ERP", "DAM")
+        assert all(r.source_system == "ERP" for r in reqs)
+        assert all(r.target_system == "DAM" for r in reqs)
+
+    def test_auto_req_id_generated(self):
+        reqs = _parse_prose_requirements(_PROSE_H1_ONLY, "A", "B")
+        assert all(r.req_id.startswith("R-") for r in reqs)
+
+    def test_empty_body_returns_empty_list(self):
+        assert _parse_prose_requirements("", "A", "B") == []
+
+
+class TestParseParagraphsAsRequirements:
+    def test_blank_lines_separate_requirements(self):
+        reqs = _parse_paragraphs_as_requirements(_PROSE_NO_HEADINGS, "A", "B")
+        assert len(reqs) == 3
+
+    def test_paragraph_text_becomes_description(self):
+        reqs = _parse_paragraphs_as_requirements(_PROSE_NO_HEADINGS, "A", "B")
+        assert "Transfer product master data" in reqs[0].description
+
+    def test_category_is_general(self):
+        reqs = _parse_paragraphs_as_requirements(_PROSE_NO_HEADINGS, "A", "B")
+        assert all(r.category == "General" for r in reqs)
+
+    def test_mandatory_defaults_false(self):
+        reqs = _parse_paragraphs_as_requirements(_PROSE_NO_HEADINGS, "A", "B")
+        assert all(r.mandatory is False for r in reqs)
+
+
+# ── _parse_markdown unstructured mode ────────────────────────────────────────
+
+class TestParseMarkdownUnstructured:
+    def test_prose_md_routes_to_prose_parser(self):
+        md = "---\nsource: ERP\ntarget: Salsify\n---\n\n## Product Sync\nSync products daily.\n"
+        reqs = _parse_markdown(md)
+        assert len(reqs) == 1
+        assert reqs[0].category == "Product Sync"
+        assert "Sync products daily" in reqs[0].description
+
+    def test_frontmatter_source_target_respected_in_prose_mode(self):
+        md = "---\nsource: PLM\ntarget: DAM\n---\n\n## Feature\nSome capability.\n"
+        reqs = _parse_markdown(md)
+        assert reqs[0].source_system == "PLM"
+        assert reqs[0].target_system == "DAM"
+
+    def test_prose_with_mandatory_parent(self):
+        md = (
+            "---\nsource: A\ntarget: B\n---\n\n"
+            "# Mandatory Requirements\n\n"
+            "## Sync\nSync data.\n\n"
+            "# Optional\n\n"
+            "## Reporting\nGenerate report.\n"
+        )
+        reqs = _parse_markdown(md)
+        assert len(reqs) == 2
+        sync = next(r for r in reqs if r.category == "Sync")
+        report = next(r for r in reqs if r.category == "Reporting")
+        assert sync.mandatory is True
+        assert report.mandatory is False
+
+    def test_txt_filename_fallback_parsing(self):
+        txt = "## Feature A\nSync products.\n"
+        reqs = _parse_markdown(txt, filename="erp-to-salsify.txt")
+        assert reqs[0].source_system == "erp"
+        assert reqs[0].target_system == "salsify"
+
+
+# ── _parse_docx_requirements ──────────────────────────────────────────────────
+
+def _make_docx_bytes(paragraphs: list[tuple[str | None, str]]) -> bytes:
+    """Build a minimal .docx in memory.
+
+    paragraphs: list of (style_name, text) where style_name is
+    'Heading 1', 'Heading 2', or None (Normal paragraph).
+    """
+    from docx import Document as DocxDocument
+    doc = DocxDocument()
+    for style, text in paragraphs:
+        if style:
+            doc.add_heading(text, level=int(style.split()[-1]))
+        else:
+            doc.add_paragraph(text)
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+class TestParseDocxRequirements:
+    def test_h1_h2_creates_one_req_per_h2(self):
+        data = _make_docx_bytes([
+            ("Heading 1", "Mandatory Requirements"),
+            ("Heading 2", "Product Sync"),
+            (None, "Sync products daily from ERP."),
+            ("Heading 2", "Asset Archive"),
+            (None, "Archive obsolete assets."),
+            ("Heading 1", "Optional"),
+            ("Heading 2", "Reporting"),
+            (None, "Generate weekly report."),
+        ])
+        reqs = _parse_docx_requirements(data)
+        assert len(reqs) == 3
+
+    def test_h2_heading_becomes_category(self):
+        data = _make_docx_bytes([
+            ("Heading 1", "Section"),
+            ("Heading 2", "Product Sync"),
+            (None, "Description here."),
+        ])
+        reqs = _parse_docx_requirements(data)
+        assert reqs[0].category == "Product Sync"
+
+    def test_body_text_becomes_description(self):
+        data = _make_docx_bytes([
+            ("Heading 2", "Feature"),
+            (None, "First sentence."),
+            (None, "Second sentence."),
+        ])
+        reqs = _parse_docx_requirements(data)
+        assert "First sentence" in reqs[0].description
+        assert "Second sentence" in reqs[0].description
+
+    def test_mandatory_flag_from_h1_parent(self):
+        data = _make_docx_bytes([
+            ("Heading 1", "Mandatory Requirements"),
+            ("Heading 2", "Sync"),
+            (None, "Sync data."),
+            ("Heading 1", "Non-Mandatory"),
+            ("Heading 2", "Reporting"),
+            (None, "Report data."),
+        ])
+        reqs = _parse_docx_requirements(data)
+        sync = next(r for r in reqs if r.category == "Sync")
+        report = next(r for r in reqs if r.category == "Reporting")
+        assert sync.mandatory is True
+        assert report.mandatory is False
+
+    def test_h1_only_creates_one_req_per_h1(self):
+        data = _make_docx_bytes([
+            ("Heading 1", "Feature A"),
+            (None, "Description A."),
+            ("Heading 1", "Feature B"),
+            (None, "Description B."),
+        ])
+        reqs = _parse_docx_requirements(data)
+        assert len(reqs) == 2
+        assert reqs[0].category == "Feature A"
+        assert reqs[1].category == "Feature B"
+
+    def test_no_headings_creates_one_req_per_paragraph(self):
+        data = _make_docx_bytes([
+            (None, "Sync products daily."),
+            (None, "Archive old assets."),
+        ])
+        reqs = _parse_docx_requirements(data)
+        assert len(reqs) == 2
+        assert reqs[0].category == "General"
+
+    def test_source_target_default_to_unknown(self):
+        data = _make_docx_bytes([("Heading 1", "Feature"), (None, "Desc.")])
+        reqs = _parse_docx_requirements(data)
+        assert reqs[0].source_system == "Unknown"
+        assert reqs[0].target_system == "Unknown"
+
+    def test_auto_req_id_starts_with_r(self):
+        data = _make_docx_bytes([("Heading 1", "Feature"), (None, "Desc.")])
+        reqs = _parse_docx_requirements(data)
+        assert reqs[0].req_id.startswith("R-")
