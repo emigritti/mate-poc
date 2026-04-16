@@ -23,6 +23,7 @@ class CapabilityKind(str, Enum):
     GUIDE_STEP = "guide_step"
     EVENT = "event"
     OVERVIEW = "overview"          # API-level summary (title, description, servers)
+    UI_SCREEN = "ui_screen"        # application screen / backoffice page (ADR-045)
 
 
 class SourceTrace(BaseModel):
@@ -62,7 +63,8 @@ class CanonicalChunk(BaseModel):
     index: int
     source_code: str                    # e.g. "payment_api_v3"
     source_type: str                    # openapi | mcp | html
-    capability_kind: str                # endpoint | tool | resource | schema | auth
+    capability_kind: str                # endpoint | tool | resource | schema | auth | ui_screen
+    chunk_type: str = "text"            # text | ui_flow_chunk | validation_rule_chunk | state_transition_chunk
     section_header: str = ""
     page_url: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
@@ -87,7 +89,7 @@ class CanonicalChunk(BaseModel):
             "chunk_index": self.index,
             "tags_csv": ",".join(self.tags),
             "section_header": self.section_header,
-            "chunk_type": "text",           # all ingested chunks are text
+            "chunk_type": self.chunk_type,
             "page_num": 0,                  # not applicable for API/MCP sources
             # ── ingestion-platform extension fields ──────────────────────
             "source_type": self.source_type,

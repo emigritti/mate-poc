@@ -70,6 +70,12 @@ class HTMLNormalizer:
         page_url = trace_raw.get("page_url", "")
         section = trace_raw.get("section", "")
 
+        # UI semantic context — optional, only for ui_screen capabilities (ADR-045)
+        ui_context = raw.get("ui_context")
+        metadata: dict[str, Any] = {}
+        if ui_context and isinstance(ui_context, dict):
+            metadata["ui_context"] = ui_context
+
         return CanonicalCapability(
             capability_id=f"{source_code}__html__{kind_raw}__{name.replace(' ', '_')[:40]}_{index}",
             kind=kind,
@@ -83,4 +89,5 @@ class HTMLNormalizer:
                 section=section,
             ),
             confidence=confidence,
+            metadata=metadata,
         )

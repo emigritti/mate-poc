@@ -51,6 +51,63 @@ BOILERPLATE_HTML = """
 """
 
 
+# ── CanonicalChunk.chunk_type tests (ADR-045) ─────────────────────────────────
+
+class TestCanonicalChunkType:
+    """CanonicalChunk.chunk_type field + to_chroma_metadata() uses it."""
+
+    def test_default_chunk_type_is_text(self):
+        from models.capability import CanonicalChunk
+        chunk = CanonicalChunk(
+            text="hello", index=0, source_code="src",
+            source_type="html", capability_kind="endpoint",
+        )
+        assert chunk.chunk_type == "text"
+
+    def test_chunk_type_propagates_to_chroma_metadata(self):
+        from models.capability import CanonicalChunk
+        chunk = CanonicalChunk(
+            text="Validation: SKU required", index=0, source_code="src",
+            source_type="html", capability_kind="ui_screen",
+            chunk_type="validation_rule_chunk",
+        )
+        meta = chunk.to_chroma_metadata(snapshot_id="snap-1")
+        assert meta["chunk_type"] == "validation_rule_chunk"
+
+    def test_ui_flow_chunk_type_in_metadata(self):
+        from models.capability import CanonicalChunk
+        chunk = CanonicalChunk(
+            text="[UI_SCREEN] Product Publish", index=0, source_code="src",
+            source_type="html", capability_kind="ui_screen",
+            chunk_type="ui_flow_chunk",
+        )
+        meta = chunk.to_chroma_metadata(snapshot_id="snap-1")
+        assert meta["chunk_type"] == "ui_flow_chunk"
+
+    def test_state_transition_chunk_type_in_metadata(self):
+        from models.capability import CanonicalChunk
+        chunk = CanonicalChunk(
+            text="[STATE_TRANSITION] Draft -> Published", index=0, source_code="src",
+            source_type="html", capability_kind="ui_screen",
+            chunk_type="state_transition_chunk",
+        )
+        meta = chunk.to_chroma_metadata(snapshot_id="snap-1")
+        assert meta["chunk_type"] == "state_transition_chunk"
+
+    def test_ui_screen_in_capability_kind_enum(self):
+        from models.capability import CapabilityKind
+        assert CapabilityKind.UI_SCREEN.value == "ui_screen"
+
+    def test_text_chunk_type_is_text_by_default_in_chroma(self):
+        from models.capability import CanonicalChunk
+        chunk = CanonicalChunk(
+            text="[ENDPOINT] create_payment", index=0, source_code="src",
+            source_type="html", capability_kind="endpoint",
+        )
+        meta = chunk.to_chroma_metadata(snapshot_id="snap-1")
+        assert meta["chunk_type"] == "text"
+
+
 # ── HTML Cleaner tests ────────────────────────────────────────────────────────
 
 class TestHTMLCleaner:
@@ -191,6 +248,72 @@ class TestHTMLAgentExtractor:
         assert caps[0]["confidence"] < 0.7
 
 
+# ── ClaudeService UI extraction tests (ADR-045) ───────────────────────────────
+
+class TestClaudeServiceUIExtraction:
+    """ClaudeService — ui_context field in extraction response is passed through."""
+
+    def test_extract_capabilities_returns_ui_context_when_present(self):
+        """If Claude returns a ui_context block, it appears in the raw dict."""
+        import asyncio
+        import json
+        from services.claude_service import ClaudeService
+
+        mock_response = MagicMock()
+        mock_response.content[0].text = json.dumps({
+            "capabilities": [{
+                "name": "Product Publish",
+                "kind": "ui_screen",
+                "description": "Screen for publishing products.",
+                "confidence": 0.95,
+                "source_trace": {"page_url": "https://app/publish", "section": "Publish"},
+                "ui_context": {
+                    "page": "Product Publish",
+                    "role": "Merchandiser",
+                    "fields": [{"name": "status", "type": "dropdown", "values": ["Draft", "Published"]}],
+                    "actions": ["Save", "Publish"],
+                    "validations": ["SKU mandatory before publish"],
+                    "messages": ["Product published successfully"],
+                    "state_transitions": ["Draft -> Published"],
+                },
+            }]
+        })
+
+        svc = ClaudeService.__new__(ClaudeService)
+        svc._extraction_model = "claude-sonnet-4-6"
+        svc._filter_model = "claude-haiku-4-5-20251001"
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        svc._client = mock_client
+
+        caps = asyncio.get_event_loop().run_until_complete(
+            svc.extract_capabilities("some page text", "https://app/publish")
+        )
+        assert len(caps) == 1
+        assert caps[0]["kind"] == "ui_screen"
+        assert "ui_context" in caps[0]
+        assert caps[0]["ui_context"]["role"] == "Merchandiser"
+        assert caps[0]["ui_context"]["validations"] == ["SKU mandatory before publish"]
+
+    def test_extraction_schema_includes_ui_screen_kind(self):
+        """_EXTRACTION_SCHEMA enum includes ui_screen."""
+        from services.claude_service import _EXTRACTION_SCHEMA
+        kinds = _EXTRACTION_SCHEMA["properties"]["capabilities"]["items"]["properties"]["kind"]["enum"]
+        assert "ui_screen" in kinds
+
+    def test_extraction_schema_includes_ui_context_property(self):
+        """_EXTRACTION_SCHEMA items include optional ui_context."""
+        from services.claude_service import _EXTRACTION_SCHEMA
+        item_props = _EXTRACTION_SCHEMA["properties"]["capabilities"]["items"]["properties"]
+        assert "ui_context" in item_props
+
+    def test_extraction_system_prompt_mentions_ui_context(self):
+        """_EXTRACTION_SYSTEM prompt instructs Claude about ui_context."""
+        from services.claude_service import _EXTRACTION_SYSTEM
+        assert "ui_context" in _EXTRACTION_SYSTEM
+        assert "ui_screen" in _EXTRACTION_SYSTEM
+
+
 # ── HTML Normalizer tests ─────────────────────────────────────────────────────
 
 class TestHTMLNormalizer:
@@ -253,6 +376,63 @@ class TestHTMLNormalizer:
         }
         caps = norm.normalize([raw], source_code="html_docs")
         assert caps[0].confidence == 1.0
+
+    def test_normalizer_stores_ui_context_in_metadata(self):
+        """ui_context dict from Claude is preserved in CanonicalCapability.metadata (ADR-045)."""
+        from collectors.html.normalizer import HTMLNormalizer
+        raw = [{
+            "name": "Product Publish",
+            "kind": "ui_screen",
+            "description": "Screen for publishing products.",
+            "confidence": 0.95,
+            "source_trace": {"page_url": "https://app/publish", "section": "Publish"},
+            "ui_context": {
+                "page": "Product Publish",
+                "role": "Merchandiser",
+                "fields": [{"name": "status", "type": "dropdown", "values": ["Draft", "Published"]}],
+                "actions": ["Save", "Publish"],
+                "validations": ["SKU mandatory before publish"],
+                "messages": ["Product published successfully"],
+                "state_transitions": ["Draft -> Published"],
+            },
+        }]
+        caps = HTMLNormalizer().normalize(raw, source_code="oms_ui")
+        assert len(caps) == 1
+        cap = caps[0]
+        assert cap.kind.value == "ui_screen"
+        ui = cap.metadata["ui_context"]
+        assert ui["role"] == "Merchandiser"
+        assert ui["fields"][0]["name"] == "status"
+        assert "SKU mandatory before publish" in ui["validations"]
+        assert "Draft -> Published" in ui["state_transitions"]
+
+    def test_normalizer_ui_screen_without_ui_context(self):
+        """ui_screen without ui_context is accepted; metadata has no ui_context key."""
+        from collectors.html.normalizer import HTMLNormalizer
+        raw = [{
+            "name": "Login Screen",
+            "kind": "ui_screen",
+            "description": "User login page.",
+            "confidence": 0.8,
+            "source_trace": {"page_url": "https://app/login", "section": "Login"},
+        }]
+        caps = HTMLNormalizer().normalize(raw, source_code="auth_ui")
+        assert len(caps) == 1
+        assert caps[0].kind.value == "ui_screen"
+        assert "ui_context" not in caps[0].metadata
+
+    def test_normalizer_non_ui_capability_has_no_ui_context(self):
+        """Regular capabilities (endpoint etc.) get no ui_context in metadata."""
+        from collectors.html.normalizer import HTMLNormalizer
+        raw = [{
+            "name": "create_payment",
+            "kind": "endpoint",
+            "description": "POST /payments",
+            "confidence": 1.0,
+            "source_trace": {"page_url": "https://docs/api", "section": "Payments"},
+        }]
+        caps = HTMLNormalizer().normalize(raw, source_code="pim_api")
+        assert "ui_context" not in caps[0].metadata
 
 
 # ── HTML Crawler tests ────────────────────────────────────────────────────────
@@ -465,6 +645,176 @@ class TestHTMLChunker:
         caps = [self._make_capability(f"op{i}") for i in range(5)]
         chunks = chunker.chunk(caps, source_code="test_source", tags=[])
         assert [c.index for c in chunks] == list(range(5))
+
+    # ── UI semantic chunking tests (ADR-045) ──────────────────────────────
+
+    def _make_ui_capability(self,
+                            name="Product Publish",
+                            role="Merchandiser",
+                            fields=None,
+                            actions=None,
+                            validations=None,
+                            state_transitions=None,
+                            messages=None):
+        """Helper: create a CanonicalCapability with ui_context."""
+        from collectors.html.normalizer import HTMLNormalizer
+        ui_ctx: dict = {"page": name, "role": role}
+        if fields is not None:
+            ui_ctx["fields"] = fields
+        if actions is not None:
+            ui_ctx["actions"] = actions
+        if validations is not None:
+            ui_ctx["validations"] = validations
+        if state_transitions is not None:
+            ui_ctx["state_transitions"] = state_transitions
+        if messages is not None:
+            ui_ctx["messages"] = messages
+        return HTMLNormalizer().normalize([{
+            "name": name,
+            "kind": "ui_screen",
+            "description": f"{name} screen",
+            "confidence": 0.9,
+            "source_trace": {"page_url": "https://app/screen", "section": name},
+            "ui_context": ui_ctx,
+        }], source_code="test_source")[0]
+
+    def test_ui_screen_produces_ui_flow_chunk(self):
+        """A ui_screen capability generates at least one ui_flow_chunk."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(
+            actions=["Save", "Publish"],
+            fields=[{"name": "status", "type": "dropdown", "values": ["Draft", "Published"]}],
+        )
+        chunks = HTMLChunker().chunk([cap], source_code="test_source", tags=["ui"])
+        flow_chunks = [c for c in chunks if c.chunk_type == "ui_flow_chunk"]
+        assert len(flow_chunks) == 1
+        assert "Product Publish" in flow_chunks[0].text
+        assert "Merchandiser" in flow_chunks[0].text
+        assert "Save" in flow_chunks[0].text
+        assert "status" in flow_chunks[0].text
+
+    def test_ui_screen_produces_validation_chunks(self):
+        """Each validation rule becomes a separate validation_rule_chunk."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(
+            validations=["SKU mandatory before publish", "Name cannot be empty"],
+        )
+        chunks = HTMLChunker().chunk([cap], source_code="test_source", tags=[])
+        val_chunks = [c for c in chunks if c.chunk_type == "validation_rule_chunk"]
+        assert len(val_chunks) == 2
+        rule_texts = [c.text for c in val_chunks]
+        assert any("SKU mandatory before publish" in t for t in rule_texts)
+        assert any("Name cannot be empty" in t for t in rule_texts)
+
+    def test_ui_screen_produces_state_transition_chunks(self):
+        """Each state transition becomes a separate state_transition_chunk."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(
+            state_transitions=["Draft -> Published", "Published -> Archived"],
+        )
+        chunks = HTMLChunker().chunk([cap], source_code="test_source", tags=[])
+        st_chunks = [c for c in chunks if c.chunk_type == "state_transition_chunk"]
+        assert len(st_chunks) == 2
+        assert any("Draft -> Published" in c.text for c in st_chunks)
+        assert any("Published -> Archived" in c.text for c in st_chunks)
+
+    def test_ui_screen_no_validations_no_validation_chunks(self):
+        """No validation_rule_chunks when validations list is empty."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(validations=[])
+        chunks = HTMLChunker().chunk([cap], source_code="test_source", tags=[])
+        assert not any(c.chunk_type == "validation_rule_chunk" for c in chunks)
+
+    def test_ui_screen_no_transitions_no_transition_chunks(self):
+        """No state_transition_chunks when state_transitions list is empty."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(state_transitions=[])
+        chunks = HTMLChunker().chunk([cap], source_code="test_source", tags=[])
+        assert not any(c.chunk_type == "state_transition_chunk" for c in chunks)
+
+    def test_non_ui_capability_produces_single_text_chunk(self):
+        """Regular endpoint capability → single text chunk (unchanged behavior)."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_capability(kind="endpoint")
+        chunks = HTMLChunker().chunk([cap], source_code="test_source", tags=[])
+        assert len(chunks) == 1
+        assert chunks[0].chunk_type == "text"
+
+    def test_chunk_indices_sequential_across_ui_and_regular(self):
+        """Global chunk index monotonically incremented across all sub-chunks."""
+        from collectors.html.chunker import HTMLChunker
+        cap_ui = self._make_ui_capability(
+            validations=["rule1", "rule2"],
+            state_transitions=["A -> B"],
+        )
+        cap_regular = self._make_capability(kind="endpoint")
+        chunks = HTMLChunker().chunk([cap_ui, cap_regular], source_code="src", tags=[])
+        indices = [c.index for c in chunks]
+        assert indices == list(range(len(chunks)))
+
+    def test_ui_flow_chunk_has_capability_kind_ui_screen(self):
+        """ui_flow_chunk has capability_kind='ui_screen'."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability()
+        chunks = HTMLChunker().chunk([cap], source_code="src", tags=[])
+        flow = next(c for c in chunks if c.chunk_type == "ui_flow_chunk")
+        assert flow.capability_kind == "ui_screen"
+
+    def test_validation_chunk_chunk_type_in_chroma_metadata(self):
+        """validation_rule_chunk propagates chunk_type into to_chroma_metadata()."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(validations=["Must have SKU"])
+        chunks = HTMLChunker().chunk([cap], source_code="src", tags=[])
+        val = next(c for c in chunks if c.chunk_type == "validation_rule_chunk")
+        meta = val.to_chroma_metadata(snapshot_id="snap-1")
+        assert meta["chunk_type"] == "validation_rule_chunk"
+
+    def test_ui_flow_chunk_contains_field_values(self):
+        """ui_flow_chunk text includes field dropdown values."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(
+            fields=[{"name": "status", "type": "dropdown", "values": ["Draft", "Published"]}]
+        )
+        chunks = HTMLChunker().chunk([cap], source_code="src", tags=[])
+        flow = next(c for c in chunks if c.chunk_type == "ui_flow_chunk")
+        assert "Draft" in flow.text
+        assert "Published" in flow.text
+
+    def test_ui_flow_chunk_contains_messages(self):
+        """ui_flow_chunk text includes messages when present."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(messages=["Product published successfully"])
+        chunks = HTMLChunker().chunk([cap], source_code="src", tags=[])
+        flow = next(c for c in chunks if c.chunk_type == "ui_flow_chunk")
+        assert "Product published successfully" in flow.text
+
+    def test_validation_chunk_text_contains_rule_and_screen(self):
+        """validation_rule_chunk text contains both the rule and the screen name."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(validations=["SKU required before publish"])
+        chunks = HTMLChunker().chunk([cap], source_code="src", tags=[])
+        val = next(c for c in chunks if c.chunk_type == "validation_rule_chunk")
+        assert "SKU required before publish" in val.text
+        assert "Product Publish" in val.text
+
+    def test_state_transition_chunk_text_contains_transition_and_screen(self):
+        """state_transition_chunk text contains both the transition and the screen name."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(state_transitions=["Draft -> Published"])
+        chunks = HTMLChunker().chunk([cap], source_code="src", tags=[])
+        st = next(c for c in chunks if c.chunk_type == "state_transition_chunk")
+        assert "Draft -> Published" in st.text
+        assert "Product Publish" in st.text
+
+    def test_ui_screen_total_chunk_count(self):
+        """Screen with 2 validations and 1 transition → 4 chunks total (1+2+1)."""
+        from collectors.html.chunker import HTMLChunker
+        cap = self._make_ui_capability(
+            validations=["rule A", "rule B"],
+            state_transitions=["X -> Y"],
+        )
+        chunks = HTMLChunker().chunk([cap], source_code="src", tags=[])
+        assert len(chunks) == 4
 
 
 # ── HTML Reconciler tests ─────────────────────────────────────────────────────

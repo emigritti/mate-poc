@@ -1201,13 +1201,39 @@ The Ingestion Platform is the only component that calls the Anthropic Claude API
 | Component | Model | Purpose |
 |---|---|---|
 | `HTMLRelevanceFilter` | claude-haiku-4-5-20251001 | Binary: is this page technically relevant? |
-| `HTMLAgentExtractor` | claude-sonnet-4-6 | Extract endpoints/auth/flows as structured JSON |
+| `HTMLAgentExtractor` | claude-sonnet-4-6 | UI semantic extraction: screens, roles, fields, validations, state transitions as structured JSON (ADR-045) |
 | `DiffService.summarize()` | claude-haiku-4-5-20251001 | Human-readable change summary (max 200 tokens) |
 
 **Graceful degradation:** if `ANTHROPIC_API_KEY` is not set, `ClaudeService` returns `None`; the HTML filter defaults to `True` (include all pages conservatively) and the extractor returns `[]` (no capabilities extracted). The service runs fully without a Claude API key, just with reduced HTML extraction quality.
 
+### UI Semantic Extraction (ADR-045)
+
+The HTML collector is designed as **UI semantic extraction**, not text scraping. When Claude identifies an application screen or backoffice page in the documentation, it extracts a structured `ui_context` block:
+
+```json
+{
+  "page": "Product Publish",
+  "role": "Merchandiser",
+  "fields": [{"name": "status", "type": "dropdown", "values": ["Draft", "Published"]}],
+  "actions": ["Save", "Publish"],
+  "validations": ["SKU mandatory before publish"],
+  "messages": ["Product published successfully"],
+  "state_transitions": ["Draft -> Published"]
+}
+```
+
+This `ui_context` is stored in `CanonicalCapability.metadata` and drives the `HTMLChunker` to generate typed chunks instead of a single generic text block:
+
+| Chunk type | Content | Retrieval benefit |
+|---|---|---|
+| `ui_flow_chunk` | Full screen: name, role, fields, actions | "What does the Publish screen look like?" |
+| `validation_rule_chunk` | One rule per chunk | "What validates SKU before publish?" |
+| `state_transition_chunk` | One transition per chunk | "What states does a product go through?" |
+
+Non-UI capabilities (API endpoints, auth, schemas) are unaffected — they still produce a single `text` chunk. The `CanonicalChunk.chunk_type` field carries the chunk type into ChromaDB metadata, enabling future retriever-side filtering by chunk type.
+
 ### Data Governance
 
-- All 3 collector types share the same `CanonicalCapability` model with a `CapabilityKind` enum (ENDPOINT, TOOL, RESOURCE, SCHEMA, AUTH, INTEGRATION_FLOW, GUIDE_STEP, EVENT, OVERVIEW).
+- All 3 collector types share the same `CanonicalCapability` model with a `CapabilityKind` enum (ENDPOINT, TOOL, RESOURCE, SCHEMA, AUTH, INTEGRATION_FLOW, GUIDE_STEP, EVENT, OVERVIEW, UI_SCREEN).
 - Capabilities with confidence < 0.7 (from Claude extraction) are **kept** in the KB but tagged `low_confidence=True` in metadata — not silently discarded, to allow human review.
 - Claude output is always validated against Pydantic models before any DB write. Claude never writes to the DB directly — `IndexingService` is the sole ChromaDB writer in the service.

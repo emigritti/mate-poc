@@ -1925,6 +1925,7 @@ gantt
 | ADR-042 | Prompt Builder Centralization | Accepted | All prompt construction moved to `prompt_builder.py`; `_SECTION_INSTRUCTIONS` (16 sections) injects per-section FactPack field guidance into rendering prompt; `build_prompt_for_mode()` unified dispatcher; bugfix: `reviewer_feedback` now forwarded to `render_document_sections()` |
 | ADR-043 | Intent-Aware Retrieval, Tag Fix, and Query Perspective Extension | Accepted | Whole-token tag matching in `_tags_match_meta()` eliminates substring false positives; `_INTENT_PERSPECTIVES` enables intent-selectable LLM query perspectives; `_INTENT_VOCABULARY` enables intent vocabulary TF-IDF boost; `retrieve(*, intent="")` keyword-only extension point |
 | ADR-044 | KB Semantic Metadata Enrichment and Upload Pipeline Deduplication | Accepted | `enrich_chunk_metadata()` pure function adds 6 ChromaDB metadata fields per chunk: `semantic_type` (8-value deterministic classification), `entity_names`, `field_names`, `rule_markers`, `integration_keywords`, `source_modality`; `_process_kb_file()` shared pipeline eliminates single/batch upload duplication; zero LLM calls, zero latency |
+| ADR-045 | UI Semantic Chunking for HTML Ingestion | Accepted | `CapabilityKind.UI_SCREEN` added; extraction schema extended with optional `ui_context` block (page, role, fields, actions, validations, messages, state_transitions); `CanonicalChunk.chunk_type` field replaces hardcoded `"text"`; `HTMLChunker` generates typed multi-chunks per UI screen: 1 `ui_flow_chunk` + N `validation_rule_chunk` + N `state_transition_chunk`; backward compatible — non-UI capabilities unchanged |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |
@@ -1935,7 +1936,7 @@ gantt
 | Batch KB Upload | `POST /api/v1/kb/batch-upload` — up to 10 files, partial success, per-file result array | n/a |
 | OpenAPI Collector | Fetcher (ETag) + parser (JSON/YAML) + normalizer + chunker + differ (SHA-256 + operation_id sets) | Full `runs` router for polling; HTML collector Playwright requires Chromium in image |
 | MCP Collector | Python `mcp` SDK SSE transport; tools/resources/prompts → `CanonicalCapability` | Test against live MCP servers |
-| HTML Collector | Playwright crawler + BS4 cleaner + Claude Haiku filter + Claude Sonnet extraction | Full Playwright headless testing in CI |
+| HTML Collector | Playwright crawler + BS4 cleaner + Claude Haiku filter + Claude Sonnet UI-semantic extraction (ADR-045); typed chunks: `ui_flow_chunk`, `validation_rule_chunk`, `state_transition_chunk` | Full Playwright headless testing in CI |
 | n8n Workflows | 6 JSON skeletons (WF-01..06) for import into n8n UI | Deploy n8n container and activate workflows |
 
 ---
