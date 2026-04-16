@@ -17,7 +17,6 @@ import pytest
 from services.fact_pack_service import (
     EvidenceClaim,
     FactPack,
-    _build_extraction_prompt,
     _extract_json_from_llm_response,
     extract_fact_pack,
     render_document_sections,

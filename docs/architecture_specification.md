@@ -309,7 +309,9 @@ services/integration-agent/
 ├── auth.py              — API key auth dependency (hmac.compare_digest)
 ├── config.py            — pydantic-settings (env vars + RAG/BM25/vision/RAPTOR parameters)
 ├── output_guard.py      — structural guard + bleach sanitization
-├── prompt_builder.py    — meta-prompt + template loading; str.replace() injection
+├── prompt_builder.py    — centralised prompt construction (ADR-042): build_prompt(),
+│                          build_fact_extraction_prompt(), build_section_render_prompt(),
+│                          build_prompt_for_mode(); _SECTION_INSTRUCTIONS (16 sections)
 ├── document_parser.py   — parse_with_docling() → DoclingChunk (text/table/figure) (ADR-034)
 │                          Fallback: semantic_chunk() via LangChain (R11)
 ├── routers/             — 8 domain APIRouter modules (no cross-imports between routers)
@@ -1919,6 +1921,7 @@ gantt
 | ADR-036 | Ingestion Platform Architecture | Accepted | New `services/ingestion-platform/` (port 4006) with 3 collectors (OpenAPI, HTML, MCP), source registry, diff engine, n8n (port 5678) orchestrator; shared `kb_collection` ChromaDB with `src_*` chunk IDs; 3 new MongoDB collections (`sources`, `source_runs`, `source_snapshots`) |
 | ADR-037 | Claude API Semantic Extraction | Accepted | Claude Haiku for HTML relevance filter and diff summaries; Claude Sonnet for schema-constrained capability extraction and cross-page reconciliation; `ClaudeService` wrapper with graceful degradation when key absent; confidence < 0.7 → `low_confidence=True` metadata (not discarded) |
 | ADR-041 | FactPack Intermediate Layer | Accepted | Two-step LLM pipeline: `extract_fact_pack()` (Claude/Ollama → JSON FactPack) + `render_document_sections()` (Ollama → markdown); 4 confidence states (confirmed/inferred/missing_evidence/to_validate); `section_reports` + `claim_reports` in `GenerationReport`; graceful degradation to single-pass; kill-switch via `FACT_PACK_ENABLED=false` |
+| ADR-042 | Prompt Builder Centralization | Accepted | All prompt construction moved to `prompt_builder.py`; `_SECTION_INSTRUCTIONS` (16 sections) injects per-section FactPack field guidance into rendering prompt; `build_prompt_for_mode()` unified dispatcher; bugfix: `reviewer_feedback` now forwarded to `render_document_sections()` |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |

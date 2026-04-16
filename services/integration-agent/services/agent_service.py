@@ -337,6 +337,8 @@ async def generate_integration_doc(
 
     if fact_pack is not None:
         # Two-step path: render document from FactPack
+        # ADR-042 bugfix: reviewer_feedback is now forwarded so HITL feedback is
+        # not silently dropped when fact_pack_used=True.
         prompt_chars = fact_pack.extraction_chars
         raw = await render_document_sections(
             fact_pack=fact_pack,
@@ -344,6 +346,7 @@ async def generate_integration_doc(
             target=target,
             requirements_text=query_text,
             document_template=get_integration_template(),
+            reviewer_feedback=reviewer_feedback,
             log_fn=_log,
         )
     else:

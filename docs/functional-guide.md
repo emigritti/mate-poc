@@ -482,23 +482,62 @@ def sanitize_llm_output(raw: str) -> str:
 ### Prompt Builder — Template Injection
 
 ```python
-# prompt_builder.py
-_TEMPLATE           = _load_template()             # reusable-meta-prompt.md
-_FUNCTIONAL_TEMPLATE = _load_functional_template() # template/functional/...
+# prompt_builder.py (ADR-042: centralised prompt construction)
 
-def build_prompt(source, target, requirements, rag_context="") -> str:
-    rag_block = f"PAST APPROVED EXAMPLES:\n{rag_context}" if rag_context.strip() else ""
+# All prompt builders for the pipeline live here.
+# build_prompt_for_mode() is the unified entry point.
 
+def build_prompt(source_system, target_system, formatted_requirements,
+                 rag_context="", kb_context="", reviewer_feedback="") -> str:
+    """Single-pass full-document prompt (fallback path)."""
     # Sequential str.replace() — not str.format() (prevents KeyError if
     # user-supplied system names contain brace patterns like '{PLM}')
-    result = _TEMPLATE
-    result = result.replace("{source_system}",          source)
-    result = result.replace("{target_system}",          target)
-    result = result.replace("{formatted_requirements}", requirements)
-    result = result.replace("{rag_context}",            rag_block)
-    result = result.replace("{document_template}",      _FUNCTIONAL_TEMPLATE)
-    return result
+    ...
+
+def build_fact_extraction_prompt(source, target, requirements_text,
+                                 rag_context_annotated) -> str:
+    """FactPack JSON extraction prompt (ADR-041/042).
+    Explicitly labels context sections with evidence weight:
+      - PAST APPROVED EXAMPLES → highest (confirmed claims)
+      - KNOWLEDGE BASE          → secondary (inferred claims)
+      - DOCUMENT SUMMARIES      → overview only
+    """
+    ...
+
+def build_section_render_prompt(fact_pack_json, source, target,
+                                requirements_text, document_template,
+                                reviewer_feedback="") -> str:
+    """FactPack rendering prompt with per-section guidance (ADR-042).
+    Injects _SECTION_INSTRUCTIONS so the LLM knows which FactPack fields
+    to prioritise for each of the 16 template sections.
+    Forwards reviewer_feedback — previously lost in the FactPack path (bug fix).
+    """
+    ...
+
+def build_prompt_for_mode(mode: Literal["full_doc","fact_extraction","section_render"],
+                          **kwargs) -> str:
+    """Unified mode dispatcher — forwards to the appropriate builder."""
+    ...
 ```
+
+### Per-Section Rendering Guidance (`_SECTION_INSTRUCTIONS`)
+
+`prompt_builder.py` contains a module-level dictionary mapping each of the 16
+template section titles to focused guidance telling the LLM which FactPack fields
+to use for that section:
+
+| Section | FactPack fields prioritised |
+|---------|---------------------------|
+| Data Mapping & Transformation | `entities`, `validations` — table only, no narrative |
+| Error Scenarios (Functional) | `errors`, `validations` — HTTP codes, retry, fallback |
+| High-Level Architecture | `systems`, `flows`, `integration_scope` — Mermaid flowchart |
+| Detailed Flow | `flows.steps` — Mermaid sequenceDiagram |
+| Security | `business_rules`, `assumptions` with auth/security context |
+| … (16 entries total) | … |
+
+This guidance is injected as a `SECTION GUIDANCE` block in `build_section_render_prompt()`
+and reduces cross-section "blending" (facts intended for one section leaking into
+unrelated sections) without requiring 16 separate LLM calls.
 
 ### 7.x ChromaDB — Two Collections
 
@@ -787,6 +826,61 @@ No migration or data changes are required — all new `GenerationReport` fields 
 defaults and existing MongoDB documents remain readable.
 
 Test count: **365 tests** (309 + 56 ADR-041 tests: 7 JSON extraction, 10 validate, 9 extract Claude/Ollama, 5 render, 6 section reports, 14 generate integration doc pipeline, 2 backward compat, 3 schemas).
+
+### 9.5 Prompt Builder Centralization (ADR-042)
+
+ADR-042 addresses three structural issues that remained after ADR-041:
+
+#### Centralized prompt construction
+
+All prompt builders now live exclusively in `prompt_builder.py`. The private
+`_build_extraction_prompt()` and `_build_rendering_prompt()` functions that
+previously existed in `fact_pack_service.py` have been promoted to public
+functions:
+
+| Function | Pipeline step |
+|----------|--------------|
+| `build_prompt()` | Single-pass fallback (unchanged) |
+| `build_fact_extraction_prompt()` | FactPack JSON extraction (ADR-041 step 1) |
+| `build_section_render_prompt()` | FactPack rendering with section guidance |
+| `build_prompt_for_mode()` | Unified mode dispatcher |
+
+#### Section-aware rendering (`_SECTION_INSTRUCTIONS`)
+
+The rendering prompt now includes a `SECTION GUIDANCE` block that maps each of
+the 16 template sections to the specific FactPack fields the LLM should use:
+
+- `Data Mapping & Transformation` → `entities`, `validations` (field-level table only)
+- `Error Scenarios (Functional)` → `errors`, `validations` (HTTP codes, retry, fallback)
+- `High-Level Architecture` → `systems`, `flows`, `integration_scope` (Mermaid diagram)
+- `Security` → `business_rules`, `assumptions` with auth/security context
+
+This reduces cross-section "blending" (architecture content appearing in data
+mapping sections, etc.) without requiring 16 separate LLM calls.
+
+#### Bugfix: `reviewer_feedback` in the FactPack path
+
+In ADR-041, HITL reviewer rejection feedback was silently lost when
+`fact_pack_used=True` because `reviewer_feedback` was not forwarded to
+`render_document_sections()`. This is now fixed: the feedback is forwarded and
+injected as a `PREVIOUS REJECTION FEEDBACK` block in the rendering prompt.
+
+**Impact:** regeneration after a rejection now correctly incorporates the
+reviewer's feedback even when the FactPack pipeline is active.
+
+#### Context evidence weight guidance
+
+The extraction prompt now explicitly explains the evidence weight of each
+ContextAssembler output section to the LLM:
+
+| Context section | Evidence weight |
+|----------------|----------------|
+| `PAST APPROVED EXAMPLES` | Highest — cite for `confirmed` claims |
+| `KNOWLEDGE BASE` | Secondary — cite for `inferred` claims |
+| `DOCUMENT SUMMARIES` | Overview only — not for specific claim citations |
+
+Test count: **396 tests** (365 + 31 ADR-042 tests in `test_prompt_builder.py`:
+9 extraction prompt, 12 rendering prompt, 5 dispatcher, 5 section instructions completeness).
 
 ---
 
