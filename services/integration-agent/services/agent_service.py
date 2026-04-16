@@ -1,22 +1,32 @@
 """
 Agent Service — core document generation logic.
 ADR-026 (R15): extracted from main.py; shared by agent router and approvals router.
+ADR-041: FactPack intermediate layer for two-step LLM pipeline.
 
 Exposes:
   generate_integration_doc() — full RAG + LLM pipeline for one catalog entry.
   _enrich_with_claude()      — optional post-processing via Claude API to fill
                                any residual 'n/a' sections (ANTHROPIC_API_KEY required).
+                               Only invoked in the single-pass fallback path.
 """
 
 import logging
 import os
 import re
+from collections import Counter
 from typing import Callable
 
 from config import settings
 from output_guard import assess_quality, sanitize_llm_output
 from prompt_builder import build_prompt, get_integration_template
-from schemas import GenerationReport, SourceChunkInfo
+from schemas import ClaimReport, GenerationReport, SectionReport, SourceChunkInfo
+from services.fact_pack_service import (
+    FactPack,
+    extract_fact_pack,
+    render_document_sections,
+    validate_fact_pack,
+    _CONFIDENCE_WEIGHTS,
+)
 from services.llm_service import generate_with_retry, llm_overrides
 from services.rag_service import ContextAssembler, fetch_url_kb_context
 from services.retriever import ScoredChunk, hybrid_retriever
@@ -38,7 +48,8 @@ async def _enrich_with_claude(
     """
     Post-process the LLM output with Claude to fix incomplete or n/a-heavy documents.
 
-    Called when ANTHROPIC_API_KEY is set AND at least one of:
+    Called only in the single-pass fallback path when ANTHROPIC_API_KEY is set AND
+    at least one of:
       - The document has fewer than _MIN_SECTIONS_FOR_COMPLETE '##' sections
         (Ollama hit the num_predict token cap before finishing all 16 sections)
       - The document contains at least one 'n/a' occurrence
@@ -141,6 +152,88 @@ def _chunks_to_source_info(
     return result
 
 
+def _build_section_reports(
+    fact_pack: FactPack,
+    document_content: str,
+) -> tuple[list[SectionReport], list[ClaimReport]]:
+    """
+    Derive per-section and per-claim reports from FactPack.evidence (ADR-041).
+
+    Algorithm:
+      1. Parse ## headings from document_content to build section list.
+      2. For each section, find EvidenceClaims whose statement keywords appear
+         in the corresponding section text (simple substring matching).
+      3. Compute section confidence as weighted average of matched claim levels.
+         Sections with no matched claims default to 0.5 (neutral / unverified).
+      4. Build ClaimReport for every EvidenceClaim in the FactPack.
+
+    Returns:
+        (list[SectionReport], list[ClaimReport])
+    """
+    # Build claim reports from all evidence
+    claim_reports: list[ClaimReport] = [
+        ClaimReport(
+            claim_id=e.claim_id,
+            statement=e.statement,
+            confidence=e.confidence,
+            source_chunk_count=len(e.source_chunks),
+        )
+        for e in fact_pack.evidence
+    ]
+
+    # Parse ## headings and their body text from the document
+    section_pattern = re.compile(r"^## (.+)$", re.MULTILINE)
+    heading_matches = list(section_pattern.finditer(document_content))
+
+    section_reports: list[SectionReport] = []
+    for idx, match in enumerate(heading_matches):
+        section_name = match.group(1).strip()
+        section_start = match.start()
+        section_end = (
+            heading_matches[idx + 1].start()
+            if idx + 1 < len(heading_matches)
+            else len(document_content)
+        )
+        section_text = document_content[section_start:section_end].lower()
+
+        # Find claims whose key terms appear in this section
+        matched_claims = [
+            e for e in fact_pack.evidence
+            if any(
+                word.lower() in section_text
+                for word in e.statement.split()
+                if len(word) > 4  # skip short words
+            )
+        ]
+
+        if matched_claims:
+            weights = [_CONFIDENCE_WEIGHTS.get(e.confidence, 0.5) for e in matched_claims]
+            section_confidence = round(sum(weights) / len(weights), 3)
+            source_chunk_ids = list({
+                chunk_id
+                for e in matched_claims
+                for chunk_id in e.source_chunks
+            })
+            issues: list[str] = []
+            if section_confidence < 0.4:
+                issues.append("low_evidence_density")
+            if any(e.confidence == "missing_evidence" for e in matched_claims):
+                issues.append("missing_evidence")
+        else:
+            section_confidence = 0.5  # unverified — no matched claims
+            source_chunk_ids = []
+            issues = ["unverified"]
+
+        section_reports.append(SectionReport(
+            section=section_name,
+            source_chunk_ids=source_chunk_ids,
+            confidence=section_confidence,
+            issues=issues,
+        ))
+
+    return section_reports, claim_reports
+
+
 async def generate_integration_doc(
     entry,                                         # CatalogEntry (avoid circular import with schemas)
     requirements: list,                            # list[Requirement]
@@ -151,22 +244,31 @@ async def generate_integration_doc(
     """
     Run the full RAG + LLM pipeline for a single catalog entry.
 
-    Pipeline:
+    Pipeline (ADR-041 two-step path, with graceful degradation to single-pass):
       1. Multi-query hybrid retrieval (approved_integrations + knowledge_base collections)
       2. Live URL KB context fetch
       3. RAPTOR-lite section summary retrieval (ADR-032)
       4. Context assembly via ContextAssembler
-      5. Prompt construction (with optional reviewer_feedback injection)
-      6. LLM generation with retry (Ollama)
-      7. Output sanitization via sanitize_llm_output()
-      8. Optional Claude enrichment to fill residual 'n/a' sections
+      --- ADR-041 two-step path (when settings.fact_pack_enabled=True) ---
+      5a. extract_fact_pack()    — LLM extracts structured JSON facts
+      5b. validate_fact_pack()   — pure-Python evidence validation
+      5c. render_document_sections() — LLM renders 16 sections from FactPack
+      --- single-pass fallback (when FactPack extraction fails or is disabled) ---
+      5d. build_prompt() + generate_with_retry() — original single-pass pipeline
+      5e. _enrich_with_claude() — fills residual n/a (only in fallback path)
+      ---
+      6. sanitize_llm_output()   — structural guard + XSS sanitization
+      7. assess_quality()        — quality metrics
+      8. build GenerationReport  — enhanced with section_reports / claim_reports
 
     Args:
         entry:              CatalogEntry with source, target, tags, requirements
         requirements:       List of Requirement objects
         reviewer_feedback:  Optional feedback from a previous HITL rejection.
-                            Injected as "## PREVIOUS REJECTION FEEDBACK" before RAG context.
+                            Injected as "## PREVIOUS REJECTION FEEDBACK" in the
+                            single-pass fallback path only.
         log_fn:             Optional logging callback (defaults to module logger.info).
+        pinned_chunks:      Optional pre-selected chunks (pinned KB references).
 
     Returns:
         Tuple of (sanitized markdown string, GenerationReport).
@@ -182,6 +284,7 @@ async def generate_integration_doc(
     query_text = " ".join(r.description for r in requirements)
     category = entry.tags[0] if entry.tags else ""
 
+    # ── Stage 1: Retrieval (unchanged) ───────────────────────────────────────
     _log(f"[RAG] Hybrid retrieval for {entry.id} (tags={entry.tags})...")
     approved_chunks = await hybrid_retriever.retrieve(
         query_text, entry.tags, state.collection,
@@ -202,6 +305,7 @@ async def generate_integration_doc(
         query_text, entry.tags, state.summaries_col,
     )
 
+    # ── Stage 2: Context Assembly (unchanged) ────────────────────────────────
     assembler = ContextAssembler()
     rag_context = assembler.assemble(
         approved_chunks, kb_scored_chunks, url_chunks,
@@ -214,45 +318,98 @@ async def generate_integration_doc(
         + (f" [with feedback: {len(reviewer_feedback)} chars]" if reviewer_feedback else "")
     )
 
-    prompt = build_prompt(
-        source_system=source,
-        target_system=target,
-        formatted_requirements=query_text,
-        rag_context=rag_context,
-        reviewer_feedback=reviewer_feedback,
-    )
-    model_used = llm_overrides.get("model", settings.ollama_model)
-    _log(f"[LLM] Prompt ready for {entry.id} — {len(prompt)} chars. Calling {model_used}...")
+    # ── Stage 3: Generation (two-step or single-pass) ─────────────────────────
+    fact_pack: FactPack | None = None
+    prompt_chars: int = 0
+    claude_was_applied = False
 
-    raw = await generate_with_retry(prompt, log_fn=_log)
+    if settings.fact_pack_enabled:
+        # ADR-041 two-step path
+        fact_pack = await extract_fact_pack(
+            rag_context=rag_context,
+            source=source,
+            target=target,
+            requirements_text=query_text,
+            log_fn=_log,
+        )
+        if fact_pack is not None:
+            fact_pack = validate_fact_pack(fact_pack, source, target)
+
+    if fact_pack is not None:
+        # Two-step path: render document from FactPack
+        prompt_chars = fact_pack.extraction_chars
+        raw = await render_document_sections(
+            fact_pack=fact_pack,
+            source=source,
+            target=target,
+            requirements_text=query_text,
+            document_template=get_integration_template(),
+            log_fn=_log,
+        )
+    else:
+        # Single-pass fallback: original pipeline (always used when fact_pack disabled or failed)
+        if settings.fact_pack_enabled:
+            _log("[FactPack] Extraction unavailable — falling back to single-pass pipeline.")
+        prompt = build_prompt(
+            source_system=source,
+            target_system=target,
+            formatted_requirements=query_text,
+            rag_context=rag_context,
+            reviewer_feedback=reviewer_feedback,
+        )
+        prompt_chars = len(prompt)
+        model_used_log = llm_overrides.get("model", settings.ollama_model)
+        _log(f"[LLM] Prompt ready for {entry.id} — {prompt_chars} chars. Calling {model_used_log}...")
+        raw = await generate_with_retry(prompt, log_fn=_log)
+
+    # ── Stage 4: Sanitization (unchanged) ────────────────────────────────────
     # The prompt ends with "# Integration Design" as a continuation seed so the
-    # model generates the document body directly (no preamble).  Ollama returns
+    # model generates the document body directly (no preamble). Ollama returns
     # only the continuation — prepend the heading so the guard always finds it.
     if not raw.lstrip().startswith("# Integration Design"):
         raw = "# Integration Design\n" + raw
     sanitized = sanitize_llm_output(raw, doc_type="integration")
 
-    # Optional: enrich residual n/a sections with Claude API (ANTHROPIC_API_KEY required)
-    enriched = await _enrich_with_claude(
-        content=sanitized,
-        source=source,
-        target=target,
-        requirements_text=query_text,
-    )
-    claude_was_applied = enriched != sanitized
+    # ── Stage 5: Enrichment (single-pass path only) ───────────────────────────
+    # In the FactPack path, evidence gaps are rendered explicitly — no n/a filling needed.
+    if fact_pack is None:
+        enriched = await _enrich_with_claude(
+            content=sanitized,
+            source=source,
+            target=target,
+            requirements_text=query_text,
+        )
+        claude_was_applied = enriched != sanitized
+    else:
+        enriched = sanitized
 
-    # ── Build GenerationReport for traceability ──────────────────────────────
+    # ── Stage 6: Quality Assessment (unchanged) ───────────────────────────────
     quality = assess_quality(enriched)
+
+    # ── Stage 7: Build enhanced GenerationReport ──────────────────────────────
     all_sources: list[SourceChunkInfo] = (
         _chunks_to_source_info(approved_chunks, label_override="approved_example")
-        + _chunks_to_source_info(kb_scored_chunks)   # label derived from metadata: kb_document | ingestion_*
+        + _chunks_to_source_info(kb_scored_chunks)   # label derived from metadata
         + _chunks_to_source_info(url_chunks, label_override="kb_url")
         + _chunks_to_source_info(summary_chunks, label_override="summary")
     )
     model_used = llm_overrides.get("model", settings.ollama_model)
+
+    section_reports: list[SectionReport] = []
+    claim_reports: list[ClaimReport] = []
+    confirmed_count = inferred_count = missing_count = validate_count = 0
+
+    if fact_pack is not None:
+        section_reports, claim_reports = _build_section_reports(fact_pack, enriched)
+        conf_counts = Counter(e.confidence for e in fact_pack.evidence)
+        confirmed_count = conf_counts["confirmed"]
+        inferred_count  = conf_counts["inferred"]
+        missing_count   = conf_counts["missing_evidence"]
+        validate_count  = conf_counts["to_validate"]
+
     report = GenerationReport(
         model=model_used,
-        prompt_chars=len(prompt),
+        prompt_chars=prompt_chars,
         context_chars=len(rag_context),
         sources=all_sources,
         sections_count=quality.section_count,
@@ -260,6 +417,15 @@ async def generate_integration_doc(
         quality_score=quality.quality_score,
         quality_issues=quality.issues,
         claude_enriched=claude_was_applied,
+        # FactPack fields (ADR-041)
+        fact_pack_used=(fact_pack is not None),
+        fact_pack_extraction_model=fact_pack.extraction_model if fact_pack else "",
+        section_reports=section_reports,
+        claim_reports=claim_reports,
+        confirmed_claim_count=confirmed_count,
+        inferred_claim_count=inferred_count,
+        missing_evidence_count=missing_count,
+        to_validate_count=validate_count,
     )
 
     return enriched, report

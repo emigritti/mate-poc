@@ -720,6 +720,74 @@ New dependencies: `docling>=2.0`, `numpy<2.0` (pin for chromadb 0.5.x compatibil
 
 Test count: **309 tests** (263 + 35 Phase 4 tests: 5 vision, 7 docling parser, 7 summarizer, 4 kb-upload, 4 retriever, 4 context-assembler, 4 integration).
 
+### 9.4 FactPack Intermediate Layer (ADR-041)
+
+ADR-041 introduces a **two-step LLM pipeline** with a structured JSON `FactPack` as
+intermediate representation between retrieval and document rendering.
+
+#### What changed in the pipeline
+
+Previously, `generate_integration_doc()` performed one LLM synthesis act: RAG context →
+Ollama → 16-section markdown. Residual `n/a` sections were filled by `_enrich_with_claude()`
+using generic industry patterns, with no distinction between real project facts and
+plausible defaults.
+
+Now the pipeline has two steps when `FACT_PACK_ENABLED=true` (default):
+
+1. **`extract_fact_pack()`** — LLM extracts structured facts from the assembled RAG context
+   into a JSON `FactPack`. Claude API (`claude-sonnet-4-6`) is preferred when
+   `ANTHROPIC_API_KEY` is set; Ollama fallback uses `temperature=0.0` for determinism.
+   Returns `None` on any failure → automatic graceful degradation to the single-pass pipeline.
+
+2. **`render_document_sections()`** — Ollama renders all 16 template sections from the
+   FactPack JSON. Sections with no evidence are rendered as explicit evidence gap markers
+   rather than `n/a`.
+
+Between the two steps, **`validate_fact_pack()`** performs pure-Python validation
+(scope correctness, claim ID uniqueness, confidence literal validity) and appends
+advisory issues to the FactPack — never blocking generation.
+
+#### Four confidence states
+
+| State | Meaning | How it appears in the document |
+|-------|---------|-------------------------------|
+| `confirmed` | Directly stated in retrieved context chunks | Written as fact |
+| `inferred` | Logically derived, not explicitly stated | Written as fact (implied) |
+| `missing_evidence` | Required but absent from retrieved context | `> Evidence gap: [what is missing]` |
+| `to_validate` | In requirements but needs human confirmation | Content + `> Requires validation: [...]` |
+
+#### What reviewers see in the GenerationReport
+
+The `generation_report` field on each `Approval` now includes:
+
+| Field | Description |
+|-------|-------------|
+| `fact_pack_used` | `true` when the two-step path was used; `false` for single-pass fallback |
+| `fact_pack_extraction_model` | `"claude-sonnet-4-6"` or `"ollama/{model}"` |
+| `section_reports` | Per-section: heading, confidence score (0.0–1.0), cited chunk IDs, issues |
+| `claim_reports` | All extracted claims with `claim_id`, `statement`, `confidence`, `source_chunk_count` |
+| `confirmed_claim_count` | Number of claims directly supported by retrieved evidence |
+| `missing_evidence_count` | Number of claims with no supporting context — high values signal thin KB coverage |
+
+#### Graceful degradation and kill-switch
+
+If `extract_fact_pack()` returns `None` (LLM failure, JSON parse error, timeout),
+`generate_integration_doc()` silently falls back to the original single-pass pipeline.
+`fact_pack_used=false` in the report; `_enrich_with_claude()` is invoked as before.
+
+To **disable** the FactPack pipeline entirely (revert to pre-ADR-041 behavior):
+
+```bash
+FACT_PACK_ENABLED=false   # environment variable
+```
+
+Or in `config.py`: `fact_pack_enabled: bool = False`.
+
+No migration or data changes are required — all new `GenerationReport` fields have safe
+defaults and existing MongoDB documents remain readable.
+
+Test count: **365 tests** (309 + 56 ADR-041 tests: 7 JSON extraction, 10 validate, 9 extract Claude/Ollama, 5 render, 6 section reports, 14 generate integration doc pipeline, 2 backward compat, 3 schemas).
+
 ---
 
 ## 10. Security Model — Why and How

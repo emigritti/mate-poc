@@ -62,12 +62,31 @@ class SourceChunkInfo(BaseModel):
     preview: str        # first 150 chars of the chunk text
 
 
+class SectionReport(BaseModel):
+    """Per-section confidence and evidence attribution (ADR-041)."""
+    section: str                    # e.g. "Error Handling"
+    source_chunk_ids: List[str] = []
+    confidence: float               # 0.0–1.0, weighted average of claim confidence levels
+    issues: List[str] = []         # e.g. ["low_evidence_density", "missing_evidence"]
+
+
+class ClaimReport(BaseModel):
+    """Per-claim evidence record surfaced from FactPack.evidence (ADR-041)."""
+    claim_id: str
+    statement: str
+    confidence: str                 # "confirmed"|"inferred"|"missing_evidence"|"to_validate"
+    source_chunk_count: int
+
+
 class GenerationReport(BaseModel):
     """
     Traceability report attached to every generated Approval.
 
     Captures which sources informed the LLM, quality metrics,
     and whether Claude API enrichment was applied.
+
+    ADR-041 adds optional FactPack fields (all default to safe values so
+    existing callers that omit them remain backward-compatible).
     """
     model: str
     prompt_chars: int
@@ -78,6 +97,15 @@ class GenerationReport(BaseModel):
     quality_score: float
     quality_issues: List[str]
     claude_enriched: bool
+    # ── FactPack fields (ADR-041) — optional; None-equivalent defaults ──
+    fact_pack_used: bool = False
+    fact_pack_extraction_model: str = ""
+    section_reports: List[SectionReport] = []
+    claim_reports: List[ClaimReport] = []
+    confirmed_claim_count: int = 0
+    inferred_claim_count: int = 0
+    missing_evidence_count: int = 0
+    to_validate_count: int = 0
 
 
 class Approval(BaseModel):

@@ -294,7 +294,8 @@ graph TB
 | **Auth** | `auth.py` | `get_api_key()` FastAPI dependency; `hmac.compare_digest()` constant-time check |
 | **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent; RAG thresholds, BM25 weights, vision/RAPTOR-lite flags |
 | **Output Guard** | `output_guard.py` | Checks `# Integration Functional Design` heading; bleach strip; 50k truncation; `assess_quality()` → `QualityReport` warning-only gate (ADR-031) |
-| **Agent Service** | `services/agent_service.py` | `generate_integration_doc()` — full RAG+LLM pipeline with `summary_chunks`; shared by agent flow and regenerate endpoint (ADR-032) |
+| **Agent Service** | `services/agent_service.py` | `generate_integration_doc()` — two-step FactPack pipeline (ADR-041) with graceful degradation to single-pass; shared by agent flow and regenerate endpoint |
+| **FactPack Service** | `services/fact_pack_service.py` | `extract_fact_pack()` (Claude/Ollama JSON extraction), `validate_fact_pack()` (pure Python), `render_document_sections()` (Ollama render) — ADR-041 |
 
 ### 5.1 Backend Module Structure (Phase 1 — ADR-026)
 
@@ -327,7 +328,8 @@ services/integration-agent/
     ├── retriever.py         — HybridRetriever: BM25+dense + TF-IDF re-rank + retrieve_summaries() (ADR-027..030/ADR-035)
     ├── vision_service.py    — caption_figure(): llava:7b via Ollama, fallback placeholder (ADR-034)
     ├── summarizer_service.py — summarize_section(): RAPTOR-lite SummaryChunk via llama3.1:8b (ADR-035)
-    └── agent_service.py     — generate_integration_doc(): RAG + summary_chunks pipeline (ADR-032)
+    ├── agent_service.py     — generate_integration_doc(): RAG + FactPack two-step pipeline (ADR-041)
+    └── fact_pack_service.py — extract_fact_pack(), validate_fact_pack(), render_document_sections() (ADR-041)
 ```
 
 **Design constraints (ADR-026):**
@@ -806,9 +808,11 @@ sequenceDiagram
 | 2. Trigger | Analyst | POST /agent/trigger | `asyncio.Lock` prevents concurrent runs |
 | 3. Group | Agent | Cluster reqs by source+target | `|||` separator (not hyphen — avoids system name collision) |
 | 4. RAG Query | Agent | HybridRetriever — multi-query expansion (4 variants: 2 templates + 2 LLM) + BM25+dense ensemble (weights 0.6/0.4) + threshold filter + TF-IDF cosine re-rank + ContextAssembler (R8–R10) | Falls back to zero-shot if no chunks pass `rag_distance_threshold`; LLM query expansion has fallback to template variants |
-| 5. Build Prompt | Agent | Inject meta-prompt + template + RAG | `str.replace()` — no `format()` (prevents KeyError) |
-| 6. LLM Call | Agent | POST to Ollama | 600s timeout; async; error caught → log + skip |
-| 7. Output Guard | Agent | Structural + XSS check | Must start with `# Integration Functional Design` |
+| 5. Build Prompt | Agent | Inject meta-prompt + template + RAG (single-pass fallback only) | `str.replace()` — no `format()` (prevents KeyError) |
+| 6a. FactPack Extract | Agent | `extract_fact_pack()`: LLM extracts structured JSON FactPack from RAG context | Claude API preferred (`claude-sonnet-4-6`); Ollama fallback at `temperature=0.0`; returns `None` on failure → graceful degradation to step 6b (ADR-041) |
+| 6b. FactPack Validate | Agent | `validate_fact_pack()`: pure-Python evidence validation | Advisory only — appends issues to FactPack; never blocks generation |
+| 6c. Document Render | Agent | `render_document_sections()`: Ollama renders 16 sections from FactPack — OR single-pass fallback: `generate_with_retry()` with full prompt | 900s timeout; async; error caught → log + skip; `missing_evidence` → explicit evidence gap markers (not `n/a`) |
+| 7. Output Guard | Agent | Structural + XSS check | Must start with `# Integration Design` |
 | 7a. Quality Check | Agent | `assess_quality()` evaluates section count, n/a ratio, word count → `QualityReport` logged (warning-only, never rejects) | Advisory gate — low scores signal to reviewers that content may need regeneration |
 | 8. HITL Queue | Agent | Store as PENDING | No automatic write to final store without human |
 | 9. Human Review | Analyst | Edit + Approve/Reject in UI | `sanitize_human_content()` on submit |
@@ -1914,6 +1918,7 @@ gantt
 | ADR-035 | RAPTOR-lite Section Summaries | Accepted | Section-header grouping of `DoclingChunk`s; sections ≥ 3 chunks summarised via llama3.1:8b; `SummaryChunk` stored in `kb_summaries` ChromaDB collection; dense-only retrieval injected as `## DOCUMENT SUMMARIES` first section |
 | ADR-036 | Ingestion Platform Architecture | Accepted | New `services/ingestion-platform/` (port 4006) with 3 collectors (OpenAPI, HTML, MCP), source registry, diff engine, n8n (port 5678) orchestrator; shared `kb_collection` ChromaDB with `src_*` chunk IDs; 3 new MongoDB collections (`sources`, `source_runs`, `source_snapshots`) |
 | ADR-037 | Claude API Semantic Extraction | Accepted | Claude Haiku for HTML relevance filter and diff summaries; Claude Sonnet for schema-constrained capability extraction and cross-page reconciliation; `ClaudeService` wrapper with graceful degradation when key absent; confidence < 0.7 → `low_confidence=True` metadata (not discarded) |
+| ADR-041 | FactPack Intermediate Layer | Accepted | Two-step LLM pipeline: `extract_fact_pack()` (Claude/Ollama → JSON FactPack) + `render_document_sections()` (Ollama → markdown); 4 confidence states (confirmed/inferred/missing_evidence/to_validate); `section_reports` + `claim_reports` in `GenerationReport`; graceful degradation to single-pass; kill-switch via `FACT_PACK_ENABLED=false` |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |
@@ -1933,6 +1938,7 @@ gantt
 
 | Item | Current State | Planned |
 |------|--------------|---------|
+| FactPack extraction quality (Ollama) | Ollama fallback at `temperature=0.0` with JSON extraction; small models (8b–14b) may produce incomplete FactPacks → graceful degradation to single-pass | Enable Ollama function-calling when model support stabilizes; or route all extractions to Claude API |
 | Technical spec generation | Endpoint returns 501 stub | Implement `template/technical/` flow |
 | Security middleware | Passthrough in PoC | Full JWT/RBAC integration |
 | OpenAPI spec reading | Ingestion Platform OpenAPI collector (ETag caching, hash diff, breaking change detection) | Live spec ingestion for data mapping via Ingestion Platform source registry |

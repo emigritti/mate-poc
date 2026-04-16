@@ -111,6 +111,17 @@ class Settings(BaseSettings):
     # Char budget reserved for DOCUMENT SUMMARIES section in ContextAssembler.
     rag_summary_max_chars: int = 500
 
+    # ── FactPack Intermediate Layer (ADR-041) ────────────────────────────────────
+    # Set to False to bypass fact_pack extraction and use the single-pass pipeline.
+    # Also bypassed automatically if extraction fails for any reason (graceful degradation).
+    fact_pack_enabled: bool = True
+    # Max tokens for the fact_pack extraction LLM call (Claude or Ollama).
+    # Needs to cover JSON output for all 11 top-level fields.
+    fact_pack_max_tokens: int = 3000
+    # Ollama timeout (seconds) for the fact_pack extraction call.
+    # Separate from the main ollama_timeout_seconds (document generation).
+    fact_pack_ollama_timeout_seconds: int = 120
+
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.
     # If absent, endpoints log a warning and allow through (dev mode).
