@@ -760,7 +760,82 @@ Both features are independently disableable via config flags:
 
 New dependencies: `docling>=2.0`, `numpy<2.0` (pin for chromadb 0.5.x compatibility).
 
-Test count: **322 tests** (263 + 35 Phase 4 + 13 ADR-043 retriever intent/tag tests + 11 other ADR tests).
+Test count: **338 tests** (263 + 35 Phase 4 + 13 ADR-043 retriever intent/tag tests + 16 ADR-044 semantic enrichment + 11 other ADR tests).
+
+### 9.3.3 KB Semantic Metadata Enrichment and Upload Pipeline Deduplication (ADR-044)
+
+#### Problem addressed
+
+The KB upload pipeline had two independent weaknesses identified in SME review:
+
+1. **Semantically thin metadata** — ChromaDB stored positional fields only (`document_id`, `filename`, `chunk_index`, `chunk_type`, `page_num`, `section_header`, `tags_csv`). The retriever could not distinguish a business-rule chunk from a field-mapping table or an error-handling pattern without reading the full text.
+
+2. **Duplicated upload pipeline** — `kb_upload()` and `kb_batch_upload()` contained ~60 lines of identical logic (parse → auto-tag → ChromaDB upsert → state update). Any future enrichment added to one endpoint had to be manually mirrored to the other.
+
+#### `enrich_chunk_metadata()` — deterministic semantic enrichment
+
+A pure function in `document_parser.py` that takes a `DoclingChunk` and the `source_modality` (file extension) and returns 6 new metadata fields stored in ChromaDB alongside the existing structural fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `semantic_type` | `str` | One of 8 fixed values classifying the chunk's functional role |
+| `entity_names` | `str` (CSV) | PascalCase/CamelCase entity names found in the text (max 10) |
+| `field_names` | `str` (CSV) | snake_case field names found in the text (max 15) |
+| `rule_markers` | `str` (CSV) | Normative language: "mandatory", "must", "required", … |
+| `integration_keywords` | `str` (CSV) | Domain terms: "api", "webhook", "oauth", "retry", … |
+| `source_modality` | `str` | File extension: "pdf", "docx", "md", "xlsx", … |
+
+**`semantic_type` classification** is deterministic — no LLM call, zero latency:
+
+| Value | Condition |
+|-------|-----------|
+| `"data_mapping_candidate"` | `chunk_type == "table"` |
+| `"diagram_or_visual"` | `chunk_type == "figure"` |
+| `"business_rule"` | ≥ 2 rule markers in text |
+| `"error_handling"` | ≥ 2 error keywords in text |
+| `"security_requirement"` | ≥ 2 security keywords in text |
+| `"architecture"` | ≥ 2 architecture keywords in text |
+| `"data_definition"` | ≥ 3 snake_case field names detected |
+| `"general_text"` | fallback |
+
+All values are plain strings (ChromaDB metadata constraint: no list types). List-typed fields use comma-separated encoding, consistent with the existing `tags_csv` convention. `enrich_chunk_metadata()` guarantees all returned values are strings — empty extraction produces `""` not `None`.
+
+**Seven constants** added to `document_parser.py` for keyword detection: `_RULE_MARKERS`, `_INTEGRATION_KEYWORDS`, `_ARCHITECTURE_KEYWORDS`, `_ERROR_KEYWORDS`, `_SECURITY_KEYWORDS`, `_FIELD_PATTERN` (snake_case regex), `_ENTITY_PATTERN` (PascalCase/CamelCase regex).
+
+#### `_process_kb_file()` — shared upload pipeline
+
+A new private async function in `routers/kb.py` that consolidates the shared steps:
+
+```
+_process_kb_file(content, filename, file_type)
+  → (doc_id, docling_chunks, auto_tags, tags_csv)
+
+Steps:
+  1. parse_with_docling()
+  2. suggest_kb_tags_via_llm()
+  3. generate doc_id
+  4. ChromaDB upsert — with **enrich_chunk_metadata() spread into every chunk metadata
+  5. state.kb_docs / state.kb_chunks update
+```
+
+Raises `RuntimeError` on failure; the caller maps it to the appropriate HTTP response:
+- `kb_upload()` → `HTTPException(422)`
+- `kb_batch_upload()` → append error result, continue
+
+Steps that remain in each endpoint (intentional divergence):
+- BM25 index rebuild — called after each file
+- MongoDB store
+- RAPTOR timing — **background** (`background_tasks.add_task()`) in single upload; **inline** (`await`) in batch upload
+
+#### Security properties
+
+- All extraction is deterministic — no external calls, no user-supplied code execution.
+- `source_modality` is derived from the server-side `detect_file_type()` result, never from user-supplied metadata (no injection vector).
+- The 6 new fields are stored in ChromaDB metadata only. They do not affect prompt construction and are not currently surfaced in LLM context — no prompt-injection risk.
+
+#### Rollback
+
+Remove the `**enrich_chunk_metadata(c, file_type)` spread from the metadata dict in `_process_kb_file()`. ChromaDB will stop receiving the 6 new fields. Documents already stored retain the fields (harmless extra metadata). No schema migration required.
 
 ### 9.4 FactPack Intermediate Layer (ADR-041)
 

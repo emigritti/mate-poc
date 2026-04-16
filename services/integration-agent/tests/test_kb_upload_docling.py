@@ -1,5 +1,5 @@
 """
-Unit tests for KB upload flow with Docling pipeline (ADR-031 / ADR-032).
+Unit tests for KB upload flow with Docling pipeline (ADR-031 / ADR-032 / ADR-044).
 
 TDD: tests written before modifying routers/kb.py.
 
@@ -8,6 +8,9 @@ Verifies:
   - DoclingChunks are stored in kb_collection with chunk_type, page_num, section_header metadata
   - Summaries are generated for sections with >= 3 chunks and upserted to summaries_col
   - Figure chunks are included in BM25 rebuild (all chunk types in state.kb_chunks)
+  ADR-044 additions:
+  - Semantic metadata fields (semantic_type, entity_names, field_names, rule_markers,
+    integration_keywords, source_modality) are present in every ChromaDB chunk upsert
 """
 import asyncio
 import io
@@ -154,6 +157,47 @@ def test_upload_upserts_summary_to_summaries_col_when_section_has_enough_chunks(
         )
 
     assert summary.text in captured_summaries, "Summary was not upserted to summaries_col"
+
+
+def test_upload_stores_semantic_metadata_in_chromadb(client):
+    """Every chunk upserted to ChromaDB must include all 6 ADR-044 semantic metadata fields."""
+    chunks = _make_docling_chunks()
+    captured_metadatas: list[list[dict]] = []
+
+    def _capture_upsert(**kwargs):
+        captured_metadatas.append(kwargs.get("metadatas", []))
+
+    mock_kb_col = MagicMock()
+    mock_kb_col.upsert = _capture_upsert
+    mock_summaries_col = MagicMock()
+
+    with patch("routers.kb.parse_with_docling", new=AsyncMock(return_value=chunks)), \
+         patch("routers.kb.suggest_kb_tags_via_llm", new=AsyncMock(return_value=["Integration"])), \
+         patch("routers.kb.summarize_section", new=AsyncMock(return_value=None)), \
+         patch("routers.kb.state") as mock_state, \
+         patch("routers.kb.db") as mock_db:
+        mock_state.kb_collection = mock_kb_col
+        mock_state.summaries_col = mock_summaries_col
+        mock_state.kb_docs = {}
+        mock_state.kb_chunks = {}
+        mock_db.kb_documents_col = None
+
+        client.post(
+            "/api/v1/kb/upload",
+            files={"file": ("test.md", b"# Section\n\nContent.", "text/markdown")},
+        )
+
+    assert captured_metadatas, "ChromaDB upsert was not called"
+    _SEMANTIC_FIELDS = {
+        "semantic_type", "entity_names", "field_names",
+        "rule_markers", "integration_keywords", "source_modality",
+    }
+    for meta in captured_metadatas[0]:
+        missing = _SEMANTIC_FIELDS - set(meta.keys())
+        assert not missing, f"Chunk metadata missing ADR-044 fields: {missing}"
+        # All semantic values must be strings (ChromaDB constraint)
+        for field in _SEMANTIC_FIELDS:
+            assert isinstance(meta[field], str), f"Field '{field}' is not a string: {meta[field]!r}"
 
 
 def test_upload_includes_figure_chunks_in_bm25_corpus(client):

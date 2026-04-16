@@ -8,6 +8,10 @@ Coverage:
   - Full parse_document flow for MD
   - Image file type detection (PNG, JPG, SVG)
   - Standalone image parsing via parse_with_docling (PNG/JPG → caption_figure, SVG → XML text)
+  ADR-044 additions:
+  - enrich_chunk_metadata: semantic_type classification (all 8 types), field extraction,
+    entity extraction, rule markers, integration keywords, source_modality passthrough,
+    ChromaDB string-value constraint, empty-text edge case
 """
 
 import asyncio
@@ -16,9 +20,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from document_parser import (
+    DoclingChunk,
     DocumentParseError,
     chunk_text,
     detect_file_type,
+    enrich_chunk_metadata,
     parse_document,
     parse_with_docling,
 )
@@ -238,3 +244,115 @@ class TestParseImageStandalone:
 
         assert chunks[0].chunk_type == "figure"
         assert chunks[0].text == "[FIGURE: no caption available]"
+
+
+# ── ADR-044: enrich_chunk_metadata ────────────────────────────────────────────
+
+def _text_chunk(text: str, section: str = "") -> DoclingChunk:
+    return DoclingChunk(text=text, chunk_type="text",
+                        page_num=1, section_header=section, index=0, metadata={})
+
+
+def _table_chunk(text: str = "[TABLE]\n| Source | Target |") -> DoclingChunk:
+    return DoclingChunk(text=text, chunk_type="table",
+                        page_num=1, section_header="", index=0, metadata={})
+
+
+def _figure_chunk(text: str = "[FIGURE: sequence diagram]") -> DoclingChunk:
+    return DoclingChunk(text=text, chunk_type="figure",
+                        page_num=1, section_header="", index=0, metadata={})
+
+
+class TestEnrichChunkMetadata:
+    """Unit tests for enrich_chunk_metadata() — ADR-044."""
+
+    def test_table_chunk_semantic_type_is_data_mapping_candidate(self):
+        result = enrich_chunk_metadata(_table_chunk(), "pdf")
+        assert result["semantic_type"] == "data_mapping_candidate"
+
+    def test_figure_chunk_semantic_type_is_diagram_or_visual(self):
+        result = enrich_chunk_metadata(_figure_chunk(), "pdf")
+        assert result["semantic_type"] == "diagram_or_visual"
+
+    def test_text_chunk_with_rule_markers_is_business_rule(self):
+        chunk = _text_chunk("The field is mandatory. The value must be validated and required.")
+        result = enrich_chunk_metadata(chunk, "docx")
+        assert result["semantic_type"] == "business_rule"
+
+    def test_text_chunk_with_error_keywords_is_error_handling(self):
+        chunk = _text_chunk("On timeout, trigger a retry and fallback to the dead-letter queue.")
+        result = enrich_chunk_metadata(chunk, "md")
+        assert result["semantic_type"] == "error_handling"
+
+    def test_text_chunk_with_security_keywords_is_security_requirement(self):
+        chunk = _text_chunk("Use OAuth token-based authentication. Credential must use TLS encryption.")
+        result = enrich_chunk_metadata(chunk, "pdf")
+        assert result["semantic_type"] == "security_requirement"
+
+    def test_text_chunk_with_architecture_keywords_is_architecture(self):
+        chunk = _text_chunk("The integration architecture uses an asynchronous pipeline with sequence diagram.")
+        result = enrich_chunk_metadata(chunk, "docx")
+        assert result["semantic_type"] == "architecture"
+
+    def test_text_chunk_with_many_field_names_is_data_definition(self):
+        chunk = _text_chunk("Fields: product_id, published_at, order_status, price_amount.")
+        result = enrich_chunk_metadata(chunk, "xlsx")
+        assert result["semantic_type"] == "data_definition"
+
+    def test_text_chunk_generic_is_general_text(self):
+        chunk = _text_chunk("This document describes best practices for enterprise solutions.")
+        result = enrich_chunk_metadata(chunk, "md")
+        assert result["semantic_type"] == "general_text"
+
+    def test_source_modality_passthrough(self):
+        result = enrich_chunk_metadata(_text_chunk("some content"), "pptx")
+        assert result["source_modality"] == "pptx"
+
+    def test_all_output_values_are_strings(self):
+        """ChromaDB metadata requires str/int/float/bool — no lists or None."""
+        result = enrich_chunk_metadata(_text_chunk("content"), "pdf")
+        for key, value in result.items():
+            assert isinstance(value, str), f"Field '{key}' is {type(value).__name__}, expected str"
+
+    def test_field_names_extracted_snake_case(self):
+        chunk = _text_chunk("Map product_code and published_at to target_field.")
+        result = enrich_chunk_metadata(chunk, "md")
+        fields = result["field_names"].split(",")
+        assert "product_code" in fields
+        assert "published_at" in fields
+        assert "target_field" in fields
+
+    def test_integration_keywords_matched(self):
+        chunk = _text_chunk("The API endpoint uses OAuth and webhook delivery via REST.")
+        result = enrich_chunk_metadata(chunk, "md")
+        keywords = result["integration_keywords"].split(",")
+        assert "api" in keywords
+        assert "oauth" in keywords
+        assert "rest" in keywords
+        assert "webhook" in keywords
+
+    def test_rule_markers_matched(self):
+        chunk = _text_chunk("This field is mandatory. The value must pass validation.")
+        result = enrich_chunk_metadata(chunk, "pdf")
+        markers = result["rule_markers"].split(",")
+        assert "mandatory" in markers
+        assert "must" in markers
+        assert "validation" in markers
+
+    def test_entity_names_extracted_camel_case(self):
+        chunk = _text_chunk("The ProductMaster entity maps to SalesOrder via OrderId.")
+        result = enrich_chunk_metadata(chunk, "docx")
+        entities = result["entity_names"].split(",")
+        assert "ProductMaster" in entities
+        assert "SalesOrder" in entities
+        assert "OrderId" in entities
+
+    def test_empty_text_produces_empty_strings_not_none(self):
+        """Empty chunk must not produce None values — empty string for all list fields."""
+        chunk = _text_chunk("")
+        result = enrich_chunk_metadata(chunk, "md")
+        assert result["entity_names"] == ""
+        assert result["field_names"] == ""
+        assert result["rule_markers"] == ""
+        assert result["integration_keywords"] == ""
+        assert result["semantic_type"] == "general_text"
