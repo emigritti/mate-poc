@@ -465,3 +465,154 @@ class TestHTMLChunker:
         caps = [self._make_capability(f"op{i}") for i in range(5)]
         chunks = chunker.chunk(caps, source_code="test_source", tags=[])
         assert [c.index for c in chunks] == list(range(5))
+
+
+# ── HTML Reconciler tests ─────────────────────────────────────────────────────
+
+class TestHTMLReconciler:
+    """Tests for HTMLReconciler — cross-page capability deduplication (ADR-037)."""
+
+    def _make_capabilities(self, names: list[str], source_code: str = "test_source"):
+        from collectors.html.normalizer import HTMLNormalizer
+        norm = HTMLNormalizer()
+        caps = []
+        for name in names:
+            caps.extend(norm.normalize([{
+                "name": name,
+                "kind": "endpoint",
+                "description": f"Description for {name}",
+                "confidence": 0.9,
+                "source_trace": {"page_url": "https://docs.example.com", "section": name},
+            }], source_code=source_code))
+        return caps
+
+    def test_passthrough_when_claude_unavailable(self):
+        """Returns input unchanged when Claude service is None."""
+        from collectors.html.reconciler import HTMLReconciler
+        reconciler = HTMLReconciler(claude_service=None)
+        caps = self._make_capabilities(["create_payment", "get_payment"])
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            reconciler.reconcile(caps, source_code="test_source")
+        )
+        assert result is caps  # same object — no copy
+
+    def test_passthrough_single_capability(self):
+        """Single capability is returned as-is without calling Claude."""
+        from collectors.html.reconciler import HTMLReconciler
+        mock_claude = AsyncMock()
+        reconciler = HTMLReconciler(claude_service=mock_claude)
+        caps = self._make_capabilities(["only_one"])
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            reconciler.reconcile(caps, source_code="test_source")
+        )
+        assert len(result) == 1
+        mock_claude.reconcile_capabilities.assert_not_called()
+
+    def test_passthrough_empty_list(self):
+        """Empty list is returned unchanged without calling Claude."""
+        from collectors.html.reconciler import HTMLReconciler
+        mock_claude = AsyncMock()
+        reconciler = HTMLReconciler(claude_service=mock_claude)
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            reconciler.reconcile([], source_code="test_source")
+        )
+        assert result == []
+        mock_claude.reconcile_capabilities.assert_not_called()
+
+    def test_merges_near_duplicates(self):
+        """Two near-duplicate capabilities are merged into one by Claude."""
+        from collectors.html.reconciler import HTMLReconciler
+        mock_claude = AsyncMock()
+        mock_claude.reconcile_capabilities = AsyncMock(return_value=[
+            {
+                "name": "create_payment",
+                "kind": "endpoint",
+                "description": "POST /payments — creates payment (merged from 2 pages)",
+                "confidence": 0.95,
+                "source_trace": {"page_url": "https://docs.example.com/api", "section": "Payments"},
+            }
+        ])
+        reconciler = HTMLReconciler(claude_service=mock_claude)
+        # Two near-duplicate inputs
+        caps = self._make_capabilities(["create_payment", "create_payment"])
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            reconciler.reconcile(caps, source_code="test_source")
+        )
+        assert len(result) == 1
+        assert result[0].name == "create_payment"
+        assert result[0].confidence == pytest.approx(0.95)
+
+    def test_preserves_distinct_capabilities(self):
+        """Distinct capabilities are all returned when Claude reports no duplicates."""
+        from collectors.html.reconciler import HTMLReconciler
+        mock_claude = AsyncMock()
+        mock_claude.reconcile_capabilities = AsyncMock(return_value=[
+            {
+                "name": "create_payment",
+                "kind": "endpoint",
+                "description": "POST /payments",
+                "confidence": 0.9,
+                "source_trace": {"page_url": "https://docs.example.com", "section": "A"},
+            },
+            {
+                "name": "get_payment",
+                "kind": "endpoint",
+                "description": "GET /payments/{id}",
+                "confidence": 0.9,
+                "source_trace": {"page_url": "https://docs.example.com", "section": "B"},
+            },
+        ])
+        reconciler = HTMLReconciler(claude_service=mock_claude)
+        caps = self._make_capabilities(["create_payment", "get_payment"])
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            reconciler.reconcile(caps, source_code="test_source")
+        )
+        assert len(result) == 2
+
+    def test_fallback_on_claude_none_response(self):
+        """When Claude returns None (error), original batch is returned unchanged."""
+        from collectors.html.reconciler import HTMLReconciler
+        mock_claude = AsyncMock()
+        mock_claude.reconcile_capabilities = AsyncMock(return_value=None)
+        reconciler = HTMLReconciler(claude_service=mock_claude)
+        caps = self._make_capabilities(["create_payment", "get_payment"])
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            reconciler.reconcile(caps, source_code="test_source")
+        )
+        # Original batch preserved — graceful degradation
+        assert len(result) == 2
+
+    def test_batches_large_input(self):
+        """Input larger than _BATCH_SIZE triggers multiple Claude calls."""
+        from collectors.html.reconciler import HTMLReconciler, _BATCH_SIZE
+        mock_claude = AsyncMock()
+        # Return the input unchanged (no merges)
+        async def echo_caps(caps_list):
+            return caps_list
+        mock_claude.reconcile_capabilities = echo_caps
+
+        reconciler = HTMLReconciler(claude_service=mock_claude)
+        # Create _BATCH_SIZE + 5 capabilities
+        caps = self._make_capabilities([f"op_{i}" for i in range(_BATCH_SIZE + 5)])
+        import asyncio
+        result = asyncio.get_event_loop().run_until_complete(
+            reconciler.reconcile(caps, source_code="test_source")
+        )
+        # Two batches processed — all capabilities preserved (no duplicates)
+        assert len(result) == _BATCH_SIZE + 5
+
+    def test_cap_to_dict_serialization(self):
+        """_cap_to_dict produces the expected dict structure for Claude input."""
+        from collectors.html.reconciler import HTMLReconciler
+        caps = self._make_capabilities(["auth_flow"])
+        d = HTMLReconciler._cap_to_dict(caps[0])
+        assert d["name"] == "auth_flow"
+        assert d["kind"] == "endpoint"
+        assert "page_url" in d["source_trace"]
+        assert "section" in d["source_trace"]

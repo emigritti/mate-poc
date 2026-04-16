@@ -24,6 +24,7 @@ from collectors.html.cleaner import HTMLCleaner
 from collectors.html.extractor import HTMLRelevanceFilter
 from collectors.html.agent_extractor import HTMLAgentExtractor
 from collectors.html.normalizer import HTMLNormalizer
+from collectors.html.reconciler import HTMLReconciler
 from collectors.html.chunker import HTMLChunker
 from services.indexing_service import IndexingService
 from services.diff_service import DiffService
@@ -266,6 +267,10 @@ async def _run_html_ingestion(source_id: str, run: SourceRun) -> None:
             raw_caps = await agent_extractor.extract(clean_text, page.url)
             caps = normalizer.normalize(raw_caps, source_code=source.code)
             all_capabilities.extend(caps)
+
+        # 4b. Cross-page reconciliation: merge near-duplicate capabilities (ADR-037)
+        reconciler = HTMLReconciler(claude_service=claude)
+        all_capabilities = await reconciler.reconcile(all_capabilities, source_code=source.code)
 
         if not all_capabilities:
             logger.info("No capabilities extracted for source %s — crawl completed", source_id)
