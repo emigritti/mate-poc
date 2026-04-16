@@ -128,7 +128,7 @@ Before triggering the agent, architects can populate the **Knowledge Base** via 
 
 When the agent generates a new integration document, it queries the knowledge base alongside the approved-examples RAG store — injecting the most relevant best-practice content into the prompt as a `BEST PRACTICES REFERENCE` section.
 
-**Tag matching controls injection**: only KB entries (file or URL) whose tags overlap with the integration's confirmed tags are retrieved. This ensures that a Salsify URL is only injected when generating a Salsify integration, not for unrelated integrations.
+**Tag matching controls injection**: only KB entries (file or URL) whose tags overlap with the integration's confirmed tags are retrieved. This ensures that a Salsify URL is only injected when generating a Salsify integration, not for unrelated integrations. Tag matching uses whole-token comparison (comma-split, case-insensitive) to eliminate substring false positives — `"PL"` no longer incorrectly matches `"PLM,SAP"` (ADR-043).
 
 This step is optional: if the Knowledge Base is empty, the agent relies solely on past approved documents from the `approved_integrations` ChromaDB collection.
 
@@ -392,10 +392,11 @@ Phase 2 replaced the original single-query `collection.query(n_results=2)` call 
 **Retrieval pipeline (per agent run):**
 
 ```
-1. Multi-query expansion (R8)
+1. Multi-query expansion (R8, extended ADR-043)
       Original query → 4 variants:
         - 2 deterministic templates ("technical: ...", "business: ...")
-        - 2 LLM-generated rephrasings (technical + business focus)
+        - 2 LLM-generated rephrasings using intent-selectable perspectives
+          (intent="" falls back to "technical systems integration" + "business process")
       LLM variants degrade gracefully if Ollama is unavailable.
 
 2. BM25 + Dense hybrid retrieval (ADR-027)
@@ -410,9 +411,11 @@ Phase 2 replaced the original single-query `collection.query(n_results=2)` call 
         score = 1 / (1 + distance)   # converts ChromaDB distance to similarity
         config key: rag_distance_threshold = 0.8
 
-4. TF-IDF re-rank (R9)
+4. TF-IDF re-rank (R9, extended ADR-043)
       Surviving chunks are re-ranked by TF-IDF cosine similarity
-      (scikit-learn TfidfVectorizer) against the original query.
+      (scikit-learn TfidfVectorizer) against the original query, optionally
+      augmented with intent-specific vocabulary keywords (e.g., "retry
+      dead-letter fallback" for intent="errors").
       Top rag_top_k_chunks (default: 5) are kept.
 
 5. ContextAssembler (R10)
@@ -677,14 +680,14 @@ If the same integration is re-generated (e.g., after a reject + re-run), the ups
 
 Phase 2 replaced the single-query retrieval call with a multi-stage pipeline that improves recall and precision at every step.
 
-**Multi-query expansion (R8)**
-Instead of one query string, `services/retriever.py` generates 4 variants: two deterministic rephrases (technical focus, business focus) plus two LLM-generated rephrasings. Running all variants against ChromaDB and BM25 widens recall — surface-form variations of the same concept are more likely to match relevant chunks.
+**Multi-query expansion (R8, extended ADR-043)**
+Instead of one query string, `services/retriever.py` generates 4 variants: two deterministic rephrases (technical focus, business focus) plus two LLM-generated rephrasings. Running all variants against ChromaDB and BM25 widens recall — surface-form variations of the same concept are more likely to match relevant chunks. When `intent` is provided, the LLM perspective pair is selected from `_INTENT_PERSPECTIVES` (e.g., `intent="data_mapping"` → "field-level data transformation" + "data domain model"); unknown/empty intent falls back to the default pair.
 
 **BM25 + dense hybrid retrieval (ADR-027)**
 A `BM25Plus` index (`rank_bm25`) runs in memory alongside ChromaDB's dense embeddings. Results from both are merged with a 0.6 / 0.4 (dense/BM25) ensemble weight. BM25 is particularly effective for short, keyword-rich requirement descriptions where exact-term matches matter more than semantic proximity.
 
-**Relevance threshold + TF-IDF re-rank (R9)**
-Chunks below the distance threshold (`rag_distance_threshold = 0.8`, using `score = 1 / (1 + distance)`) are discarded before ranking. The survivors are re-ranked by TF-IDF cosine similarity (scikit-learn) against the original query, and only the top `rag_top_k_chunks` (default 5) are passed forward. This combination raises precision without sacrificing recall.
+**Relevance threshold + TF-IDF re-rank (R9, extended ADR-043)**
+Chunks below the distance threshold (`rag_distance_threshold = 0.8`, using `score = 1 / (1 + distance)`) are discarded before ranking. The survivors are re-ranked by TF-IDF cosine similarity (scikit-learn) against the query, optionally augmented with `_INTENT_VOCABULARY[intent]` domain keywords (e.g., "retry dead-letter fallback" for `intent="errors"`). Only the top `rag_top_k_chunks` (default 5) are passed forward. This combination raises precision without sacrificing recall.
 
 **ContextAssembler (R10)**
 `services/rag_service.py` fuses the ranked chunks from both ChromaDB collections into a structured prompt contribution with a token budget. The output is two labelled sections injected into the LLM prompt: `## PAST APPROVED EXAMPLES` (from `approved_integrations`) and `## BEST PRACTICE PATTERNS` (from `knowledge_base`). Token budgeting prevents prompt truncation on large knowledge bases.
@@ -757,7 +760,7 @@ Both features are independently disableable via config flags:
 
 New dependencies: `docling>=2.0`, `numpy<2.0` (pin for chromadb 0.5.x compatibility).
 
-Test count: **309 tests** (263 + 35 Phase 4 tests: 5 vision, 7 docling parser, 7 summarizer, 4 kb-upload, 4 retriever, 4 context-assembler, 4 integration).
+Test count: **322 tests** (263 + 35 Phase 4 + 13 ADR-043 retriever intent/tag tests + 11 other ADR tests).
 
 ### 9.4 FactPack Intermediate Layer (ADR-041)
 

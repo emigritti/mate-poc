@@ -6,6 +6,8 @@ Phase 2 — R8 (multi-query expansion), R9 (threshold + TF-IDF re-rank + BM25),
 
 ADR-027: BM25 Hybrid Retrieval (rank_bm25 + ensemble scoring).
 ADR-028: Multi-Query Expansion 2+2 (2 template + 2 LLM variants).
+ADR-043: Intent-aware retrieval — normalized tag matching, intent-selectable LLM
+         perspectives, intent vocabulary TF-IDF boost.
 """
 
 import json
@@ -26,6 +28,68 @@ logger = logging.getLogger(__name__)
 # Metadata field used to store comma-separated tags on every ChromaDB document.
 # Defined as a constant to prevent typo-based silent misses in tag filtering.
 TAGS_CSV_FIELD = "tags_csv"
+
+# ── Query Expansion Perspectives (ADR-028 extension, ADR-043) ─────────────────
+# Default pair — preserves pre-ADR-043 behavior when intent is empty or unknown.
+_DEFAULT_PERSPECTIVES: list[str] = [
+    "technical systems integration",
+    "business process",
+]
+
+# Intent-specific perspective pairs sent to the LLM.
+# Each pair replaces _DEFAULT_PERSPECTIVES when a matching intent is passed.
+# The 2+2 query budget (ADR-028 R8) is preserved — LLM still returns 2 variants.
+_INTENT_PERSPECTIVES: dict[str, list[str]] = {
+    "overview": [
+        "high-level system architecture and integration scope",
+        "business capability and end-to-end process flow",
+    ],
+    "business_rules": [
+        "business rule validation and conditional logic",
+        "process governance and exception handling policy",
+    ],
+    "data_mapping": [
+        "field-level data transformation and schema mapping",
+        "data domain model and canonical data format",
+    ],
+    "errors": [
+        "error handling strategy and retry mechanism",
+        "exception edge case and failure recovery pattern",
+    ],
+    "architecture": [
+        "technical systems integration and middleware pattern",
+        "non-functional requirement including performance and security",
+    ],
+}
+
+# Intent vocabulary for TF-IDF query augmentation (ADR-043).
+# Appended to the TF-IDF query string when intent is set, biasing cosine
+# similarity toward domain-relevant terminology without ChromaDB schema changes.
+# Empty string for unknown/empty intent means no augmentation (neutral behavior).
+_INTENT_VOCABULARY: dict[str, str] = {
+    "overview": (
+        "overview summary scope end-to-end flow diagram component system landscape "
+        "integration boundary capability purpose context"
+    ),
+    "business_rules": (
+        "rule validation constraint mandatory conditional logic governance "
+        "approval threshold eligibility policy decision table normative"
+    ),
+    "data_mapping": (
+        "field mapping transformation source target attribute schema canonical "
+        "normalization domain model master data hierarchy taxonomy type format"
+    ),
+    "errors": (
+        "error exception retry timeout fallback dead-letter circuit-breaker "
+        "idempotent recovery compensation rollback alert edge-case boundary "
+        "invalid null missing response code status"
+    ),
+    "architecture": (
+        "API REST SOAP webhook event message queue batch trigger schedule "
+        "middleware adapter connector protocol authentication SLA throughput "
+        "latency non-functional idempotency"
+    ),
+}
 
 
 @dataclass
@@ -98,6 +162,7 @@ class HybridRetriever:
         source: str,
         target: str,
         category: str,
+        intent: str = "",
         *,
         log_fn: Callable[[str], None] | None = None,
     ) -> list[str]:
@@ -106,6 +171,10 @@ class HybridRetriever:
         Template variants are always generated (deterministic, zero latency).
         LLM variants are attempted using tag_llm settings (lightweight call).
         If LLM call fails for any reason, only template variants are used.
+
+        When intent is provided, the LLM perspective pair is selected from
+        _INTENT_PERSPECTIVES; unknown/empty intent falls back to
+        _DEFAULT_PERSPECTIVES. The 2+2 query budget (ADR-028 R8) is preserved.
         """
         _log = log_fn or (lambda msg: logger.info(msg))
 
@@ -114,12 +183,13 @@ class HybridRetriever:
             f"{source} to {target} {category} integration pattern",
         ]
 
+        perspectives = _INTENT_PERSPECTIVES.get(intent, _DEFAULT_PERSPECTIVES)
         prompt = (
             f'Given this integration query: "{query_text[:500]}"\n'
             "Generate 2 alternative phrasings:\n"
-            "1. A technical systems integration perspective\n"
-            "2. A business process perspective\n"
-            'Reply with a JSON array only: ["technical variant", "business variant"]'
+            f"1. A {perspectives[0]} perspective\n"
+            f"2. A {perspectives[1]} perspective\n"
+            'Reply with a JSON array only: ["variant 1", "variant 2"]'
         )
         try:
             raw = await generate_with_ollama(
@@ -135,7 +205,7 @@ class HybridRetriever:
                 if isinstance(llm_variants, list):
                     valid = [str(v).strip() for v in llm_variants[:2] if str(v).strip()]
                     variants.extend(valid)
-                    _log(f"[RAG] Query expansion: {len(variants)} variants (2 template + {len(valid)} LLM)")
+                    _log(f"[RAG] Query expansion: {len(variants)} variants (2 template + {len(valid)} LLM, intent={intent!r})")
         except Exception as exc:
             _log(f"[RAG] Query expansion LLM unavailable — using 2 template variants: {exc}")
 
@@ -145,15 +215,24 @@ class HybridRetriever:
 
     @staticmethod
     def _tags_match_meta(meta: dict | None, tags: list[str]) -> bool:
-        """Return True if any tag appears as a substring in meta[TAGS_CSV_FIELD].
+        """Return True if any tag matches a whole token in meta[TAGS_CSV_FIELD].
+
+        Uses comma-split + case-insensitive set intersection to eliminate
+        substring false positives (e.g. 'PL' previously matched 'PLM,SAP').
+        No ChromaDB metadata migration required — existing tags_csv values are
+        already comma-separated and compatible with this tokenizer.
 
         Used as a Python post-filter replacing the unsupported ChromaDB
-        $contains metadata operator (R12 / ADR-019).
+        $contains metadata operator (R12 / ADR-019, fixed ADR-043).
         """
         if not tags:
             return True
         tags_str = (meta or {}).get(TAGS_CSV_FIELD, "")
-        return any(t in tags_str for t in tags)
+        if not tags_str:
+            return False
+        stored_tokens = {t.strip().lower() for t in tags_str.split(",") if t.strip()}
+        query_tokens  = {t.strip().lower() for t in tags   if t.strip()}
+        return bool(stored_tokens & query_tokens)
 
     # ── ChromaDB Query ────────────────────────────────────────────────────────
 
@@ -315,8 +394,13 @@ class HybridRetriever:
         self,
         chunks: list[ScoredChunk],
         query: str,
+        intent: str = "",
     ) -> list[ScoredChunk]:
         """Re-rank chunks by TF-IDF cosine similarity to the original query.
+
+        When intent is set, appends domain-specific vocabulary from
+        _INTENT_VOCABULARY to the query before vectorization, biasing cosine
+        similarity toward intent-relevant terminology (ADR-043).
 
         Final score = 0.5 × ensemble_score + 0.5 × tfidf_cosine_similarity.
         Falls back to score-only ordering if TF-IDF fails.
@@ -325,7 +409,10 @@ class HybridRetriever:
             return chunks
 
         try:
-            texts = [query] + [c.text for c in chunks]
+            vocab_boost = _INTENT_VOCABULARY.get(intent, "")
+            augmented_query = f"{query} {vocab_boost}".strip() if vocab_boost else query
+
+            texts = [augmented_query] + [c.text for c in chunks]
             vectorizer = TfidfVectorizer(stop_words="english", max_features=5000)
             matrix = vectorizer.fit_transform(texts)
             sims = cosine_similarity(matrix[0], matrix[1:])[0]
@@ -336,6 +423,7 @@ class HybridRetriever:
                     score=(c.score * 0.5) + (float(sim) * 0.5),
                     source_label=c.source_label,
                     tags=c.tags,
+                    doc_id=c.doc_id,
                 )
                 for c, sim in zip(chunks, sims)
             ]
@@ -356,16 +444,24 @@ class HybridRetriever:
         target: str = "",
         category: str = "",
         *,
+        intent: str = "",
         log_fn: Callable[[str], None] | None = None,
     ) -> list[ScoredChunk]:
         """Full retrieval pipeline for a single integration.
 
         Returns top-K ScoredChunks ordered by final relevance score.
+
+        Args:
+            intent: Optional retrieval intent — one of 'overview', 'business_rules',
+                    'data_mapping', 'errors', 'architecture'. When set, selects
+                    domain-specific LLM query perspectives and augments the TF-IDF
+                    rerank query with intent vocabulary (ADR-043).
+                    Empty string (default) preserves pre-ADR-043 behavior.
         """
         _log = log_fn or (lambda msg: logger.info(msg))
 
         queries = await self._expand_queries(
-            query_text, tags, source, target, category, log_fn=log_fn
+            query_text, tags, source, target, category, intent, log_fn=log_fn
         )
 
         chroma_chunks = self._query_chroma(queries, collection, tags)
@@ -374,10 +470,10 @@ class HybridRetriever:
 
         merged   = self._ensemble_merge(chroma_chunks, bm25_chunks)
         filtered = self._apply_threshold(merged)
-        reranked = self._tfidf_rerank(filtered, query_text)
+        reranked = self._tfidf_rerank(filtered, query_text, intent)
         top_k    = reranked[:settings.rag_top_k_chunks]
 
-        _log(f"[RAG] Final: {len(top_k)} chunks after ensemble+threshold+rerank")
+        _log(f"[RAG] Final: {len(top_k)} chunks after ensemble+threshold+rerank (intent={intent!r})")
         return top_k
 
     # ── RAPTOR-lite Summary Retrieval (ADR-032) ───────────────────────────────

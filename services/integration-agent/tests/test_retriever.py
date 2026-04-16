@@ -1,16 +1,21 @@
 """
-Unit tests for services.retriever.HybridRetriever (R8, R9, R12, ADR-027/028).
+Unit tests for services.retriever.HybridRetriever (R8, R9, R12, ADR-027/028/043).
 
 Covers:
   - build_bm25_index: empty corpus, corpus with chunks
   - _expand_queries: 2 template variants always present; LLM variants added on success
   - _expand_queries: fallback to templates when LLM fails
-  - _tags_match_meta: Python post-filter helper for TAGS_CSV_FIELD substring matching (R12)
+  - _tags_match_meta: whole-token match (ADR-043 fix — eliminates substring false positives)
   - _query_chroma: dedup by doc_id (highest score wins); prefers tag-matched chunks
   - _query_bm25: returns scored chunks; empty when no index
   - _apply_threshold: filters chunks below threshold
   - _tfidf_rerank: orders by cosine similarity; returns unchanged on error
   - retrieve: integration test with mocked collection
+  ADR-043 additions:
+  - _tags_match_meta: false-positive regression guard (5 tests)
+  - _expand_queries: intent-selectable perspectives (3 tests)
+  - _tfidf_rerank: intent vocabulary boost (3 tests)
+  - retrieve: intent keyword parameter backward compat (2 tests)
 """
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -333,3 +338,186 @@ def test_retrieve_summaries_returns_at_most_top3():
     result = asyncio.run(r.retrieve_summaries("query", None, mock_col))
 
     assert len(result) <= 3
+
+
+# ── ADR-043: Tag fix — false-positive regression guard ───────────────────────
+
+def test_tags_match_meta_no_substring_false_positive():
+    """'PL' must NOT match metadata 'PLM,SAP' (substring false positive fixed in ADR-043)."""
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": "PLM,SAP"}, ["PL"]) is False
+
+
+def test_tags_match_meta_partial_prefix_no_match():
+    """'SA' must NOT match 'SAP' via substring — only whole-token matches allowed."""
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": "PLM,SAP"}, ["SA"]) is False
+
+
+def test_tags_match_meta_exact_token_still_matches():
+    """Whole-token 'SAP' must still match 'PLM,SAP' after ADR-043 fix (regression guard)."""
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": "PLM,SAP"}, ["SAP"]) is True
+
+
+def test_tags_match_meta_case_insensitive():
+    """Tag matching is case-insensitive: 'plm' must match 'PLM,Export'."""
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": "PLM,Export"}, ["plm"]) is True
+
+
+def test_tags_match_meta_empty_tags_csv_returns_false():
+    """Empty tags_csv with a non-empty tags list must return False (not True via old '' in '' bug)."""
+    from services.retriever import HybridRetriever
+    assert HybridRetriever._tags_match_meta({"tags_csv": ""}, ["Sync"]) is False
+
+
+# ── ADR-043: Intent perspectives in _expand_queries ──────────────────────────
+
+def test_expand_queries_uses_intent_perspectives_data_mapping(monkeypatch):
+    """data_mapping intent must inject field-transformation perspectives into the LLM prompt."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+    captured: list[str] = []
+
+    async def _fake_llm(prompt, **kwargs):
+        captured.append(prompt)
+        return '["field variant", "domain variant"]'
+
+    monkeypatch.setattr("services.retriever.generate_with_ollama", _fake_llm)
+    asyncio.run(r._expand_queries(
+        "map product fields", [], "ERP", "PIM", "Data Mapping", "data_mapping"
+    ))
+    assert captured, "LLM was not called"
+    assert "field-level data transformation" in captured[0]
+    assert "data domain model" in captured[0]
+
+
+def test_expand_queries_unknown_intent_falls_back_to_default_perspectives(monkeypatch):
+    """An unrecognised intent string must fall back to default technical+business perspectives."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+    captured: list[str] = []
+
+    async def _fake_llm(prompt, **kwargs):
+        captured.append(prompt)
+        return '["v1", "v2"]'
+
+    monkeypatch.setattr("services.retriever.generate_with_ollama", _fake_llm)
+    asyncio.run(r._expand_queries("q", [], "S", "T", "C", "nonexistent_intent"))
+    assert captured
+    assert "technical systems integration" in captured[0]
+    assert "business process" in captured[0]
+
+
+def test_expand_queries_empty_intent_uses_default_perspectives(monkeypatch):
+    """Empty intent (default) must use the default perspective pair — backward compat."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+    captured: list[str] = []
+
+    async def _fake_llm(prompt, **kwargs):
+        captured.append(prompt)
+        return '["v1", "v2"]'
+
+    monkeypatch.setattr("services.retriever.generate_with_ollama", _fake_llm)
+    asyncio.run(r._expand_queries("q", [], "S", "T", "C"))  # no intent arg → default ""
+    assert captured
+    assert "technical systems integration" in captured[0]
+    assert "business process" in captured[0]
+
+
+# ── ADR-043: Intent vocabulary boost in _tfidf_rerank ────────────────────────
+
+def test_tfidf_rerank_intent_vocabulary_boosts_relevant_chunk():
+    """errors intent vocabulary must boost chunk about retry/fallback above an unrelated chunk.
+
+    Both chunks start with equal ensemble scores so TF-IDF similarity (plus the
+    intent vocabulary appended to the query) is the only ranking signal.
+    The retry/fallback chunk shares many tokens with the errors vocabulary
+    ('retry', 'fallback', 'error', 'recovery', 'compensation') while the
+    product-sync chunk shares none → it should rank first after reranking.
+    """
+    from services.retriever import HybridRetriever, ScoredChunk
+    r = HybridRetriever()
+    chunks = [
+        ScoredChunk(
+            text="Product data synchronization schedule daily batch",
+            score=0.6, source_label="kb", tags=[],
+        ),
+        ScoredChunk(
+            text="Retry mechanism dead-letter queue fallback error recovery compensation",
+            score=0.6, source_label="kb", tags=[],
+        ),
+    ]
+    reranked = r._tfidf_rerank(chunks, "handle failures gracefully", intent="errors")
+    assert reranked[0].text.startswith("Retry mechanism"), (
+        "errors intent should boost the retry/fallback chunk to rank 1"
+    )
+
+
+def test_tfidf_rerank_no_intent_unchanged_behavior():
+    """Empty intent must produce the same reranking behavior as before ADR-043."""
+    from services.retriever import HybridRetriever, ScoredChunk
+    r = HybridRetriever()
+    chunks = [
+        ScoredChunk(text="REST API integration pattern", score=0.5,
+                    source_label="kb", tags=[]),
+        ScoredChunk(text="cooking recipes and ingredients for pasta", score=0.9,
+                    source_label="kb", tags=[]),
+    ]
+    reranked = r._tfidf_rerank(chunks, "API integration pattern", intent="")
+    # REST API chunk has strong TF-IDF match even without vocabulary boost
+    assert reranked[0].text == "REST API integration pattern"
+
+
+def test_tfidf_rerank_unknown_intent_does_not_crash():
+    """An unrecognised intent string must not raise and must return a valid list."""
+    from services.retriever import HybridRetriever, ScoredChunk
+    r = HybridRetriever()
+    chunks = [
+        ScoredChunk(text="chunk A", score=0.8, source_label="kb", tags=[]),
+        ScoredChunk(text="chunk B", score=0.6, source_label="kb", tags=[]),
+    ]
+    result = r._tfidf_rerank(chunks, "query", intent="nonexistent_intent")
+    assert len(result) == 2
+    assert all(hasattr(c, "score") for c in result)
+
+
+# ── ADR-043: retrieve() intent keyword parameter ──────────────────────────────
+
+def test_retrieve_accepts_intent_keyword_argument(monkeypatch):
+    """retrieve() must accept intent='data_mapping' without error — backward compat."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+    monkeypatch.setattr(
+        "services.retriever.generate_with_ollama",
+        AsyncMock(side_effect=Exception("skip LLM")),
+    )
+    mock_col = MagicMock()
+    mock_col.query.return_value = _make_chroma_result(
+        ["field mapping chunk"], [0.1], ["d1"],
+    )
+    result = asyncio.run(r.retrieve(
+        "map product fields", [], mock_col, intent="data_mapping",
+    ))
+    assert isinstance(result, list)
+
+
+def test_retrieve_with_no_intent_matches_original_behavior(monkeypatch):
+    """retrieve() called without intent must behave identically to pre-ADR-043."""
+    from services.retriever import HybridRetriever
+    r = HybridRetriever()
+    monkeypatch.setattr(
+        "services.retriever.generate_with_ollama",
+        AsyncMock(side_effect=Exception("skip LLM")),
+    )
+    mock_col = MagicMock()
+    mock_col.query.return_value = _make_chroma_result(
+        ["chunk A", "chunk B"], [0.1, 0.3], ["d1", "d2"],
+    )
+    result = asyncio.run(r.retrieve(
+        "sync ERP products", [], mock_col, source="ERP", target="PLM",
+    ))
+    assert len(result) <= 5
+    assert all(hasattr(c, "score") for c in result)

@@ -286,7 +286,7 @@ graph TB
 | **LLM Service** | `services/llm_service.py` | `generate_with_retry()` — 3 attempts, 5s/15s exponential backoff (R13); Ollama `/api/generate` |
 | **RAG Service** | `services/rag_service.py` | ChromaDB approved_integrations + knowledge_base queries; `ContextAssembler` token-budgeted sections: `## DOCUMENT SUMMARIES` + `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` (R10 / ADR-035) |
 | **Tag Service** | `services/tag_service.py` | Tag extraction from catalog entry; LLM suggestion with dedicated settings (ADR-020) |
-| **HybridRetriever** | `services/retriever.py` | Multi-query expansion + BM25+dense ensemble + threshold filter + TF-IDF re-rank (Phase 2 / ADR-027..030); `retrieve_summaries()` dense-only on `summaries_col` (ADR-035) |
+| **HybridRetriever** | `services/retriever.py` | Multi-query expansion + BM25+dense ensemble + threshold filter + TF-IDF re-rank (Phase 2 / ADR-027..030); `retrieve_summaries()` dense-only on `summaries_col` (ADR-035); intent-aware TF-IDF vocabulary boost + intent-selectable LLM perspectives via `intent` param (ADR-043) |
 | **Vision Service** | `services/vision_service.py` | `caption_figure(image_bytes)` — calls `llava:7b` via Ollama `/api/chat` with base64 image; placeholder on error or when `vision_captioning_enabled=False` (ADR-034) |
 | **Summarizer Service** | `services/summarizer_service.py` | `summarize_section(chunks, doc_id, tags)` — RAPTOR-lite: groups by `section_header`, summarises sections ≥ 3 chunks via llama3.1:8b; returns `SummaryChunk\|None` (ADR-035) |
 | **Document Parser** | `document_parser.py` | `parse_with_docling()` — layout-aware parsing via IBM Docling: `DoclingChunk` per text/table/figure item with `section_header` + `page_num` (ADR-034); fallback: `semantic_chunk()` via LangChain (R11) |
@@ -1026,12 +1026,13 @@ graph LR
 
 | Stage | Implementation | Key Parameters |
 |-------|---------------|----------------|
-| **Query Expansion (R8)** | `expand_queries()` in `retriever.py` — 2 template variants + 2 LLM-generated queries via `llm_service.py`; LLM failure falls back silently to templates | 4 query variants per call |
-| **ChromaDB Dense Search** | `collection.query()` per variant against `approved_integrations` + `knowledge_base` collections; `$or` multi-tag filter (R12) | `rag_n_results_per_query=3` per variant |
+| **Query Expansion (R8)** | `expand_queries()` in `retriever.py` — 2 template variants + 2 LLM-generated queries via `llm_service.py`; LLM failure falls back silently to templates; when `intent` is set, perspective pair is selected from `_INTENT_PERSPECTIVES` (ADR-043) | 4 query variants per call |
+| **ChromaDB Dense Search** | `collection.query()` per variant against `approved_integrations` + `knowledge_base` collections; `$or` multi-tag filter (R12); whole-token tag matching after ADR-043 fix | `rag_n_results_per_query=3` per variant |
 | **BM25 Sparse Search** | `BM25Plus` (rank-bm25) against `kb_chunks` corpus in `state.py`; corpus rebuilt on every KB upload/delete | Corpus seeded from ChromaDB at container startup |
 | **Ensemble Merge** | Reciprocal rank fusion of dense + sparse scores | Dense 0.6 / BM25 0.4 (`rag_bm25_weight`) |
 | **Threshold Filter (R9)** | `score = 1 / (1 + chroma_distance)` — drops chunks below minimum quality | `rag_distance_threshold=0.8` |
-| **TF-IDF Re-rank** | scikit-learn `TfidfVectorizer` cosine similarity against the original (non-expanded) query | Applied after threshold filter |
+| **TF-IDF Re-rank** | scikit-learn `TfidfVectorizer` cosine similarity against the query, optionally augmented with `_INTENT_VOCABULARY[intent]` domain keywords (ADR-043) | Applied after threshold filter |
+| **Intent Parameter** | `retrieve(*, intent: str = "")` — keyword-only, default `""`. Selects LLM perspective pair and TF-IDF vocabulary. Empty/unknown → pre-ADR-043 behavior. Valid values: `"overview"`, `"business_rules"`, `"data_mapping"`, `"errors"`, `"architecture"` (ADR-043) | Extension point for future per-section retrieval wiring |
 | **Top-K Selection** | Returns best-K chunks to ContextAssembler | `rag_top_k_chunks=5` |
 | **ContextAssembler (R10)** | Structures chunks into `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` sections with token budget cap | Configured via `rag_context_size` (LLM settings) |
 
@@ -1052,7 +1053,7 @@ graph LR
 | `rank-bm25` | 0.2.2 | `BM25Plus` sparse retriever |
 | `scikit-learn` | 1.6.1 | `TfidfVectorizer` for cosine re-ranking |
 
-**ADR references:** ADR-027 (multi-query expansion), ADR-028 (BM25+dense hybrid), ADR-029 (threshold filter + re-rank), ADR-030 (ContextAssembler structured sections).
+**ADR references:** ADR-027 (multi-query expansion), ADR-028 (BM25+dense hybrid), ADR-029 (threshold filter + re-rank), ADR-030 (ContextAssembler structured sections), ADR-043 (intent-aware retrieval, tag fix, query perspective extension).
 
 ---
 
@@ -1922,6 +1923,7 @@ gantt
 | ADR-037 | Claude API Semantic Extraction | Accepted | Claude Haiku for HTML relevance filter and diff summaries; Claude Sonnet for schema-constrained capability extraction and cross-page reconciliation; `ClaudeService` wrapper with graceful degradation when key absent; confidence < 0.7 → `low_confidence=True` metadata (not discarded) |
 | ADR-041 | FactPack Intermediate Layer | Accepted | Two-step LLM pipeline: `extract_fact_pack()` (Claude/Ollama → JSON FactPack) + `render_document_sections()` (Ollama → markdown); 4 confidence states (confirmed/inferred/missing_evidence/to_validate); `section_reports` + `claim_reports` in `GenerationReport`; graceful degradation to single-pass; kill-switch via `FACT_PACK_ENABLED=false` |
 | ADR-042 | Prompt Builder Centralization | Accepted | All prompt construction moved to `prompt_builder.py`; `_SECTION_INSTRUCTIONS` (16 sections) injects per-section FactPack field guidance into rendering prompt; `build_prompt_for_mode()` unified dispatcher; bugfix: `reviewer_feedback` now forwarded to `render_document_sections()` |
+| ADR-043 | Intent-Aware Retrieval, Tag Fix, and Query Perspective Extension | Accepted | Whole-token tag matching in `_tags_match_meta()` eliminates substring false positives; `_INTENT_PERSPECTIVES` enables intent-selectable LLM query perspectives; `_INTENT_VOCABULARY` enables intent vocabulary TF-IDF boost; `retrieve(*, intent="")` keyword-only extension point |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |
