@@ -1109,12 +1109,30 @@ An admin page for tuning LLM parameters at runtime without restarting the contai
 
 | Group | Parameters |
 |---|---|
-| Document Generation | Model name, max tokens, timeout, temperature, RAG context limit |
+| Document Generation | Model name, max tokens, timeout, temperature, RAG context limit, `num_ctx`, `top_p`, `top_k`, `repeat_penalty` |
 | Tag Suggestion | Max tokens, timeout, temperature |
 
 Changes are applied **immediately** to the running agent and persisted in MongoDB. The "Reset to Defaults" button restores pydantic-settings values (as defined in `config.py` or overridden by env vars at startup).
 
-**Why this matters:** On slow CPU hardware (e.g., llama3.1:8b at ~3 tokens/s), reducing `num_predict` from 1000 to 200 cuts generation time from ~5 minutes to ~1 minute for testing purposes — without requiring a container rebuild.
+**Why this matters:** On CPU-only hardware, explicit `num_ctx=8192` prevents silent truncation (Ollama default is 2048), while `top_p / top_k / repeat_penalty` control generation diversity and repetition without requiring a container rebuild.
+
+### LLM Multi-Profile Routing (ADR-046)
+
+The **Agent Workspace** page includes a **Generation Profile** selector visible when the agent is idle:
+
+| Profile | Model | Use case |
+|---|---|---|
+| **Default** | `qwen2.5:14b` (`num_ctx=8192`, `temperature=0.1`) | Most integrations — balanced quality and latency |
+| **Premium** | `gemma4:26b` (`num_ctx=6144`, `temperature=0.0`) | Complex integrations with high ambiguity or reasoning demands |
+
+Tagging (tag suggestion, query expansion) always uses the **fast-utility** model (`qwen3:8b`) regardless of the selected profile — this is an internal routing decision and not user-configurable.
+
+**Model prerequisites:** pull models on the Ollama instance before use:
+```bash
+ollama pull qwen3:8b      # fast-utility (tags/expansion)
+ollama pull gemma4:26b    # premium (on-demand)
+```
+If a model is not pulled, Ollama returns HTTP 404 and the agent logs a clear error message.
 
 ---
 

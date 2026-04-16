@@ -55,10 +55,10 @@ export const API = {
   },
 
   agent: {
-    trigger: (pinnedDocIds = []) => fetch(`${AGENT}/api/v1/agent/trigger`, {
+    trigger: (pinnedDocIds = [], llmProfile = 'default') => fetch(`${AGENT}/api/v1/agent/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinned_doc_ids: pinnedDocIds }),
+      body: JSON.stringify({ pinned_doc_ids: pinnedDocIds, llm_profile: llmProfile }),
     }),
     logs: (offset = 0) => fetch(`${AGENT}/api/v1/agent/logs?offset=${offset}`),
     cancel: () => fetch(`${AGENT}/api/v1/agent/cancel`, { method: 'POST' }),

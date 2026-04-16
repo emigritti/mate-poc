@@ -240,6 +240,7 @@ async def generate_integration_doc(
     reviewer_feedback: str = "",
     log_fn: Callable[[str], None] | None = None,
     pinned_chunks: list | None = None,
+    llm_profile: str = "default",                  # "default" | "premium" (ADR-046)
 ) -> tuple[str, GenerationReport]:
     """
     Run the full RAG + LLM pipeline for a single catalog entry.
@@ -278,6 +279,25 @@ async def generate_integration_doc(
         httpx.*: on LLM connectivity errors — caller must handle these.
     """
     _log = log_fn or logger.info
+
+    # Resolve LLM model and sampling parameters for this profile (ADR-046)
+    if llm_profile == "premium":
+        _llm_model = settings.premium_model
+        _llm_kw: dict = dict(
+            model=_llm_model,
+            num_predict=settings.premium_num_predict,
+            timeout=settings.premium_timeout_seconds,
+            temperature=settings.premium_temperature,
+            num_ctx=settings.premium_num_ctx,
+            top_p=settings.premium_top_p,
+            top_k=settings.premium_top_k,
+            repeat_penalty=settings.premium_repeat_penalty,
+        )
+    else:
+        _llm_model = llm_overrides.get("model", settings.ollama_model)
+        _llm_kw = {}   # generate_with_retry reads defaults from llm_overrides / settings
+
+    _log(f"[LLM] profile={llm_profile!r} model={_llm_model}")
 
     source = entry.source.get("system", "Unknown")
     target = entry.target.get("system", "Unknown")
@@ -361,9 +381,8 @@ async def generate_integration_doc(
             reviewer_feedback=reviewer_feedback,
         )
         prompt_chars = len(prompt)
-        model_used_log = llm_overrides.get("model", settings.ollama_model)
-        _log(f"[LLM] Prompt ready for {entry.id} — {prompt_chars} chars. Calling {model_used_log}...")
-        raw = await generate_with_retry(prompt, log_fn=_log)
+        _log(f"[LLM] Prompt ready for {entry.id} — {prompt_chars} chars. Calling {_llm_model}...")
+        raw = await generate_with_retry(prompt, log_fn=_log, **_llm_kw)
 
     # ── Stage 4: Sanitization (unchanged) ────────────────────────────────────
     # The prompt ends with "# Integration Design" as a continuation seed so the
@@ -396,7 +415,7 @@ async def generate_integration_doc(
         + _chunks_to_source_info(url_chunks, label_override="kb_url")
         + _chunks_to_source_info(summary_chunks, label_override="summary")
     )
-    model_used = llm_overrides.get("model", settings.ollama_model)
+    model_used = _llm_model
 
     section_reports: list[SectionReport] = []
     claim_reports: list[ClaimReport] = []

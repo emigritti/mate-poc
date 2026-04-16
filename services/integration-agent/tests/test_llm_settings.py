@@ -34,8 +34,10 @@ def test_get_llm_settings_returns_defaults(client):
 def test_get_llm_settings_structure(client):
     """Response contains expected keys in both doc_llm and tag_llm groups."""
     data = client.get("/api/v1/admin/llm-settings").json()["data"]
+    # ADR-046: num_ctx / top_p / top_k / repeat_penalty added
     assert set(data["effective"]["doc_llm"].keys()) == {
-        "model", "num_predict", "timeout_seconds", "temperature", "rag_max_chars"
+        "model", "num_predict", "timeout_seconds", "temperature", "rag_max_chars",
+        "num_ctx", "top_p", "top_k", "repeat_penalty",
     }
     assert set(data["effective"]["tag_llm"].keys()) == {
         "num_predict", "timeout_seconds", "temperature"

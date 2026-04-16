@@ -93,7 +93,7 @@ def test_suggest_tags_via_llm_passes_tag_settings(monkeypatch):
 
     captured_kwargs: dict = {}
 
-    async def _mock(prompt, *, num_predict=None, timeout=None, temperature=None, log_fn=None):
+    async def _mock(prompt, *, model=None, num_predict=None, timeout=None, temperature=None, log_fn=None):
         captured_kwargs["num_predict"]  = num_predict
         captured_kwargs["timeout"]      = timeout
         captured_kwargs["temperature"]  = temperature

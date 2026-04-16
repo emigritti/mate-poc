@@ -37,9 +37,14 @@ def _get_llm_param(key: str, default, *, override: object = None):
 async def generate_with_ollama(
     prompt: str,
     *,
+    model: str | None = None,
     num_predict: int | None = None,
     timeout: int | None = None,
     temperature: float | None = None,
+    num_ctx: int | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+    repeat_penalty: float | None = None,
     log_fn: Callable[[str], None] | None = None,
 ) -> str:
     """
@@ -48,11 +53,19 @@ async def generate_with_ollama(
     Uses httpx.AsyncClient — fully non-blocking (G-04 / ADR-012).
     Raises httpx.HTTPStatusError or httpx.RequestError on failure.
     Logs token/timing metrics via log_fn for dashboard visibility.
+
+    Parameter resolution order: explicit kwarg > llm_overrides > settings default.
+    The `model` kwarg takes the highest priority and bypasses llm_overrides (ADR-046).
     """
-    _num_predict = _get_llm_param("num_predict",     settings.ollama_num_predict,     override=num_predict)
-    _timeout     = _get_llm_param("timeout_seconds",  settings.ollama_timeout_seconds, override=timeout)
-    _temperature = _get_llm_param("temperature",      settings.ollama_temperature,     override=temperature)
-    _model       = llm_overrides.get("model", settings.ollama_model)
+    _num_predict    = _get_llm_param("num_predict",     settings.ollama_num_predict,     override=num_predict)
+    _timeout        = _get_llm_param("timeout_seconds", settings.ollama_timeout_seconds, override=timeout)
+    _temperature    = _get_llm_param("temperature",     settings.ollama_temperature,     override=temperature)
+    _num_ctx        = _get_llm_param("num_ctx",         settings.ollama_num_ctx,         override=num_ctx)
+    _top_p          = _get_llm_param("top_p",           settings.ollama_top_p,           override=top_p)
+    _top_k          = _get_llm_param("top_k",           settings.ollama_top_k,           override=top_k)
+    _repeat_penalty = _get_llm_param("repeat_penalty",  settings.ollama_repeat_penalty,  override=repeat_penalty)
+    # Model: explicit kwarg > llm_overrides > settings default
+    _model = model if model is not None else llm_overrides.get("model", settings.ollama_model)
 
     _log = log_fn or (lambda msg: logger.info(msg))
 
@@ -60,7 +73,8 @@ async def generate_with_ollama(
         f"[LLM] → model={_model} "
         f"prompt_chars={len(prompt)} "
         f"timeout={_timeout}s "
-        f"num_predict={_num_predict}"
+        f"num_predict={_num_predict} "
+        f"num_ctx={_num_ctx}"
     )
     async with httpx.AsyncClient(timeout=_timeout) as client:
         res = await client.post(
@@ -70,8 +84,12 @@ async def generate_with_ollama(
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "num_predict": _num_predict,
-                    "temperature": _temperature,
+                    "num_predict":    _num_predict,
+                    "temperature":    _temperature,
+                    "num_ctx":        _num_ctx,
+                    "top_p":          _top_p,
+                    "top_k":          _top_k,
+                    "repeat_penalty": _repeat_penalty,
                 },
             },
         )
@@ -105,9 +123,14 @@ async def generate_with_retry(
     prompt: str,
     *,
     max_retries: int = 3,
+    model: str | None = None,
     num_predict: int | None = None,
     timeout: int | None = None,
     temperature: float | None = None,
+    num_ctx: int | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
+    repeat_penalty: float | None = None,
     log_fn: Callable[[str], None] | None = None,
 ) -> str:
     """
@@ -135,9 +158,14 @@ async def generate_with_retry(
         try:
             return await generate_with_ollama(
                 prompt,
+                model=model,
                 num_predict=num_predict,
                 timeout=timeout,
                 temperature=temperature,
+                num_ctx=num_ctx,
+                top_p=top_p,
+                top_k=top_k,
+                repeat_penalty=repeat_penalty,
                 log_fn=log_fn,
             )
         except httpx.HTTPStatusError as exc:

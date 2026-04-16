@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     # Override via OLLAMA_RAG_MAX_CHARS.
     ollama_rag_max_chars: int = 5000
 
+    # Ollama generation quality parameters (ADR-046)
+    # num_ctx: explicit context window — Ollama default is 2048 (undocumented).
+    # 8192 covers template + requirements + retrieved chunks for qwen2.5:14b on CPU.
+    # Override via OLLAMA_NUM_CTX.
+    ollama_num_ctx: int = 8192
+    # top_p / top_k / repeat_penalty: sampling controls for deterministic doc output.
+    # Override via OLLAMA_TOP_P / OLLAMA_TOP_K / OLLAMA_REPEAT_PENALTY.
+    ollama_top_p: float = 0.9
+    ollama_top_k: int = 40
+    ollama_repeat_penalty: float = 1.08
+
     # ── Tag Suggestion LLM (lightweight — overrides for tag-only calls) ───────
     # Tag output is a JSON array of ≤15 items (~30 tokens max).
     # num_predict=50 caps well above that to avoid truncation.
@@ -50,6 +61,25 @@ class Settings(BaseSettings):
     tag_num_predict: int = 50
     tag_timeout_seconds: int = 60
     tag_temperature: float = 0.0
+
+    # ── Fast-utility model (tags, query expansion) (ADR-046) ─────────────────
+    # qwen3:8b — lightweight, strong multilingual. Used for short/frequent calls
+    # (tag suggestion, query expansion). Pull: `ollama pull qwen3:8b`.
+    # Override via TAG_MODEL.
+    tag_model: str = "qwen3:8b"
+
+    # ── Premium model profile (ADR-046) ──────────────────────────────────────
+    # gemma4:26b — used for complex integration documents when the user selects
+    # "Premium" in the UI. Pull: `ollama pull gemma4:26b`.
+    # Override via PREMIUM_MODEL (and PREMIUM_* siblings).
+    premium_model: str = "gemma4:26b"
+    premium_num_ctx: int = 6144
+    premium_num_predict: int = 1800
+    premium_temperature: float = 0.0
+    premium_top_p: float = 0.85
+    premium_top_k: int = 30
+    premium_repeat_penalty: float = 1.1
+    premium_timeout_seconds: int = 900
 
     # ── Vector DB ─────────────────────────────────────────────────────
     chroma_host: str = "mate-chromadb"

@@ -31,11 +31,15 @@ router = APIRouter(prefix="/api/v1", tags=["agent"])
 class TriggerRequest(BaseModel):
     """Optional request body for POST /agent/trigger."""
     pinned_doc_ids: list[str] = []
+    llm_profile: str = "default"   # "default" | "premium" (ADR-046)
 
 
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
 
-async def run_agentic_rag_flow(pinned_chunks: list[ScoredChunk] | None = None) -> None:
+async def run_agentic_rag_flow(
+    pinned_chunks: list[ScoredChunk] | None = None,
+    llm_profile: str = "default",
+) -> None:
     """
     Core agentic loop: read TAG_CONFIRMED catalog entries → RAG → LLM → guard → HITL queue.
 
@@ -45,6 +49,8 @@ async def run_agentic_rag_flow(pinned_chunks: list[ScoredChunk] | None = None) -
     Args:
         pinned_chunks: KB chunks explicitly selected by the user to be injected
                        in the PINNED REFERENCES section of every generated document.
+        llm_profile:   "default" or "premium" — selects the Ollama model and sampling
+                       parameters for document generation (ADR-046).
     """
     confirmed = [e for e in state.catalog.values() if e.status == "TAG_CONFIRMED"]
     total = len(confirmed)
@@ -88,6 +94,7 @@ async def run_agentic_rag_flow(pinned_chunks: list[ScoredChunk] | None = None) -
                 reviewer_feedback="",
                 log_fn=log_agent,
                 pinned_chunks=pinned_chunks or [],
+                llm_profile=llm_profile,
             )
             log_agent(
                 f"[LLM] Integration Spec generated for {entry.id} — "
@@ -224,9 +231,11 @@ async def trigger_agent(
 
     task_id = uuid.uuid4().hex[:8].upper()
 
+    llm_profile = request.llm_profile
+
     async def _guarded_flow() -> None:
         async with state.agent_lock:
-            await run_agentic_rag_flow(pinned_chunks=pinned_chunks)
+            await run_agentic_rag_flow(pinned_chunks=pinned_chunks, llm_profile=llm_profile)
 
     task = asyncio.create_task(_guarded_flow(), name=task_id)
     state.running_tasks[task_id] = task

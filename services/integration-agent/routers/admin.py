@@ -30,6 +30,10 @@ class _DocLLMPatch(BaseModel):
     timeout_seconds: int | None = None
     temperature: float | None = None
     rag_max_chars: int | None = None
+    num_ctx: int | None = None           # ADR-046
+    top_p: float | None = None           # ADR-046
+    top_k: int | None = None             # ADR-046
+    repeat_penalty: float | None = None  # ADR-046
 
 
 class _TagLLMPatch(BaseModel):
@@ -204,6 +208,10 @@ def _llm_settings_response() -> dict:
             "timeout_seconds": settings.ollama_timeout_seconds,
             "temperature":     settings.ollama_temperature,
             "rag_max_chars":   settings.ollama_rag_max_chars,
+            "num_ctx":         settings.ollama_num_ctx,
+            "top_p":           settings.ollama_top_p,
+            "top_k":           settings.ollama_top_k,
+            "repeat_penalty":  settings.ollama_repeat_penalty,
         },
         "tag_llm": {
             "num_predict":     settings.tag_num_predict,
@@ -218,6 +226,10 @@ def _llm_settings_response() -> dict:
             "timeout_seconds": llm_overrides.get("timeout_seconds",  settings.ollama_timeout_seconds),
             "temperature":     llm_overrides.get("temperature",      settings.ollama_temperature),
             "rag_max_chars":   llm_overrides.get("rag_max_chars",    settings.ollama_rag_max_chars),
+            "num_ctx":         llm_overrides.get("num_ctx",          settings.ollama_num_ctx),
+            "top_p":           llm_overrides.get("top_p",            settings.ollama_top_p),
+            "top_k":           llm_overrides.get("top_k",            settings.ollama_top_k),
+            "repeat_penalty":  llm_overrides.get("repeat_penalty",   settings.ollama_repeat_penalty),
         },
         "tag_llm": {
             "num_predict":     llm_overrides.get("tag_num_predict",    settings.tag_num_predict),

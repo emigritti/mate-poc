@@ -62,6 +62,7 @@ export default function AgentWorkspacePage() {
   const [localError,   setLocalError]   = useState(null);
   const [pinnedDocIds, setPinnedDocIds] = useState([]);
   const [kbDocs,       setKbDocs]       = useState([]);
+  const [llmProfile,   setLlmProfile]   = useState('default'); // "default" | "premium"
 
   // Load KB docs (exclude URL-type; those have no chunks to pin)
   useEffect(() => {
@@ -126,12 +127,15 @@ export default function AgentWorkspacePage() {
 
   const handleStart = () => {
     setLocalError(null);
-    trigger(pinnedDocIds, {
-      onError: (e) => {
-        setLocalError(e.message || 'Failed to start agent');
-        setStatus('error');
+    trigger(
+      { pinnedDocIds, llmProfile },
+      {
+        onError: (e) => {
+          setLocalError(e.message || 'Failed to start agent');
+          setStatus('error');
+        },
       },
-    });
+    );
   };
 
   const handleStop = () => {
@@ -160,6 +164,41 @@ export default function AgentWorkspacePage() {
           selected={pinnedDocIds}
           onChange={setPinnedDocIds}
         />
+      )}
+
+      {/* LLM profile selector — shown when idle/done (ADR-046) */}
+      {!isRunning && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+            Generation Profile
+          </p>
+          <div className="flex gap-2">
+            {[
+              { key: 'default', label: 'Default', sub: 'qwen2.5:14b' },
+              { key: 'premium', label: 'Premium', sub: 'gemma4:26b' },
+            ].map(({ key, label, sub }) => (
+              <button
+                key={key}
+                onClick={() => setLlmProfile(key)}
+                className={`flex flex-col items-start px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
+                  llmProfile === key
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400'
+                }`}
+              >
+                <span>{label}</span>
+                <span className={`text-xs font-normal font-mono ${llmProfile === key ? 'text-indigo-200' : 'text-slate-400'}`}>
+                  {sub}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 mt-1.5">
+            {llmProfile === 'premium'
+              ? 'Higher quality — slower. Recommended for complex integrations.'
+              : 'Balanced — stable latency, good quality for most integrations.'}
+          </p>
+        </div>
       )}
 
       {/* Control panel */}
