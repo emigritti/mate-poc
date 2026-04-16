@@ -48,3 +48,154 @@
     border-radius: 3px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Pixel Mode Design System (ADR-047)
+   8-bit gamified UI — applied when .pixel-mode class is on the root wrapper.
+   All pixel-* classes are scoped so they never leak into classic mode.
+───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --pixel-bg:        #0d0d0d;
+  --pixel-surface:   #1a1a2e;
+  --pixel-primary:   #4ade80;
+  --pixel-accent:    #fbbf24;
+  --pixel-danger:    #f87171;
+  --pixel-text:      #86efac;
+  --pixel-muted:     #6b7280;
+  --pixel-border:    #4ade80;
+  --pixel-shadow:    4px 4px 0px #166534;
+  --pixel-font:      'Press Start 2P', monospace;
+}
+
+/* Root wrapper toggled by UiModeProvider */
+.pixel-mode {
+  background-color: var(--pixel-bg);
+  color: var(--pixel-text);
+  font-family: var(--pixel-font);
+}
+
+/* ── Panels ─────────────────────────────────────────────────────────────── */
+.pixel-panel {
+  background-color: var(--pixel-surface);
+  border: 2px solid var(--pixel-border);
+  box-shadow: var(--pixel-shadow);
+  border-radius: 0 !important;
+  padding: 16px;
+}
+
+.pixel-panel-accent {
+  background-color: var(--pixel-surface);
+  border: 2px solid var(--pixel-accent);
+  box-shadow: 4px 4px 0px #92400e;
+  border-radius: 0 !important;
+  padding: 16px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.pixel-button {
+  font-family: var(--pixel-font);
+  font-size: 7px;
+  background-color: var(--pixel-surface);
+  color: var(--pixel-primary);
+  border: 2px solid var(--pixel-border);
+  box-shadow: 3px 3px 0 #166534;
+  border-radius: 0 !important;
+  padding: 8px 14px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: transform 0.05s, box-shadow 0.05s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pixel-button:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #166534;
+}
+.pixel-button:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
+.pixel-button-danger {
+  color: var(--pixel-danger) !important;
+  border-color: var(--pixel-danger) !important;
+  box-shadow: 3px 3px 0 #7f1d1d !important;
+}
+.pixel-button-danger:hover {
+  box-shadow: 1px 1px 0 #7f1d1d !important;
+}
+
+.pixel-button-accent {
+  color: var(--pixel-accent);
+  border-color: var(--pixel-accent);
+  box-shadow: 3px 3px 0 #92400e;
+}
+.pixel-button-accent:hover {
+  box-shadow: 1px 1px 0 #92400e;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+.pixel-text {
+  font-family: var(--pixel-font);
+  font-size: 7px;
+  line-height: 2;
+}
+.pixel-text-sm {
+  font-family: var(--pixel-font);
+  font-size: 6px;
+  line-height: 2;
+}
+.pixel-heading {
+  font-family: var(--pixel-font);
+  font-size: 10px;
+  color: var(--pixel-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.pixel-heading-lg {
+  font-family: var(--pixel-font);
+  font-size: 13px;
+  color: var(--pixel-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.pixel-badge {
+  font-family: var(--pixel-font);
+  font-size: 5px;
+  padding: 3px 6px;
+  border: 1px solid currentColor;
+  border-radius: 0;
+  text-transform: uppercase;
+}
+
+/* ── Sprite animations ──────────────────────────────────────────────────── */
+@keyframes pixel-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+@keyframes pixel-shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-3px); }
+  40%       { transform: translateX(3px); }
+  60%       { transform: translateX(-2px); }
+  80%       { transform: translateX(2px); }
+}
+@keyframes pixel-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+@keyframes pixel-glow {
+  0%, 100% { text-shadow: 0 0 4px var(--pixel-primary); }
+  50%       { text-shadow: 0 0 12px var(--pixel-primary), 0 0 20px var(--pixel-primary); }
+}
+.pixel-working { animation: pixel-blink  0.8s ease-in-out infinite; }
+.pixel-success { animation: pixel-glow   1.5s ease-in-out infinite; }
+.pixel-error   { animation: pixel-shake  0.4s ease-in-out; }
+.pixel-bounce  { animation: pixel-bounce 0.6s ease-in-out infinite; }
+
+/* ── Pixel-mode scrollbar ────────────────────────────────────────────────── */
+.pixel-scroll::-webkit-scrollbar       { width: 6px; }
+.pixel-scroll::-webkit-scrollbar-track { background: var(--pixel-bg); }
+.pixel-scroll::-webkit-scrollbar-thumb { background: var(--pixel-border); border-radius: 0; }

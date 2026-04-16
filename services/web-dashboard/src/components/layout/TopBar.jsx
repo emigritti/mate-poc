@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Bell, User } from 'lucide-react';
+import UiModeToggle from '../pixel/UiModeToggle';
 
 const USERS = [
   { id: 'admin',    label: 'Mario Rossi',    role: 'Admin' },
@@ -23,6 +24,8 @@ export default function TopBar({ title, subtitle }) {
       </div>
 
       <div className="flex items-center gap-2">
+        <UiModeToggle />
+
         <button className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
           <Bell size={17} />
         </button>

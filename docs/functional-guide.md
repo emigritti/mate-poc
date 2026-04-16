@@ -21,6 +21,7 @@
 12. [Admin Tools](#12-admin-tools)
 13. [Phase 4 Polish — What Changed for End Users](#13-phase-4-polish--what-changed-for-end-users)
 14. [Phase 5 — Multi-Source Ingestion Platform](#14-phase-5--multi-source-ingestion-platform)
+15. [Pixel UI Mode (ADR-047)](#15-pixel-ui-mode-adr-047)
 
 ---
 
@@ -1255,3 +1256,45 @@ Non-UI capabilities (API endpoints, auth, schemas) are unaffected — they still
 - All 3 collector types share the same `CanonicalCapability` model with a `CapabilityKind` enum (ENDPOINT, TOOL, RESOURCE, SCHEMA, AUTH, INTEGRATION_FLOW, GUIDE_STEP, EVENT, OVERVIEW, UI_SCREEN).
 - Capabilities with confidence < 0.7 (from Claude extraction) are **kept** in the KB but tagged `low_confidence=True` in metadata — not silently discarded, to allow human review.
 - Claude output is always validated against Pydantic models before any DB write. Claude never writes to the DB directly — `IndexingService` is the sole ChromaDB writer in the service.
+
+---
+
+## 15. Pixel UI Mode (ADR-047)
+
+The dashboard supports a **dual UI system**: Classic mode (default) and Pixel mode — an 8-bit RPG aesthetic that gamifies the agentic pipeline for demos and internal presentations.
+
+### Toggling Modes
+
+A **Pixel** button appears in the top-right navigation bar (TopBar). Clicking it switches to pixel mode. The mode persists across page refreshes via `localStorage` (`ui_mode` key). A "Classic Mode" button in the pixel sidebar switches back.
+
+### What Changes in Pixel Mode
+
+| Element | Classic | Pixel |
+|---|---|---|
+| Background | Slate-50 light | `#0d0d0d` dark |
+| Font | Outfit / Jakarta Sans | Press Start 2P (Google Fonts) |
+| Sidebar | `Sidebar.jsx` (Tailwind) | `PixelSidebar.jsx` (pixel CSS) |
+| Agent Workspace | `AgentWorkspacePage` | `PixelAgentWorkspace` |
+| All other pages | Tailwind prose | Inherit `.pixel-mode` root class |
+
+### Agent Personas
+
+Each pipeline stage is mapped to an RPG character that narrates the agent's progress:
+
+| Stage | Persona | Role |
+|---|---|---|
+| Ingestion | **Archivist** 📜 | Reads requirements and prepares catalog entries |
+| Retrieval | **Librarian** 🔍 | Searches the knowledge vault for matching scrolls |
+| Generation | **Writer** ✍️ | Inscribes the integration scroll |
+| QA | **Guardian** 🛡️ | Inspects output for quality and threats |
+| Enrichment | **Mage** 🔮 | Invokes the Ancient API (Claude) for enrichment |
+
+Sprite states (idle / working / success / error) are rendered as emoji with CSS keyframe animations (`pixel-blink`, `pixel-glow`, `pixel-shake`).
+
+### Quest Log
+
+Agent log messages are transformed by `PersonaNarrator.js` from technical strings (e.g. `[RAG] hybrid retrieval completed`) into RPG narration lines (e.g. `📚 Librarian assembled the context grimoire!`). The stage is inferred from message content via `inferStageFromLog()`.
+
+### Architecture Isolation
+
+All pixel components live in `src/components/pixel/`. Classic mode code is completely unchanged — the `UiModeProvider` wraps the app root and applies `.pixel-mode` to the wrapper div, but has no effect on Classic mode rendering. The pixel workspace reuses all existing React hooks (`useAgentLogs`, `useAgentStatus`) — no backend API changes.

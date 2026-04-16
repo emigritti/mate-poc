@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { LoadingProvider } from './context/LoadingContext.jsx';
+import { UiModeProvider, useUiMode } from './context/UiModeContext.jsx';
 import GlobalLoadingBar from './components/ui/GlobalLoadingBar.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import TopBar from './components/layout/TopBar.jsx';
@@ -17,6 +18,8 @@ import ResetPage from './components/pages/ResetPage.jsx';
 import ProjectDocsPage from './components/pages/ProjectDocsPage.jsx';
 import LlmSettingsPage from './components/pages/LlmSettingsPage.jsx';
 import IngestionSourcesPage from './components/pages/IngestionSourcesPage.jsx';
+import PixelSidebar from './components/pixel/PixelSidebar.jsx';
+import PixelAgentWorkspace from './components/pixel/PixelAgentWorkspace.jsx';
 import { API } from './api.js';
 
 const queryClient = new QueryClient({
@@ -60,7 +63,8 @@ function renderPage(page) {
   }
 }
 
-export default function App() {
+function AppInner() {
+  const { mode } = useUiMode();
   const [currentPage, setCurrentPage] = useState('requirements');
   const [services, setServices] = useState({ agent: null, plm: null, pim: null, ingestion: null });
 
@@ -86,27 +90,44 @@ export default function App() {
   const meta = PAGE_META[currentPage] ?? PAGE_META.requirements;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <LoadingProvider>
+    <>
       <GlobalLoadingBar />
       <Toaster position="top-right" richColors closeButton />
-      <div className="flex h-screen bg-slate-50 overflow-hidden">
-        <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
+      <div className="flex h-screen overflow-hidden" style={mode === 'pixel' ? { background: 'var(--pixel-bg)' } : { background: '#f8fafc' }}>
+        {mode === 'pixel' ? (
+          <PixelSidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
+        ) : (
+          <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} services={services} />
+        )}
 
         <div className="flex flex-col flex-1 overflow-hidden">
           {!meta.hideTopBar && <TopBar title={meta.title} subtitle={meta.subtitle} />}
 
-          {meta.step !== null && !meta.hideTopBar && <WorkflowStepper activeStep={meta.step} />}
+          {meta.step !== null && !meta.hideTopBar && mode !== 'pixel' && (
+            <WorkflowStepper activeStep={meta.step} />
+          )}
 
-          <main
-            key={currentPage}
-            className="flex-1 overflow-y-auto p-6 animate-fade-in"
-          >
-            {renderPage(currentPage)}
+          <main key={currentPage} className="flex-1 overflow-y-auto p-6 animate-fade-in">
+            {currentPage === 'agent' && mode === 'pixel' ? (
+              <PixelAgentWorkspace />
+            ) : (
+              renderPage(currentPage)
+            )}
           </main>
         </div>
       </div>
-      </LoadingProvider>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <UiModeProvider>
+        <LoadingProvider>
+          <AppInner />
+        </LoadingProvider>
+      </UiModeProvider>
     </QueryClientProvider>
   );
 }
