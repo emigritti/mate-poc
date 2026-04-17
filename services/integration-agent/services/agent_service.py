@@ -240,7 +240,7 @@ async def generate_integration_doc(
     reviewer_feedback: str = "",
     log_fn: Callable[[str], None] | None = None,
     pinned_chunks: list | None = None,
-    llm_profile: str = "default",                  # "default" | "premium" (ADR-046)
+    llm_profile: str = "default",                  # "default" | "high_quality" (ADR-046)
 ) -> tuple[str, GenerationReport]:
     """
     Run the full RAG + LLM pipeline for a single catalog entry.
@@ -280,8 +280,9 @@ async def generate_integration_doc(
     """
     _log = log_fn or logger.info
 
-    # Resolve LLM model and sampling parameters for this profile (ADR-046)
-    if llm_profile == "premium":
+    # Resolve LLM model and sampling parameters for this profile (ADR-046).
+    # "high_quality" is the user-facing name; "premium" accepted as legacy alias.
+    if llm_profile in ("high_quality", "premium"):
         _llm_model = llm_overrides.get("premium_model", settings.premium_model)
         _llm_kw: dict = dict(
             model=_llm_model,

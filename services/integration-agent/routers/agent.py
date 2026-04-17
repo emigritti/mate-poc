@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/v1", tags=["agent"])
 class TriggerRequest(BaseModel):
     """Optional request body for POST /agent/trigger."""
     pinned_doc_ids: list[str] = []
-    llm_profile: str = "default"   # "default" | "premium" (ADR-046)
+    llm_profile: str = "default"   # "default" | "high_quality" (ADR-046)
 
 
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
@@ -49,8 +49,8 @@ async def run_agentic_rag_flow(
     Args:
         pinned_chunks: KB chunks explicitly selected by the user to be injected
                        in the PINNED REFERENCES section of every generated document.
-        llm_profile:   "default" or "premium" — selects the Ollama model and sampling
-                       parameters for document generation (ADR-046).
+        llm_profile:   "default" or "high_quality" — selects the Ollama model and sampling
+                       parameters for document generation (ADR-046). "premium" accepted as alias.
     """
     confirmed = [e for e in state.catalog.values() if e.status == "TAG_CONFIRMED"]
     total = len(confirmed)

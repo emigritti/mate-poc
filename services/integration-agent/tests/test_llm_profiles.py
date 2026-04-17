@@ -12,7 +12,8 @@ Coverage:
   - admin._DocLLMPatch: accepts num_ctx / top_p / top_k / repeat_penalty
   - admin PATCH: new fields are stored in llm_overrides
   - agent router TriggerRequest: llm_profile field exists and defaults to "default"
-  - agent_service.generate_integration_doc: premium profile passes premium kwargs
+  - agent_service.generate_integration_doc: "high_quality" profile passes premium kwargs
+  - TriggerRequest: "high_quality" is the canonical value; "premium" accepted as legacy alias
 """
 
 import asyncio
@@ -388,13 +389,18 @@ class TestTriggerRequestLlmProfile:
         r = TriggerRequest()
         assert r.llm_profile == "default"
 
-    def test_llm_profile_accepts_premium(self):
+    def test_llm_profile_accepts_high_quality(self):
+        from routers.agent import TriggerRequest
+        r = TriggerRequest(llm_profile="high_quality")
+        assert r.llm_profile == "high_quality"
+
+    def test_llm_profile_accepts_premium_legacy_alias(self):
         from routers.agent import TriggerRequest
         r = TriggerRequest(llm_profile="premium")
         assert r.llm_profile == "premium"
 
     def test_pinned_doc_ids_still_works(self):
         from routers.agent import TriggerRequest
-        r = TriggerRequest(pinned_doc_ids=["doc1", "doc2"], llm_profile="premium")
+        r = TriggerRequest(pinned_doc_ids=["doc1", "doc2"], llm_profile="high_quality")
         assert r.pinned_doc_ids == ["doc1", "doc2"]
-        assert r.llm_profile == "premium"
+        assert r.llm_profile == "high_quality"

@@ -32,18 +32,22 @@ Introduce **three named LLM profiles** and extend the Ollama options payload:
 
 ### Profiles
 
-| Profile | Model | `num_ctx` | `num_predict` | `temperature` | `top_p` | `top_k` | `repeat_penalty` |
-|---|---|---|---|---|---|---|---|
-| `default` | `qwen2.5:14b` | 8192 | 2000 | 0.1 | 0.9 | 40 | 1.08 |
-| `premium` | `gemma4:26b` | 6144 | 1800 | 0.0 | 0.85 | 30 | 1.1 |
-| fast-utility (internal) | `qwen3:8b` | (settings default) | 50–256 | 0.1 | — | — | — |
+| Profile (API value) | UI label | Model | `num_ctx` | `num_predict` | `temperature` | `top_p` | `top_k` | `repeat_penalty` |
+|---|---|---|---|---|---|---|---|---|
+| `default` | Default Runtime | `qwen2.5:14b` | 8192 | 2000 | 0.1 | 0.9 | 40 | 1.08 |
+| `high_quality` (`premium` accepted as legacy alias) | High Quality | `gemma4:26b` | 6144 | 1800 | 0.0 | 0.85 | 30 | 1.1 |
+| fast-utility (internal, not user-selectable) | — | `qwen3:8b` | (settings default) | 50–256 | 0.0 | — | — | — |
 
 ### Routing rules
 
-1. **Document generation** — uses the profile selected at trigger time (`default` or `premium`).
-2. **Tag suggestion and query expansion** — always use the fast-utility model (`settings.tag_model`),
-   independent of the document profile. This is not user-selectable.
-3. **FactPack extraction / section rendering** — inherits the same profile kwargs as generation
+1. **Document generation** — uses the profile selected at trigger time (`default` or `high_quality`).
+   The UI pre-selects "Default Runtime"; the user may switch to "High Quality" before starting the agent.
+   "High Quality" forces the premium Ollama model and sampling parameters throughout that run.
+2. **Tag suggestion** — always uses the fast-utility profile (`settings.tag_model`), regardless of
+   the document profile selected. This is **not user-selectable** — the UI exposes no control for it.
+3. **Everything else** (RAG retrieval, query expansion, fact-pack steps) — always uses the `default`
+   profile. No user control is exposed.
+4. **FactPack extraction / section rendering** — inherits the same profile kwargs as generation
    (passed via `_llm_kw` dict in `agent_service.py`).
 
 ### Options payload
@@ -63,9 +67,12 @@ Introduce **three named LLM profiles** and extend the Ollama options payload:
 
 ### UI
 
-A **Generation Profile** toggle (Default / Premium) is added to `AgentWorkspacePage.jsx`,
-visible when the agent is idle. The selected profile is sent in `POST /agent/trigger` as
-`llm_profile`. Tagging always uses fast-utility — no UI needed.
+A **Generation Profile** toggle (**Default Runtime** / **High Quality**) is added to
+`AgentWorkspacePage.jsx` (and `PixelAgentWorkspace.jsx`), visible when the agent is idle.
+"Default Runtime" is pre-selected. When the user selects "High Quality", the value
+`"high_quality"` is sent in `POST /agent/trigger` as `llm_profile`, which forces the premium
+Ollama model and sampling parameters for that generation run.
+Tagging always uses fast-utility — no UI control is exposed for it.
 
 ---
 
@@ -105,6 +112,7 @@ Allow the user to select "fast-utility" for generation. Rejected because:
 
 **Backward compatibility:**
 - `llm_profile` defaults to `"default"` — no change for existing API callers.
+- `"premium"` accepted as legacy alias for `"high_quality"` in `generate_integration_doc()`.
 - `tag_model` defaults to `"qwen3:8b"` — can be overridden to `"qwen2.5:14b"` via `TAG_MODEL`
   env var to preserve old behaviour.
 
@@ -114,8 +122,8 @@ Allow the user to select "fast-utility" for generation. Rejected because:
 
 1. Unit tests cover: config defaults, Ollama options payload shape, tag model routing,
    premium profile kwarg forwarding in `generate_integration_doc`.
-2. Integration smoke test: trigger with `llm_profile="premium"` and verify agent log
-   shows `profile='premium' model=gemma4:26b`.
+2. Integration smoke test: trigger with `llm_profile="high_quality"` and verify agent log
+   shows `profile='high_quality' model=gemma4:26b`; also verify legacy `"premium"` still works.
 3. Verify tag suggestion log shows the fast-utility model name.
 
 ---

@@ -62,7 +62,7 @@ export default function AgentWorkspacePage() {
   const [localError,   setLocalError]   = useState(null);
   const [pinnedDocIds, setPinnedDocIds] = useState([]);
   const [kbDocs,       setKbDocs]       = useState([]);
-  const [llmProfile,   setLlmProfile]   = useState('default'); // "default" | "premium"
+  const [llmProfile,   setLlmProfile]   = useState('default'); // "default" | "high_quality"
 
   // Load KB docs (exclude URL-type; those have no chunks to pin)
   useEffect(() => {
@@ -174,8 +174,8 @@ export default function AgentWorkspacePage() {
           </p>
           <div className="flex gap-2">
             {[
-              { key: 'default', label: 'Default', sub: 'qwen2.5:14b' },
-              { key: 'premium', label: 'Premium', sub: 'gemma4:26b' },
+              { key: 'default',      label: 'Default Runtime', sub: 'qwen2.5:14b' },
+              { key: 'high_quality', label: 'High Quality',    sub: 'gemma4:26b'  },
             ].map(({ key, label, sub }) => (
               <button
                 key={key}
@@ -194,7 +194,7 @@ export default function AgentWorkspacePage() {
             ))}
           </div>
           <p className="text-xs text-slate-400 mt-1.5">
-            {llmProfile === 'premium'
+            {llmProfile === 'high_quality'
               ? 'Higher quality — slower. Recommended for complex integrations.'
               : 'Balanced — stable latency, good quality for most integrations.'}
           </p>

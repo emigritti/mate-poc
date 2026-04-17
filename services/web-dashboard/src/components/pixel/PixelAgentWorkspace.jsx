@@ -25,7 +25,7 @@ function buildStageStates(logs) {
 export default function PixelAgentWorkspace() {
   const { logs, isRunning, trigger, cancel, triggerError, progress: apiProgress } = useAgentLogs();
 
-  const [llmProfile, setLlmProfile] = useState('default');
+  const [llmProfile, setLlmProfile] = useState('default'); // "default" | "high_quality"
   const [localError,  setLocalError]  = useState(null);
   const [pinnedDocIds]                = useState([]);
   const logEndRef = useRef(null);
@@ -67,15 +67,15 @@ export default function PixelAgentWorkspace() {
         {!isRunning && (
           <div className="flex gap-2 mb-3">
             {[
-              { key: 'default', label: 'DEFAULT', sub: 'qwen2.5:14b' },
-              { key: 'premium', label: 'PREMIUM',  sub: 'gemma4:26b' },
+              { key: 'default',      label: 'DEFAULT RUNTIME', sub: 'qwen2.5:14b' },
+              { key: 'high_quality', label: 'HIGH QUALITY',    sub: 'gemma4:26b'  },
             ].map(({ key, label, sub }) => (
               <button
                 key={key}
                 onClick={() => setLlmProfile(key)}
-                className={`pixel-button ${key === 'premium' ? 'pixel-button-accent' : ''}`}
+                className={`pixel-button ${key === 'high_quality' ? 'pixel-button-accent' : ''}`}
                 style={llmProfile === key ? {
-                  background: key === 'premium' ? 'var(--pixel-accent)' : 'var(--pixel-primary)',
+                  background: key === 'high_quality' ? 'var(--pixel-accent)' : 'var(--pixel-primary)',
                   color: 'var(--pixel-bg)',
                 } : {}}
               >
