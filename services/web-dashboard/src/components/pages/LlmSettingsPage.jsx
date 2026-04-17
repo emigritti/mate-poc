@@ -2,19 +2,23 @@ import { useState, useEffect } from 'react';
 import { SlidersHorizontal, RotateCcw, Save, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
 import { API } from '../../api.js';
 
-// ── Field metadata ─────────────────────────────────────────────────────────────
-const DOC_FIELDS = [
-  { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Ollama model name (e.g. llama3.1:8b)' },
-  { key: 'num_predict',     label: 'Max Tokens',        type: 'number', unit: 'tok', hint: 'Token cap for document generation (~3 tok/s on CPU)' },
-  { key: 'timeout_seconds', label: 'Timeout',           type: 'number', unit: 's',   hint: 'HTTP timeout for document generation calls' },
+// ── Unified field metadata (same for all 3 profiles) ──────────────────────────
+const MODEL_FIELDS = [
+  { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Ollama model name (e.g. qwen2.5:14b)' },
+  { key: 'num_predict',     label: 'Max Tokens',        type: 'number', unit: 'tok', hint: 'Token cap for generation' },
+  { key: 'timeout_seconds', label: 'Timeout',           type: 'number', unit: 's',   hint: 'HTTP timeout for Ollama calls' },
   { key: 'temperature',     label: 'Temperature',       type: 'number', unit: '',    step: 0.01, hint: '0 = deterministic, 1 = creative' },
-  { key: 'rag_max_chars',   label: 'RAG Context Limit', type: 'number', unit: 'ch',  hint: 'Max characters of past-approved context injected into prompt' },
+  { key: 'rag_max_chars',   label: 'RAG Context Limit', type: 'number', unit: 'ch',  hint: 'Max characters of retrieved context injected into prompt' },
+  { key: 'num_ctx',         label: 'Context Window',    type: 'number', unit: 'tok', hint: 'Ollama context window size (num_ctx)' },
+  { key: 'top_p',           label: 'Top-P',             type: 'number', unit: '',    step: 0.01, hint: 'Nucleus sampling threshold' },
+  { key: 'top_k',           label: 'Top-K',             type: 'number', unit: '',    hint: 'Top-K sampling tokens' },
+  { key: 'repeat_penalty',  label: 'Repeat Penalty',    type: 'number', unit: '',    step: 0.01, hint: 'Penalizes token repetition' },
 ];
 
-const TAG_FIELDS = [
-  { key: 'num_predict',     label: 'Max Tokens',  type: 'number', unit: 'tok', hint: 'Token cap for tag suggestion (~15 tokens needed)' },
-  { key: 'timeout_seconds', label: 'Timeout',     type: 'number', unit: 's',   hint: 'HTTP timeout for tag suggestion calls' },
-  { key: 'temperature',     label: 'Temperature', type: 'number', unit: '',    step: 0.01, hint: '0 = fully deterministic' },
+const PROFILES = [
+  { groupKey: 'doc_llm',     title: 'Default Profile',      subtitle: 'Standard document generation' },
+  { groupKey: 'premium_llm', title: 'Premium Profile',      subtitle: 'High-quality complex integrations' },
+  { groupKey: 'tag_llm',     title: 'Fast-Utility Profile', subtitle: 'Tag suggestion & query expansion' },
 ];
 
 function FieldRow({ fieldMeta, effectiveVal, defaultVal, groupKey, onUpdate }) {
@@ -63,19 +67,24 @@ function FieldRow({ fieldMeta, effectiveVal, defaultVal, groupKey, onUpdate }) {
   );
 }
 
-function SettingsCard({ title, fields, effective, defaults, groupKey, onUpdate }) {
+function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, onUpdate }) {
   const overrideCount = fields.filter(({ key }) => effective[key] !== defaults[key]).length;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
         <SlidersHorizontal size={14} className="text-slate-400" />
-        <span
-          className="text-sm font-semibold text-slate-700"
-          style={{ fontFamily: 'Outfit, sans-serif' }}
-        >
-          {title}
-        </span>
+        <div className="flex-1 min-w-0">
+          <span
+            className="text-sm font-semibold text-slate-700 block"
+            style={{ fontFamily: 'Outfit, sans-serif' }}
+          >
+            {title}
+          </span>
+          {subtitle && (
+            <span className="text-[11px] text-slate-400">{subtitle}</span>
+          )}
+        </div>
         {overrideCount > 0 && (
           <span className="ml-auto text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
             {overrideCount} override{overrideCount > 1 ? 's' : ''} active
@@ -99,12 +108,12 @@ function SettingsCard({ title, fields, effective, defaults, groupKey, onUpdate }
 }
 
 export default function LlmSettingsPage() {
-  const [data,      setData]      = useState(null);   // { effective, defaults, overrides_active }
-  const [draft,     setDraft]     = useState(null);   // local edits not yet saved
+  const [data,      setData]      = useState(null);
+  const [draft,     setDraft]     = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [saving,    setSaving]    = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [feedback,  setFeedback]  = useState(null);   // { type: 'success'|'error', msg }
+  const [feedback,  setFeedback]  = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -132,16 +141,15 @@ export default function LlmSettingsPage() {
     setFeedback(null);
     try {
       const body = {};
-      const docChanges = {};
-      DOC_FIELDS.forEach(({ key }) => {
-        if (draft.doc_llm[key] !== data.defaults.doc_llm[key]) docChanges[key] = draft.doc_llm[key];
-      });
-      const tagChanges = {};
-      TAG_FIELDS.forEach(({ key }) => {
-        if (draft.tag_llm[key] !== data.defaults.tag_llm[key]) tagChanges[key] = draft.tag_llm[key];
-      });
-      if (Object.keys(docChanges).length) body.doc_llm = docChanges;
-      if (Object.keys(tagChanges).length) body.tag_llm = tagChanges;
+      for (const { groupKey } of PROFILES) {
+        const changes = {};
+        MODEL_FIELDS.forEach(({ key }) => {
+          if (draft[groupKey][key] !== data.defaults[groupKey][key]) {
+            changes[key] = draft[groupKey][key];
+          }
+        });
+        if (Object.keys(changes).length) body[groupKey] = changes;
+      }
 
       const res = await API.llmSettings.patch(body);
       const d   = await res.json();
@@ -173,9 +181,8 @@ export default function LlmSettingsPage() {
     }
   };
 
-  const isDirty = draft && data && (
-    DOC_FIELDS.some(({ key }) => draft.doc_llm[key] !== data.effective.doc_llm[key]) ||
-    TAG_FIELDS.some(({ key }) => draft.tag_llm[key] !== data.effective.tag_llm[key])
+  const isDirty = draft && data && PROFILES.some(({ groupKey }) =>
+    MODEL_FIELDS.some(({ key }) => draft[groupKey][key] !== data.effective[groupKey][key])
   );
 
   if (loading) {
@@ -212,27 +219,19 @@ export default function LlmSettingsPage() {
         </div>
       )}
 
-      {/* Settings cards */}
-      {draft && data && (
-        <>
-          <SettingsCard
-            title="Document Generation LLM"
-            fields={DOC_FIELDS}
-            effective={draft.doc_llm}
-            defaults={data.defaults.doc_llm}
-            groupKey="doc_llm"
-            onUpdate={updateDraft}
-          />
-          <SettingsCard
-            title="Tag Suggestion LLM"
-            fields={TAG_FIELDS}
-            effective={draft.tag_llm}
-            defaults={data.defaults.tag_llm}
-            groupKey="tag_llm"
-            onUpdate={updateDraft}
-          />
-        </>
-      )}
+      {/* Settings cards — one per profile */}
+      {draft && data && PROFILES.map(({ groupKey, title, subtitle }) => (
+        <SettingsCard
+          key={groupKey}
+          title={title}
+          subtitle={subtitle}
+          fields={MODEL_FIELDS}
+          effective={draft[groupKey]}
+          defaults={data.defaults[groupKey]}
+          groupKey={groupKey}
+          onUpdate={updateDraft}
+        />
+      ))}
 
       {/* Action buttons */}
       <div className="flex items-center justify-between pt-2">

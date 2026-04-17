@@ -52,21 +52,19 @@ class Settings(BaseSettings):
     ollama_top_k: int = 40
     ollama_repeat_penalty: float = 1.08
 
-    # ── Tag Suggestion LLM (lightweight — overrides for tag-only calls) ───────
-    # Tag output is a JSON array of ≤15 items (~30 tokens max).
-    # num_predict=50 caps well above that to avoid truncation.
-    # qwen2.5:14b on CPU (~4 tok/s) — 60s is more than enough for ~30 tag tokens.
-    # temperature=0 = fully deterministic tags.
-    # Override via TAG_NUM_PREDICT / TAG_TIMEOUT_SECONDS / TAG_TEMPERATURE.
+    # ── Fast-Utility model profile (tags, query expansion) (ADR-046) ────────
+    # qwen3:8b — lightweight, strong multilingual. Used for short/frequent calls
+    # (tag suggestion, query expansion). Pull: `ollama pull qwen3:8b`.
+    # Override via TAG_MODEL and TAG_* siblings.
+    tag_model: str = "qwen3:8b"
     tag_num_predict: int = 50
     tag_timeout_seconds: int = 60
     tag_temperature: float = 0.0
-
-    # ── Fast-utility model (tags, query expansion) (ADR-046) ─────────────────
-    # qwen3:8b — lightweight, strong multilingual. Used for short/frequent calls
-    # (tag suggestion, query expansion). Pull: `ollama pull qwen3:8b`.
-    # Override via TAG_MODEL.
-    tag_model: str = "qwen3:8b"
+    tag_num_ctx: int = 4096
+    tag_top_p: float = 0.9
+    tag_top_k: int = 40
+    tag_repeat_penalty: float = 1.0
+    tag_rag_max_chars: int = 1000
 
     # ── Premium model profile (ADR-046) ──────────────────────────────────────
     # gemma4:26b — used for complex integration documents when the user selects
@@ -80,6 +78,7 @@ class Settings(BaseSettings):
     premium_top_k: int = 30
     premium_repeat_penalty: float = 1.1
     premium_timeout_seconds: int = 900
+    premium_rag_max_chars: int = 5000
 
     # ── Vector DB ─────────────────────────────────────────────────────
     chroma_host: str = "mate-chromadb"

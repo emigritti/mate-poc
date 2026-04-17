@@ -1106,12 +1106,27 @@ Performs a full system reset:
 A read-only markdown browser for significant project documentation. Displays 19 curated documents grouped by category (Guides, ADRs, Checklists, Test Plans, Mappings). Content is served from the mounted `docs/` directory — path traversal and non-.md requests are rejected by the backend.
 
 ### LLM Settings
-An admin page for tuning LLM parameters at runtime without restarting the container:
+An admin page for tuning LLM parameters at runtime without restarting the container. All three model profiles expose the **same set of parameters**:
 
-| Group | Parameters |
+| Parameter | Description |
 |---|---|
-| Document Generation | Model name, max tokens, timeout, temperature, RAG context limit, `num_ctx`, `top_p`, `top_k`, `repeat_penalty` |
-| Tag Suggestion | Max tokens, timeout, temperature |
+| `model` | Ollama model name |
+| `num_predict` | Token cap for generation |
+| `timeout_seconds` | HTTP timeout for Ollama calls |
+| `temperature` | Sampling temperature (0 = deterministic) |
+| `rag_max_chars` | Max characters of retrieved context injected into prompt |
+| `num_ctx` | Context window size (`num_ctx`) |
+| `top_p` | Nucleus sampling threshold |
+| `top_k` | Top-K sampling tokens |
+| `repeat_penalty` | Penalizes token repetition |
+
+The three profile sections are:
+
+| Profile | Group key | Default model | Purpose |
+|---|---|---|---|
+| **Default** | `doc_llm` | `qwen2.5:14b` | Standard document generation |
+| **Premium** | `premium_llm` | `gemma4:26b` | High-quality complex integrations |
+| **Fast-Utility** | `tag_llm` | `qwen3:8b` | Tag suggestion & query expansion |
 
 Changes are applied **immediately** to the running agent and persisted in MongoDB. The "Reset to Defaults" button restores pydantic-settings values (as defined in `config.py` or overridden by env vars at startup).
 
@@ -1126,7 +1141,7 @@ The **Agent Workspace** page includes a **Generation Profile** selector visible 
 | **Default** | `qwen2.5:14b` (`num_ctx=8192`, `temperature=0.1`) | Most integrations — balanced quality and latency |
 | **Premium** | `gemma4:26b` (`num_ctx=6144`, `temperature=0.0`) | Complex integrations with high ambiguity or reasoning demands |
 
-Tagging (tag suggestion, query expansion) always uses the **fast-utility** model (`qwen3:8b`) regardless of the selected profile — this is an internal routing decision and not user-configurable.
+The fast-utility profile (`qwen3:8b`) is used internally for tag suggestion and query expansion regardless of the selected generation profile.
 
 **Model prerequisites:** pull models on the Ollama instance before use:
 ```bash

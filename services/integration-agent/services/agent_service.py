@@ -282,16 +282,16 @@ async def generate_integration_doc(
 
     # Resolve LLM model and sampling parameters for this profile (ADR-046)
     if llm_profile == "premium":
-        _llm_model = settings.premium_model
+        _llm_model = llm_overrides.get("premium_model", settings.premium_model)
         _llm_kw: dict = dict(
             model=_llm_model,
-            num_predict=settings.premium_num_predict,
-            timeout=settings.premium_timeout_seconds,
-            temperature=settings.premium_temperature,
-            num_ctx=settings.premium_num_ctx,
-            top_p=settings.premium_top_p,
-            top_k=settings.premium_top_k,
-            repeat_penalty=settings.premium_repeat_penalty,
+            num_predict=llm_overrides.get("premium_num_predict",    settings.premium_num_predict),
+            timeout=llm_overrides.get("premium_timeout_seconds",    settings.premium_timeout_seconds),
+            temperature=llm_overrides.get("premium_temperature",    settings.premium_temperature),
+            num_ctx=llm_overrides.get("premium_num_ctx",            settings.premium_num_ctx),
+            top_p=llm_overrides.get("premium_top_p",                settings.premium_top_p),
+            top_k=llm_overrides.get("premium_top_k",                settings.premium_top_k),
+            repeat_penalty=llm_overrides.get("premium_repeat_penalty", settings.premium_repeat_penalty),
         )
     else:
         _llm_model = llm_overrides.get("model", settings.ollama_model)

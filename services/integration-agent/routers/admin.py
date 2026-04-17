@@ -24,27 +24,22 @@ router = APIRouter(prefix="/api/v1", tags=["admin"])
 
 # ── LLM Settings Patch schema ─────────────────────────────────────────────────
 
-class _DocLLMPatch(BaseModel):
+class _LLMProfilePatch(BaseModel):
     model: str | None = None
     num_predict: int | None = None
     timeout_seconds: int | None = None
     temperature: float | None = None
     rag_max_chars: int | None = None
-    num_ctx: int | None = None           # ADR-046
-    top_p: float | None = None           # ADR-046
-    top_k: int | None = None             # ADR-046
-    repeat_penalty: float | None = None  # ADR-046
-
-
-class _TagLLMPatch(BaseModel):
-    num_predict: int | None = None
-    timeout_seconds: int | None = None
-    temperature: float | None = None
+    num_ctx: int | None = None
+    top_p: float | None = None
+    top_k: int | None = None
+    repeat_penalty: float | None = None
 
 
 class LLMSettingsPatchRequest(BaseModel):
-    doc_llm: _DocLLMPatch | None = None
-    tag_llm: _TagLLMPatch | None = None
+    doc_llm: _LLMProfilePatch | None = None
+    premium_llm: _LLMProfilePatch | None = None
+    tag_llm: _LLMProfilePatch | None = None
 
 # ── Project Docs ──────────────────────────────────────────────────────────────
 DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent.parent.parent.parent))
@@ -213,28 +208,62 @@ def _llm_settings_response() -> dict:
             "top_k":           settings.ollama_top_k,
             "repeat_penalty":  settings.ollama_repeat_penalty,
         },
+        "premium_llm": {
+            "model":           settings.premium_model,
+            "num_predict":     settings.premium_num_predict,
+            "timeout_seconds": settings.premium_timeout_seconds,
+            "temperature":     settings.premium_temperature,
+            "rag_max_chars":   settings.premium_rag_max_chars,
+            "num_ctx":         settings.premium_num_ctx,
+            "top_p":           settings.premium_top_p,
+            "top_k":           settings.premium_top_k,
+            "repeat_penalty":  settings.premium_repeat_penalty,
+        },
         "tag_llm": {
+            "model":           settings.tag_model,
             "num_predict":     settings.tag_num_predict,
             "timeout_seconds": settings.tag_timeout_seconds,
             "temperature":     settings.tag_temperature,
+            "rag_max_chars":   settings.tag_rag_max_chars,
+            "num_ctx":         settings.tag_num_ctx,
+            "top_p":           settings.tag_top_p,
+            "top_k":           settings.tag_top_k,
+            "repeat_penalty":  settings.tag_repeat_penalty,
         },
     }
     effective = {
         "doc_llm": {
-            "model":           llm_overrides.get("model",           settings.ollama_model),
-            "num_predict":     llm_overrides.get("num_predict",      settings.ollama_num_predict),
-            "timeout_seconds": llm_overrides.get("timeout_seconds",  settings.ollama_timeout_seconds),
-            "temperature":     llm_overrides.get("temperature",      settings.ollama_temperature),
-            "rag_max_chars":   llm_overrides.get("rag_max_chars",    settings.ollama_rag_max_chars),
-            "num_ctx":         llm_overrides.get("num_ctx",          settings.ollama_num_ctx),
-            "top_p":           llm_overrides.get("top_p",            settings.ollama_top_p),
-            "top_k":           llm_overrides.get("top_k",            settings.ollama_top_k),
-            "repeat_penalty":  llm_overrides.get("repeat_penalty",   settings.ollama_repeat_penalty),
+            "model":           llm_overrides.get("model",            settings.ollama_model),
+            "num_predict":     llm_overrides.get("num_predict",       settings.ollama_num_predict),
+            "timeout_seconds": llm_overrides.get("timeout_seconds",   settings.ollama_timeout_seconds),
+            "temperature":     llm_overrides.get("temperature",       settings.ollama_temperature),
+            "rag_max_chars":   llm_overrides.get("rag_max_chars",     settings.ollama_rag_max_chars),
+            "num_ctx":         llm_overrides.get("num_ctx",           settings.ollama_num_ctx),
+            "top_p":           llm_overrides.get("top_p",             settings.ollama_top_p),
+            "top_k":           llm_overrides.get("top_k",             settings.ollama_top_k),
+            "repeat_penalty":  llm_overrides.get("repeat_penalty",    settings.ollama_repeat_penalty),
+        },
+        "premium_llm": {
+            "model":           llm_overrides.get("premium_model",           settings.premium_model),
+            "num_predict":     llm_overrides.get("premium_num_predict",      settings.premium_num_predict),
+            "timeout_seconds": llm_overrides.get("premium_timeout_seconds",  settings.premium_timeout_seconds),
+            "temperature":     llm_overrides.get("premium_temperature",      settings.premium_temperature),
+            "rag_max_chars":   llm_overrides.get("premium_rag_max_chars",    settings.premium_rag_max_chars),
+            "num_ctx":         llm_overrides.get("premium_num_ctx",          settings.premium_num_ctx),
+            "top_p":           llm_overrides.get("premium_top_p",            settings.premium_top_p),
+            "top_k":           llm_overrides.get("premium_top_k",            settings.premium_top_k),
+            "repeat_penalty":  llm_overrides.get("premium_repeat_penalty",   settings.premium_repeat_penalty),
         },
         "tag_llm": {
-            "num_predict":     llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
-            "timeout_seconds": llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
-            "temperature":     llm_overrides.get("tag_temperature",    settings.tag_temperature),
+            "model":           llm_overrides.get("tag_model",           settings.tag_model),
+            "num_predict":     llm_overrides.get("tag_num_predict",      settings.tag_num_predict),
+            "timeout_seconds": llm_overrides.get("tag_timeout_seconds",  settings.tag_timeout_seconds),
+            "temperature":     llm_overrides.get("tag_temperature",      settings.tag_temperature),
+            "rag_max_chars":   llm_overrides.get("tag_rag_max_chars",    settings.tag_rag_max_chars),
+            "num_ctx":         llm_overrides.get("tag_num_ctx",          settings.tag_num_ctx),
+            "top_p":           llm_overrides.get("tag_top_p",            settings.tag_top_p),
+            "top_k":           llm_overrides.get("tag_top_k",            settings.tag_top_k),
+            "repeat_penalty":  llm_overrides.get("tag_repeat_penalty",   settings.tag_repeat_penalty),
         },
     }
     return {
@@ -260,6 +289,10 @@ async def patch_llm_settings(
     if body.doc_llm is not None:
         for k, v in body.doc_llm.model_dump(exclude_none=True).items():
             llm_overrides[k] = v
+
+    if body.premium_llm is not None:
+        for k, v in body.premium_llm.model_dump(exclude_none=True).items():
+            llm_overrides[f"premium_{k}"] = v
 
     if body.tag_llm is not None:
         for k, v in body.tag_llm.model_dump(exclude_none=True).items():
