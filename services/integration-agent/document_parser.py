@@ -155,72 +155,27 @@ _ENTITY_PATTERN: re.Pattern = re.compile(r"\b([A-Z][a-z]+(?:[A-Z][a-zA-Z0-9]+)+)
 def enrich_chunk_metadata(chunk: "DoclingChunk", source_modality: str) -> dict:
     """Extract semantic metadata fields from a DoclingChunk for ChromaDB storage.
 
-    Deterministic extraction only — no LLM call, no external I/O.
-    All returned values are plain strings (ChromaDB metadata constraint).
-    List-typed fields are stored as comma-separated strings (consistent with
-    the existing tags_csv convention).
-
-    ADR-044: semantic enrichment enables future intent-aware retrieval without
-    depending on free-text search alone.
-
-    Args:
-        chunk:           DoclingChunk to analyse.
-        source_modality: file extension / format detected at upload time
-                         (e.g. "pdf", "docx", "md").
-
-    Returns a dict with keys:
-        semantic_type        — one of: "data_mapping_candidate", "diagram_or_visual",
-                               "business_rule", "error_handling",
-                               "security_requirement", "architecture",
-                               "data_definition", "general_text"
-        entity_names         — comma-separated PascalCase entity names (max 10)
-        field_names          — comma-separated snake_case field names (max 15)
-        rule_markers         — comma-separated normative markers found in text
-        integration_keywords — comma-separated integration-domain terms found
-        source_modality      — passed through unchanged
+    Delegates to semantic_classifier.classify_chunk() (ADR-048) and returns a
+    flat dict compatible with ChromaDB.  Backward-compatible with ADR-044 callers:
+    the returned keys are a superset of the original six fields.
     """
-    text_lower = chunk.text.lower()
+    from services.semantic_classifier import classify_chunk
+    from services.metadata_schema import flatten_to_chroma
 
-    # Deterministic extraction
-    found_rules = sorted({m for m in _RULE_MARKERS if m in text_lower})
-    found_integ = sorted({k for k in _INTEGRATION_KEYWORDS if k in text_lower})
-    found_fields = sorted(set(_FIELD_PATTERN.findall(chunk.text)))[:15]
-    found_entities = sorted(set(_ENTITY_PATTERN.findall(chunk.text)))[:10]
-
-    # Semantic type classification
-    if chunk.chunk_type == "table":
-        semantic_type = "data_mapping_candidate"
-    elif chunk.chunk_type == "figure":
-        semantic_type = "diagram_or_visual"
-    else:
-        # Score-based classification for text chunks (first match wins)
-        rule_score     = len(found_rules)
-        error_score    = sum(1 for k in _ERROR_KEYWORDS    if k in text_lower)
-        security_score = sum(1 for k in _SECURITY_KEYWORDS if k in text_lower)
-        arch_score     = sum(1 for k in _ARCHITECTURE_KEYWORDS if k in text_lower)
-        field_score    = len(found_fields)
-
-        if rule_score >= 2:
-            semantic_type = "business_rule"
-        elif error_score >= 2:
-            semantic_type = "error_handling"
-        elif security_score >= 2:
-            semantic_type = "security_requirement"
-        elif arch_score >= 2:
-            semantic_type = "architecture"
-        elif field_score >= 3:
-            semantic_type = "data_definition"
-        else:
-            semantic_type = "general_text"
-
-    return {
-        "semantic_type":        semantic_type,
-        "entity_names":         ",".join(found_entities),
-        "field_names":          ",".join(found_fields),
-        "rule_markers":         ",".join(found_rules),
-        "integration_keywords": ",".join(found_integ),
-        "source_modality":      source_modality,
-    }
+    meta = classify_chunk(
+        text=chunk.text,
+        chunk_type=chunk.chunk_type,
+        chunk_id=f"_enriched-{chunk.index}",
+        document_id="",
+        source_modality=source_modality,
+        chunk_index=chunk.index,
+        section_header=chunk.section_header,
+        page_num=chunk.page_num,
+    )
+    flat = flatten_to_chroma(meta)
+    # Expose the legacy key expected by some callers
+    flat["source_modality"] = source_modality
+    return flat
 
 
 # ── Format-specific parsers ───────────────────────────────────────────────────

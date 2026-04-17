@@ -100,6 +100,7 @@ class ScoredChunk:
     source_label: str   # "approved" | "kb_document" | "ingestion_openapi" | "ingestion_html" | "kb_url"
     tags: list[str] = field(default_factory=list)
     doc_id: str = ""    # document_id from ChromaDB metadata (for attribution)
+    semantic_type: str = ""  # v2 metadata field — empty string for v1 chunks (ADR-048)
 
 
 class HybridRetriever:
@@ -278,10 +279,12 @@ class HybridRetriever:
                         label = f"ingestion_{source_type}"    # e.g. "ingestion_openapi"
                     else:
                         label = "kb_document"
+                    semantic_type = m.get("semantic_type", "")
                     if doc_id not in seen or seen[doc_id].score < score:
                         seen[doc_id] = ScoredChunk(
                             text=doc, score=score, source_label=label,
                             tags=tags, doc_id=doc_id,
+                            semantic_type=semantic_type,
                         )
                     if tags and self._tags_match_meta(meta, tags):
                         matched_ids.add(doc_id)
@@ -434,6 +437,50 @@ class HybridRetriever:
             logger.warning("[RAG] TF-IDF re-rank failed, using score order: %s", exc)
             return sorted(chunks, key=lambda c: c.score, reverse=True)
 
+    # ── Semantic v2 Score Bonus (ADR-048) ────────────────────────────────────
+
+    # Maps retrieval intent → SemanticType values that earn a score bonus.
+    # Only v2 chunks (kb_schema_version=v2) have a semantic_type; v1 chunks
+    # receive no bonus, preserving full backward compatibility.
+    _INTENT_SEMANTIC_BONUS: dict[str, frozenset[str]] = {
+        "overview":        frozenset({"system_overview", "integration_flow"}),
+        "business_rules":  frozenset({"business_rule", "validation_rule"}),
+        "data_mapping":    frozenset({"data_mapping_candidate", "field_definition", "entity_definition"}),
+        "errors":          frozenset({"error_handling"}),
+        "architecture":    frozenset({"integration_flow", "api_contract", "security_requirement"}),
+    }
+    _SEMANTIC_BONUS = 0.08   # additive boost — small enough not to override relevance ordering
+
+    def _apply_semantic_bonus(
+        self,
+        chunks: list[ScoredChunk],
+        intent: str,
+    ) -> list[ScoredChunk]:
+        """Add a small score bonus to v2 chunks whose semantic_type matches the intent.
+
+        Operates after TF-IDF re-rank.  Non-v2 chunks (semantic_type='') are
+        never penalised — they simply don't receive the bonus.
+        """
+        target_types = self._INTENT_SEMANTIC_BONUS.get(intent)
+        if not target_types:
+            return chunks
+
+        boosted = []
+        for chunk in chunks:
+            bonus = self._SEMANTIC_BONUS if chunk.semantic_type in target_types else 0.0
+            if bonus:
+                chunk = ScoredChunk(
+                    text=chunk.text,
+                    score=chunk.score + bonus,
+                    source_label=chunk.source_label,
+                    tags=chunk.tags,
+                    doc_id=chunk.doc_id,
+                    semantic_type=chunk.semantic_type,
+                )
+            boosted.append(chunk)
+
+        return sorted(boosted, key=lambda c: c.score, reverse=True)
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def retrieve(
@@ -472,9 +519,10 @@ class HybridRetriever:
         merged   = self._ensemble_merge(chroma_chunks, bm25_chunks)
         filtered = self._apply_threshold(merged)
         reranked = self._tfidf_rerank(filtered, query_text, intent)
-        top_k    = reranked[:settings.rag_top_k_chunks]
+        bonused  = self._apply_semantic_bonus(reranked, intent)
+        top_k    = bonused[:settings.rag_top_k_chunks]
 
-        _log(f"[RAG] Final: {len(top_k)} chunks after ensemble+threshold+rerank (intent={intent!r})")
+        _log(f"[RAG] Final: {len(top_k)} chunks after ensemble+threshold+rerank+semantic_bonus (intent={intent!r})")
         return top_k
 
     # ── RAPTOR-lite Summary Retrieval (ADR-032) ───────────────────────────────

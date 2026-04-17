@@ -310,7 +310,8 @@ class ContextAssembler:
             section_parts = [header]
             for chunk in kb_sorted:
                 label = "kb_url" if chunk.source_label == "kb_url" else "kb_file"
-                entry = f"### Source: {label} · score: {chunk.score:.2f}\n{chunk.text}"
+                type_hint = f" · type: {chunk.semantic_type}" if chunk.semantic_type else ""
+                entry = f"### Source: {label} · score: {chunk.score:.2f}{type_hint}\n{chunk.text}"
                 if chars_used + len(entry) > max_chars:
                     break
                 section_parts.append(entry)

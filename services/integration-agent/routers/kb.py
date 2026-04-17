@@ -547,3 +547,66 @@ async def kb_stats() -> dict:
         file_types=file_types,
         all_tags=sorted(all_tags),
     ).model_dump()
+
+
+# ── KB Metadata v2 Enrichment (ADR-048) ──────────────────────────────────────
+
+@router.post("/kb/enrich")
+async def kb_enrich_all(
+    force: bool = False,
+    _token: str = Depends(require_token),
+) -> dict:
+    """Enrich all existing KB chunks with v2 semantic metadata.
+
+    Reads every chunk from ChromaDB, re-classifies its metadata using the
+    ADR-048 semantic_classifier, and upserts updated metadata in place.
+    Embeddings are NOT recomputed.
+
+    Query params:
+        force: if true, re-enrich chunks already tagged as kb_schema_version=v2.
+    """
+    if state.kb_collection is None:
+        raise HTTPException(status_code=503, detail="ChromaDB unavailable.")
+    try:
+        from services.kb_enrichment_service import enrich_all_documents
+        summary = enrich_all_documents(state.kb_collection, force=force)
+        return {
+            "status": "ok",
+            "documents_processed": summary.documents_processed,
+            "documents_skipped_already_v2": summary.documents_skipped,
+            "total_chunks_enriched": summary.total_chunks_enriched,
+            "total_errors": summary.total_errors,
+        }
+    except Exception as exc:
+        logger.error("[KB-Enrich] Batch enrichment failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Enrichment failed: {exc}")
+
+
+@router.post("/kb/enrich/{document_id}")
+async def kb_enrich_document(
+    document_id: str,
+    force: bool = False,
+    _token: str = Depends(require_token),
+) -> dict:
+    """Enrich all chunks for a single KB document with v2 semantic metadata."""
+    if state.kb_collection is None:
+        raise HTTPException(status_code=503, detail="ChromaDB unavailable.")
+    try:
+        from services.kb_enrichment_service import enrich_document
+        result = enrich_document(document_id, state.kb_collection, force=force)
+        if not result.success:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Enrichment errors: {'; '.join(result.errors)}",
+            )
+        return {
+            "status": "ok",
+            "doc_id": result.doc_id,
+            "chunks_enriched": result.chunks_processed,
+            "chunks_skipped_already_v2": result.chunks_skipped_already_v2,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("[KB-Enrich] Single-doc enrichment failed for %s: %s", document_id, exc)
+        raise HTTPException(status_code=500, detail=f"Enrichment failed: {exc}")

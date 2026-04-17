@@ -289,30 +289,32 @@ class TestEnrichChunkMetadata:
         result = enrich_chunk_metadata(chunk, "pdf")
         assert result["semantic_type"] == "security_requirement"
 
-    def test_text_chunk_with_architecture_keywords_is_architecture(self):
+    def test_text_chunk_with_architecture_keywords_is_integration_flow(self):
         chunk = _text_chunk("The integration architecture uses an asynchronous pipeline with sequence diagram.")
         result = enrich_chunk_metadata(chunk, "docx")
-        assert result["semantic_type"] == "architecture"
+        assert result["semantic_type"] == "integration_flow"
 
-    def test_text_chunk_with_many_field_names_is_data_definition(self):
+    def test_text_chunk_with_many_field_names_is_field_definition(self):
         chunk = _text_chunk("Fields: product_id, published_at, order_status, price_amount.")
         result = enrich_chunk_metadata(chunk, "xlsx")
-        assert result["semantic_type"] == "data_definition"
+        assert result["semantic_type"] == "field_definition"
 
-    def test_text_chunk_generic_is_general_text(self):
+    def test_text_chunk_generic_is_generic_context(self):
         chunk = _text_chunk("This document describes best practices for enterprise solutions.")
         result = enrich_chunk_metadata(chunk, "md")
-        assert result["semantic_type"] == "general_text"
+        assert result["semantic_type"] == "generic_context"
 
     def test_source_modality_passthrough(self):
         result = enrich_chunk_metadata(_text_chunk("some content"), "pptx")
         assert result["source_modality"] == "pptx"
 
-    def test_all_output_values_are_strings(self):
-        """ChromaDB metadata requires str/int/float/bool — no lists or None."""
+    def test_all_output_values_are_chroma_compatible(self):
+        """ChromaDB metadata requires str/int/float/bool — no lists or None (ADR-048)."""
         result = enrich_chunk_metadata(_text_chunk("content"), "pdf")
         for key, value in result.items():
-            assert isinstance(value, str), f"Field '{key}' is {type(value).__name__}, expected str"
+            assert isinstance(value, (str, bool, int, float)), (
+                f"Field '{key}' is {type(value).__name__}, expected str/bool/int/float"
+            )
 
     def test_field_names_extracted_snake_case(self):
         chunk = _text_chunk("Map product_code and published_at to target_field.")
@@ -355,4 +357,4 @@ class TestEnrichChunkMetadata:
         assert result["field_names"] == ""
         assert result["rule_markers"] == ""
         assert result["integration_keywords"] == ""
-        assert result["semantic_type"] == "general_text"
+        assert result["semantic_type"] == "generic_context"
