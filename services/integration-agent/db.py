@@ -32,9 +32,10 @@ catalog_col:      motor.motor_asyncio.AsyncIOMotorCollection | None = None
 approvals_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
 documents_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
 kb_documents_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
-llm_settings_col: motor.motor_asyncio.AsyncIOMotorCollection | None = None
-projects_col:     motor.motor_asyncio.AsyncIOMotorCollection | None = None
-events_col:       motor.motor_asyncio.AsyncIOMotorCollection | None = None
+llm_settings_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
+agent_settings_col:  motor.motor_asyncio.AsyncIOMotorCollection | None = None
+projects_col:        motor.motor_asyncio.AsyncIOMotorCollection | None = None
+events_col:          motor.motor_asyncio.AsyncIOMotorCollection | None = None
 
 
 async def init_db(retries: int = 20, delay: float = 3.0) -> None:
@@ -44,7 +45,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
     Retries up to `retries` times with `delay` seconds between attempts.
     On failure, collections remain None (degraded mode — no crash).
     """
-    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col, projects_col, events_col
+    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col, agent_settings_col, projects_col, events_col
 
     for attempt in range(1, retries + 1):
         try:
@@ -61,8 +62,9 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             approvals_col    = _db["approvals"]
             documents_col    = _db["documents"]
             kb_documents_col = _db["kb_documents"]
-            llm_settings_col = _db["llm_settings"]
-            projects_col     = _db["projects"]
+            llm_settings_col   = _db["llm_settings"]
+            agent_settings_col = _db["agent_settings"]
+            projects_col       = _db["projects"]
             events_col       = _db["events"]
 
             # Idempotent index creation

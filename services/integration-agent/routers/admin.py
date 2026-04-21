@@ -41,6 +41,70 @@ class LLMSettingsPatchRequest(BaseModel):
     premium_llm: _LLMProfilePatch | None = None
     tag_llm: _LLMProfilePatch | None = None
 
+
+# ── Agent Settings (quality gate, RAG, vision, FactPack, KB chunking) ─────────
+
+# Capture design-time defaults once at import — used for "Reset to Defaults"
+_AGENT_SETTINGS_DEFAULTS: dict = {
+    "quality_gate_mode":           settings.quality_gate_mode,
+    "quality_gate_min_score":      settings.quality_gate_min_score,
+    "rag_distance_threshold":      settings.rag_distance_threshold,
+    "rag_bm25_weight":             settings.rag_bm25_weight,
+    "rag_n_results_per_query":     settings.rag_n_results_per_query,
+    "rag_top_k_chunks":            settings.rag_top_k_chunks,
+    "kb_max_rag_chars":            settings.kb_max_rag_chars,
+    "fact_pack_enabled":           settings.fact_pack_enabled,
+    "fact_pack_max_tokens":        settings.fact_pack_max_tokens,
+    "llm_max_output_chars":        settings.llm_max_output_chars,
+    "vision_captioning_enabled":   settings.vision_captioning_enabled,
+    "raptor_summarization_enabled": settings.raptor_summarization_enabled,
+    "kb_max_summarize_sections":   settings.kb_max_summarize_sections,
+    "kb_chunk_size":               settings.kb_chunk_size,
+    "kb_chunk_overlap":            settings.kb_chunk_overlap,
+}
+
+# Runtime overrides — applied to `settings` immediately on PATCH, persisted to MongoDB.
+# Loaded back at startup so overrides survive container restarts.
+agent_settings_overrides: dict = {}
+
+
+def _apply_agent_overrides(overrides: dict) -> None:
+    """Write override values onto the singleton `settings` object."""
+    for key, value in overrides.items():
+        if key in _AGENT_SETTINGS_DEFAULTS:
+            object.__setattr__(settings, key, value)
+
+
+def _agent_settings_response() -> dict:
+    effective = {k: getattr(settings, k) for k in _AGENT_SETTINGS_DEFAULTS}
+    return {
+        "status": "success",
+        "data": {
+            "effective": effective,
+            "defaults": _AGENT_SETTINGS_DEFAULTS,
+            "overrides_active": bool(agent_settings_overrides),
+        },
+    }
+
+
+class AgentSettingsPatchRequest(BaseModel):
+    quality_gate_mode: str | None = None            # "warn" | "block"
+    quality_gate_min_score: float | None = None
+    rag_distance_threshold: float | None = None
+    rag_bm25_weight: float | None = None
+    rag_n_results_per_query: int | None = None
+    rag_top_k_chunks: int | None = None
+    kb_max_rag_chars: int | None = None
+    fact_pack_enabled: bool | None = None
+    fact_pack_max_tokens: int | None = None
+    llm_max_output_chars: int | None = None
+    vision_captioning_enabled: bool | None = None
+    raptor_summarization_enabled: bool | None = None
+    kb_max_summarize_sections: int | None = None
+    kb_chunk_size: int | None = None
+    kb_chunk_overlap: int | None = None
+
+
 # ── Project Docs ──────────────────────────────────────────────────────────────
 DOCS_ROOT = Path(os.getenv("DOCS_ROOT", Path(__file__).parent.parent.parent.parent))
 if not DOCS_ROOT.is_dir():
@@ -316,6 +380,46 @@ async def reset_llm_settings(_token: str = Depends(require_token)) -> dict:
         await db.llm_settings_col.delete_one({"_id": "current"})
     logger.info("[LLM-SETTINGS] Reset to design defaults.")
     return _llm_settings_response()
+
+
+# ── Agent Settings endpoints ──────────────────────────────────────────────────
+
+@router.get("/admin/agent-settings")
+async def get_agent_settings(_token: str = Depends(require_token)) -> dict:
+    return _agent_settings_response()
+
+
+@router.patch("/admin/agent-settings")
+async def patch_agent_settings(
+    body: AgentSettingsPatchRequest,
+    _token: str = Depends(require_token),
+) -> dict:
+    incoming = body.model_dump(exclude_none=True)
+    if "quality_gate_mode" in incoming and incoming["quality_gate_mode"] not in ("warn", "block"):
+        raise HTTPException(
+            status_code=422,
+            detail="quality_gate_mode must be 'warn' or 'block'.",
+        )
+    agent_settings_overrides.update(incoming)
+    _apply_agent_overrides(incoming)
+    if db.agent_settings_col is not None:
+        await db.agent_settings_col.replace_one(
+            {"_id": "current"},
+            {"_id": "current", **agent_settings_overrides},
+            upsert=True,
+        )
+    logger.info("[AGENT-SETTINGS] Overrides updated: %s", agent_settings_overrides)
+    return _agent_settings_response()
+
+
+@router.post("/admin/agent-settings/reset")
+async def reset_agent_settings(_token: str = Depends(require_token)) -> dict:
+    agent_settings_overrides.clear()
+    _apply_agent_overrides(_AGENT_SETTINGS_DEFAULTS)
+    if db.agent_settings_col is not None:
+        await db.agent_settings_col.delete_one({"_id": "current"})
+    logger.info("[AGENT-SETTINGS] Reset to design defaults.")
+    return _agent_settings_response()
 
 
 # ── Project Docs (read-only) ──────────────────────────────────────────────────

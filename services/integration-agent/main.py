@@ -24,6 +24,7 @@ from config import settings
 from log_helpers import prune_logs
 from schemas import CatalogEntry, Approval, Document, KBDocument, Project
 from services.llm_service import llm_overrides
+from routers.admin import agent_settings_overrides, _apply_agent_overrides
 from services.retriever import hybrid_retriever
 
 # Import routers
@@ -92,6 +93,15 @@ async def lifespan(app: FastAPI):
             doc.pop("_id", None)
             llm_overrides.update(doc)
             logger.info("[LLM-SETTINGS] Loaded %d overrides from MongoDB.", len(llm_overrides))
+
+    # Load persisted agent-settings overrides from MongoDB
+    if db.agent_settings_col is not None:
+        doc = await db.agent_settings_col.find_one({"_id": "current"})
+        if doc:
+            doc.pop("_id", None)
+            agent_settings_overrides.update(doc)
+            _apply_agent_overrides(agent_settings_overrides)
+            logger.info("[AGENT-SETTINGS] Loaded %d overrides from MongoDB.", len(agent_settings_overrides))
 
     # Seed in-memory cache from MongoDB (survives container restarts)
     if db.catalog_col is not None:
