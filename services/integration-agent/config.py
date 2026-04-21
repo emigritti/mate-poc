@@ -151,6 +151,13 @@ class Settings(BaseSettings):
     # Separate from the main ollama_timeout_seconds (document generation).
     fact_pack_ollama_timeout_seconds: int = 120
 
+    # ── Quality Gate (document-quality improvement #1) ────────────────
+    # Mode: "block" stops the document from reaching HITL on quality failure.
+    #       "warn"  forwards it with a log warning (default — non-breaking).
+    # Override via QUALITY_GATE_MODE and QUALITY_GATE_MIN_SCORE.
+    quality_gate_mode: str = "warn"          # "block" | "warn"
+    quality_gate_min_score: float = 0.60
+
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.
     # If absent, endpoints log a warning and allow through (dev mode).
