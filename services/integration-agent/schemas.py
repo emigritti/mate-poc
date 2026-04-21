@@ -106,6 +106,12 @@ class GenerationReport(BaseModel):
     inferred_claim_count: int = 0
     missing_evidence_count: int = 0
     to_validate_count: int = 0
+    # ── Generation path (document-quality improvement #4) ─────────────
+    # "fact_pack"           — two-step FactPack pipeline succeeded
+    # "single_pass_fallback"— FactPack enabled but extraction failed/returned None
+    # "single_pass_disabled"— FactPack kill-switch off (FACT_PACK_ENABLED=false)
+    generation_path: str = "single_pass_disabled"
+    fallback_reason: str = ""   # populated when generation_path != "fact_pack"
 
 
 class Approval(BaseModel):
