@@ -1139,31 +1139,34 @@ Performs a full system reset:
 A read-only markdown browser for significant project documentation. Displays curated documents grouped by category (Guides, ADRs, Checklists, Test Plans, Mappings). Content is served from the mounted `docs/` directory — path traversal and non-.md requests are rejected by the backend.
 
 ### LLM Settings
-An admin page for tuning LLM parameters at runtime without restarting the container. All three model profiles expose the **same set of parameters**:
+An admin page for tuning LLM parameters at runtime without restarting the container. All three model profiles expose the **same set of parameters** plus a **Provider** selector (ADR-049):
 
-| Parameter | Description |
-|---|---|
-| `model` | Ollama model name |
-| `num_predict` | Token cap for generation |
-| `timeout_seconds` | HTTP timeout for Ollama calls |
-| `temperature` | Sampling temperature (0 = deterministic) |
-| `rag_max_chars` | Max characters of retrieved context injected into prompt |
-| `num_ctx` | Context window size (`num_ctx`) |
-| `top_p` | Nucleus sampling threshold |
-| `top_k` | Top-K sampling tokens |
-| `repeat_penalty` | Penalizes token repetition |
+| Parameter | Description | Notes |
+|---|---|---|
+| `provider` | LLM backend: `ollama` (local) or `gemini` (Google Gemini API) | Default: `ollama` |
+| `model` | Model name — Ollama: `qwen2.5:14b` · Gemini: `gemini-2.0-flash` | Required for both providers |
+| `num_predict` | Token cap for generation | Gemini: `max_output_tokens` |
+| `timeout_seconds` | HTTP timeout for LLM calls | Applies to both providers |
+| `temperature` | Sampling temperature (0 = deterministic) | Applies to both providers |
+| `rag_max_chars` | Max characters of retrieved context injected into prompt | — |
+| `num_ctx` | Context window size (Ollama only — ignored by Gemini) | — |
+| `top_p` | Nucleus sampling threshold (Ollama only) | — |
+| `top_k` | Top-K sampling tokens (Ollama only) | — |
+| `repeat_penalty` | Penalizes token repetition (Ollama only) | — |
 
 The three profile sections are:
 
-| Profile | Group key | Default model | Purpose |
-|---|---|---|---|
-| **Default** | `doc_llm` | `qwen2.5:14b` | Standard document generation |
-| **High Quality** | `premium_llm` | `gemma4:26b` | High-quality complex integrations |
-| **Fast-Utility** | `tag_llm` | `qwen3:8b` | Tag suggestion & query expansion |
+| Profile | Group key | Default model | Default provider | Purpose |
+|---|---|---|---|---|
+| **Standard** | `doc_llm` | `qwen2.5:14b` | `ollama` | Standard document generation |
+| **High Quality** | `premium_llm` | `gemma4:26b` | `ollama` | High-quality complex integrations |
+| **Fast-Utility** | `tag_llm` | `qwen3:8b` | `ollama` | Tag suggestion & query expansion |
+
+**Enabling Gemini:** Set `GEMINI_API_KEY=sk-...` in `.env`, recreate the container (`docker compose rm -f integration-agent && docker compose up -d integration-agent`), then switch any profile to `provider = gemini` in the UI. Gemini delivers 5–10× faster generation compared to CPU-bound Ollama.
 
 Changes are applied **immediately** to the running agent and persisted in MongoDB. The "Reset to Defaults" button restores pydantic-settings values (as defined in `config.py` or overridden by env vars at startup).
 
-**Why this matters:** On CPU-only hardware, explicit `num_ctx=8192` prevents silent truncation (Ollama default is 2048), while `top_p / top_k / repeat_penalty` control generation diversity and repetition without requiring a container rebuild.
+**Why this matters:** Per-profile provider granularity lets you e.g. use Gemini for generation (Standard + High Quality) while keeping Fast-Utility on local Ollama for cheap, offline tagging — minimizing API cost while maximizing speed where it counts.
 
 ### Agent Settings
 An admin page for tuning quality gate, RAG, FactPack, vision, and KB chunking parameters at runtime. All 15 parameters are configurable without container restarts and persisted to MongoDB:

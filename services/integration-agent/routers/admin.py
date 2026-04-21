@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/v1", tags=["admin"])
 # ── LLM Settings Patch schema ─────────────────────────────────────────────────
 
 class _LLMProfilePatch(BaseModel):
+    provider: str | None = None        # "ollama" | "gemini" (ADR-049)
     model: str | None = None
     num_predict: int | None = None
     timeout_seconds: int | None = None
@@ -40,6 +41,10 @@ class LLMSettingsPatchRequest(BaseModel):
     doc_llm: _LLMProfilePatch | None = None
     premium_llm: _LLMProfilePatch | None = None
     tag_llm: _LLMProfilePatch | None = None
+
+
+# Backward-compat alias (tests imported _DocLLMPatch before ADR-049 rename)
+_DocLLMPatch = _LLMProfilePatch
 
 
 # ── Agent Settings (quality gate, RAG, vision, FactPack, KB chunking) ─────────
@@ -162,6 +167,7 @@ DOCS_MANIFEST: list[dict] = [
     {"path": "docs/adr/ADR-046-llm-profile-routing.md", "name": "ADR-046 LLM Multi-Profile Routing", "category": "ADR", "description": "Default / High Quality / Fast-Utility LLM profiles with identical parameter set."},
     {"path": "docs/adr/ADR-047-pixel-ui-mode.md", "name": "ADR-047 Pixel UI Mode", "category": "ADR", "description": "8-bit RPG dual UI with 5 agent personas and pixel CSS design system."},
     {"path": "docs/adr/ADR-048-kb-metadata-v2-enrichment.md", "name": "ADR-048 KB Metadata v2 Enrichment", "category": "ADR", "description": "In-place ChromaDB enrichment, 18-type semantic taxonomy, intent-aware score bonus."},
+    {"path": "docs/adr/ADR-049-gemini-provider.md", "name": "ADR-049 Gemini Provider", "category": "ADR", "description": "Google Gemini API as alternative LLM provider — per-profile provider switching (ollama | gemini)."},
     # ── Checklists ────────────────────────────────────────────────────────────
     {"path": "docs/code-review/CODE-REVIEW-CHECKLIST.md", "name": "Code Review Checklist", "category": "Checklist", "description": "Architecture/correctness/security gates."},
     {"path": "docs/security-review/SECURITY-REVIEW-CHECKLIST.md", "name": "Security Review Checklist", "category": "Checklist", "description": "OWASP-aligned security checklist."},
@@ -272,6 +278,7 @@ async def reset_all(
 def _llm_settings_response() -> dict:
     defaults = {
         "doc_llm": {
+            "provider":        "ollama",
             "model":           settings.ollama_model,
             "num_predict":     settings.ollama_num_predict,
             "timeout_seconds": settings.ollama_timeout_seconds,
@@ -283,6 +290,7 @@ def _llm_settings_response() -> dict:
             "repeat_penalty":  settings.ollama_repeat_penalty,
         },
         "premium_llm": {
+            "provider":        "ollama",
             "model":           settings.premium_model,
             "num_predict":     settings.premium_num_predict,
             "timeout_seconds": settings.premium_timeout_seconds,
@@ -294,6 +302,7 @@ def _llm_settings_response() -> dict:
             "repeat_penalty":  settings.premium_repeat_penalty,
         },
         "tag_llm": {
+            "provider":        "ollama",
             "model":           settings.tag_model,
             "num_predict":     settings.tag_num_predict,
             "timeout_seconds": settings.tag_timeout_seconds,
@@ -307,6 +316,7 @@ def _llm_settings_response() -> dict:
     }
     effective = {
         "doc_llm": {
+            "provider":        llm_overrides.get("provider",          "ollama"),
             "model":           llm_overrides.get("model",            settings.ollama_model),
             "num_predict":     llm_overrides.get("num_predict",       settings.ollama_num_predict),
             "timeout_seconds": llm_overrides.get("timeout_seconds",   settings.ollama_timeout_seconds),
@@ -318,6 +328,7 @@ def _llm_settings_response() -> dict:
             "repeat_penalty":  llm_overrides.get("repeat_penalty",    settings.ollama_repeat_penalty),
         },
         "premium_llm": {
+            "provider":        llm_overrides.get("premium_provider",        "ollama"),
             "model":           llm_overrides.get("premium_model",           settings.premium_model),
             "num_predict":     llm_overrides.get("premium_num_predict",      settings.premium_num_predict),
             "timeout_seconds": llm_overrides.get("premium_timeout_seconds",  settings.premium_timeout_seconds),
@@ -329,6 +340,7 @@ def _llm_settings_response() -> dict:
             "repeat_penalty":  llm_overrides.get("premium_repeat_penalty",   settings.premium_repeat_penalty),
         },
         "tag_llm": {
+            "provider":        llm_overrides.get("tag_provider",        "ollama"),
             "model":           llm_overrides.get("tag_model",           settings.tag_model),
             "num_predict":     llm_overrides.get("tag_num_predict",      settings.tag_num_predict),
             "timeout_seconds": llm_overrides.get("tag_timeout_seconds",  settings.tag_timeout_seconds),
@@ -361,15 +373,24 @@ async def patch_llm_settings(
     _token: str = Depends(require_token),
 ) -> dict:
     if body.doc_llm is not None:
-        for k, v in body.doc_llm.model_dump(exclude_none=True).items():
+        patch = body.doc_llm.model_dump(exclude_none=True)
+        if "provider" in patch:
+            llm_overrides["provider"] = patch.pop("provider")
+        for k, v in patch.items():
             llm_overrides[k] = v
 
     if body.premium_llm is not None:
-        for k, v in body.premium_llm.model_dump(exclude_none=True).items():
+        patch = body.premium_llm.model_dump(exclude_none=True)
+        if "provider" in patch:
+            llm_overrides["premium_provider"] = patch.pop("provider")
+        for k, v in patch.items():
             llm_overrides[f"premium_{k}"] = v
 
     if body.tag_llm is not None:
-        for k, v in body.tag_llm.model_dump(exclude_none=True).items():
+        patch = body.tag_llm.model_dump(exclude_none=True)
+        if "provider" in patch:
+            llm_overrides["tag_provider"] = patch.pop("provider")
+        for k, v in patch.items():
             llm_overrides[f"tag_{k}"] = v
 
     if db.llm_settings_col is not None:

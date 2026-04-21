@@ -3,15 +3,15 @@ import { SlidersHorizontal, RotateCcw, Save, AlertCircle, CheckCircle2, Loader2,
 import { API } from '../../api.js';
 
 const MODEL_FIELDS = [
-  { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Ollama model name (e.g. qwen2.5:14b)' },
+  { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Model name — Ollama: e.g. qwen2.5:14b · Gemini: e.g. gemini-2.0-flash' },
   { key: 'num_predict',     label: 'Max Tokens',        type: 'number', unit: 'tok', hint: 'Token cap for generation — set to 3000–5000 for full Integration Specs' },
-  { key: 'timeout_seconds', label: 'Timeout',           type: 'number', unit: 's',   hint: 'HTTP timeout for Ollama calls — increase for large models on CPU' },
+  { key: 'timeout_seconds', label: 'Timeout',           type: 'number', unit: 's',   hint: 'HTTP timeout for LLM calls — increase for large models on CPU' },
   { key: 'temperature',     label: 'Temperature',       type: 'number', unit: '',    step: 0.01, hint: '0 = deterministic, 1 = creative' },
   { key: 'rag_max_chars',   label: 'RAG Context Limit', type: 'number', unit: 'ch',  hint: 'Max characters of retrieved context injected into prompt' },
-  { key: 'num_ctx',         label: 'Context Window',    type: 'number', unit: 'tok', hint: 'Ollama context window size — set to ≥8192 to avoid silent truncation' },
-  { key: 'top_p',           label: 'Top-P',             type: 'number', unit: '',    step: 0.01, hint: 'Nucleus sampling — consider only tokens covering this probability mass' },
-  { key: 'top_k',           label: 'Top-K',             type: 'number', unit: '',    hint: 'Limit next-token selection to the K most probable tokens' },
-  { key: 'repeat_penalty',  label: 'Repeat Penalty',    type: 'number', unit: '',    step: 0.01, hint: 'Penalizes repeated tokens — raise to 1.1–1.3 if model loops' },
+  { key: 'num_ctx',         label: 'Context Window',    type: 'number', unit: 'tok', hint: 'Ollama context window size (ignored by Gemini)' },
+  { key: 'top_p',           label: 'Top-P',             type: 'number', unit: '',    step: 0.01, hint: 'Nucleus sampling (Ollama only — ignored by Gemini)' },
+  { key: 'top_k',           label: 'Top-K',             type: 'number', unit: '',    hint: 'Top-K sampling (Ollama only — ignored by Gemini)' },
+  { key: 'repeat_penalty',  label: 'Repeat Penalty',    type: 'number', unit: '',    step: 0.01, hint: 'Penalizes repeated tokens (Ollama only — ignored by Gemini)' },
 ];
 
 // groupKey mapping for the two main modes
@@ -21,6 +21,47 @@ const MAIN_PROFILES = {
 };
 
 const TAG_PROFILE = { groupKey: 'tag_llm', title: 'Fast-Utility', subtitle: 'Tag suggestion & query expansion only' };
+
+const PROVIDER_OPTIONS = [
+  { value: 'ollama', label: 'Ollama (local)' },
+  { value: 'gemini', label: 'Google Gemini API' },
+];
+
+
+function ProviderRow({ effectiveVal, defaultVal, groupKey, onUpdate }) {
+  const isOverridden = effectiveVal !== defaultVal;
+  return (
+    <div className="flex items-start gap-4 py-3 border-b border-slate-100">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-slate-700">Provider</span>
+          {isOverridden && (
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+              MODIFIED
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-0.5">LLM backend — Ollama (local) or Google Gemini API (requires GEMINI_API_KEY in .env)</p>
+        {isOverridden && (
+          <p className="text-[10px] text-slate-400 mt-0.5 font-mono">default: {defaultVal}</p>
+        )}
+      </div>
+      <select
+        value={effectiveVal}
+        onChange={e => onUpdate(groupKey, 'provider', e.target.value)}
+        className={`w-36 text-sm px-3 py-1.5 rounded-lg border transition-colors ${
+          isOverridden
+            ? 'border-amber-300 bg-amber-50 focus:border-amber-400'
+            : 'border-slate-200 bg-white focus:border-indigo-400'
+        } focus:outline-none focus:ring-2 focus:ring-indigo-100`}
+      >
+        {PROVIDER_OPTIONS.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 
 function FieldRow({ fieldMeta, effectiveVal, defaultVal, groupKey, onUpdate }) {
@@ -70,7 +111,12 @@ function FieldRow({ fieldMeta, effectiveVal, defaultVal, groupKey, onUpdate }) {
 }
 
 function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, onUpdate, compact = false }) {
-  const overrideCount = fields.filter(({ key }) => effective[key] !== defaults[key]).length;
+  const overrideCount = [
+    effective.provider !== defaults.provider ? 1 : 0,
+    ...fields.map(({ key }) => effective[key] !== defaults[key] ? 1 : 0),
+  ].reduce((a, b) => a + b, 0);
+
+  const isGemini = effective.provider === 'gemini';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -91,6 +137,18 @@ function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, 
         )}
       </div>
       <div className="px-5">
+        <ProviderRow
+          effectiveVal={effective.provider}
+          defaultVal={defaults.provider}
+          groupKey={groupKey}
+          onUpdate={onUpdate}
+        />
+        {isGemini && (
+          <div className="flex items-center gap-2 py-2 text-xs text-indigo-600 bg-indigo-50 -mx-5 px-5 border-b border-indigo-100">
+            <Info size={12} className="flex-shrink-0" />
+            Gemini ignores Context Window, Top-K, Top-P and Repeat Penalty — only Model, Max Tokens, Timeout and Temperature apply.
+          </div>
+        )}
         {fields.map(f => (
           <FieldRow
             key={f.key}
@@ -145,6 +203,10 @@ export default function LlmSettingsPage() {
       const allGroups = [...Object.values(MAIN_PROFILES).map(p => p.groupKey), TAG_PROFILE.groupKey];
       for (const groupKey of allGroups) {
         const changes = {};
+        // Check provider override
+        if (draft[groupKey].provider !== data.defaults[groupKey].provider) {
+          changes.provider = draft[groupKey].provider;
+        }
         MODEL_FIELDS.forEach(({ key }) => {
           if (draft[groupKey][key] !== data.defaults[groupKey][key]) {
             changes[key] = draft[groupKey][key];
@@ -185,14 +247,13 @@ export default function LlmSettingsPage() {
   const allGroups = draft && data
     ? [...Object.values(MAIN_PROFILES).map(p => p.groupKey), TAG_PROFILE.groupKey]
     : [];
-  const isDirty = allGroups.some(gk =>
-    MODEL_FIELDS.some(({ key }) => draft[gk][key] !== data.effective[gk][key])
-  );
+  const isDirty = allGroups.some(gk => {
+    if (!draft || !data) return false;
+    if (draft[gk].provider !== data.effective[gk].provider) return true;
+    return MODEL_FIELDS.some(({ key }) => draft[gk][key] !== data.effective[gk][key]);
+  });
 
   const { groupKey: activeGroupKey, label: activeLabel, subtitle: activeSubtitle } = MAIN_PROFILES[activeMode];
-  const hasHighQualityOverrides = draft && data && MODEL_FIELDS.some(
-    ({ key }) => draft['premium_llm'][key] !== data.defaults['premium_llm'][key]
-  );
 
   if (loading) {
     return (
@@ -209,8 +270,10 @@ export default function LlmSettingsPage() {
       <div className="flex items-center gap-2">
         {Object.entries(MAIN_PROFILES).map(([mode, { label }]) => {
           const active = activeMode === mode;
-          const hasOverride = draft && data && MODEL_FIELDS.some(
-            ({ key }) => draft[MAIN_PROFILES[mode].groupKey][key] !== data.defaults[MAIN_PROFILES[mode].groupKey][key]
+          const gk = MAIN_PROFILES[mode].groupKey;
+          const hasOverride = draft && data && (
+            draft[gk].provider !== data.defaults[gk].provider ||
+            MODEL_FIELDS.some(({ key }) => draft[gk][key] !== data.defaults[gk][key])
           );
           return (
             <button
@@ -241,6 +304,7 @@ export default function LlmSettingsPage() {
           Changes apply <strong>immediately</strong> without restart and persist in MongoDB.
           <strong> Standard</strong> is used for all document generation and FactPack extraction.
           <strong> High Quality</strong> is selected per-run from the Agent Workspace.
+          Set <strong>GEMINI_API_KEY</strong> in <code>.env</code> to enable the Gemini provider.
           Reset restores env-var / pydantic defaults.
         </span>
       </div>

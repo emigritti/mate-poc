@@ -260,7 +260,7 @@ class TestTagServiceUsesTagModel:
             return '["tag1", "tag2"]'
 
         monkeypatch.setattr("services.tag_service.settings", self._make_settings())
-        monkeypatch.setattr("services.tag_service.generate_with_ollama", _mock_gen)
+        monkeypatch.setattr("services.tag_service.generate_with_retry", _mock_gen)
         from services.llm_service import llm_overrides
         llm_overrides.clear()
 
@@ -279,7 +279,7 @@ class TestTagServiceUsesTagModel:
             return '["doc-tag"]'
 
         monkeypatch.setattr("services.tag_service.settings", self._make_settings())
-        monkeypatch.setattr("services.tag_service.generate_with_ollama", _mock_gen)
+        monkeypatch.setattr("services.tag_service.generate_with_retry", _mock_gen)
         from services.llm_service import llm_overrides
         llm_overrides.clear()
 
@@ -297,7 +297,7 @@ class TestTagServiceUsesTagModel:
             return '["t"]'
 
         monkeypatch.setattr("services.tag_service.settings", self._make_settings())
-        monkeypatch.setattr("services.tag_service.generate_with_ollama", _mock_gen)
+        monkeypatch.setattr("services.tag_service.generate_with_retry", _mock_gen)
         from services.llm_service import llm_overrides
         llm_overrides.clear()
         llm_overrides["tag_model"] = "qwen2.5:14b"   # runtime override

@@ -365,6 +365,7 @@ async def generate_integration_doc(
     if llm_profile in ("high_quality", "premium"):
         _llm_model = llm_overrides.get("premium_model", settings.premium_model)
         _llm_kw: dict = dict(
+            provider=llm_overrides.get("premium_provider", "ollama"),
             model=_llm_model,
             num_predict=llm_overrides.get("premium_num_predict",    settings.premium_num_predict),
             timeout=llm_overrides.get("premium_timeout_seconds",    settings.premium_timeout_seconds),
@@ -376,7 +377,7 @@ async def generate_integration_doc(
         )
     else:
         _llm_model = llm_overrides.get("model", settings.ollama_model)
-        _llm_kw = {}   # generate_with_retry reads defaults from llm_overrides / settings
+        _llm_kw = dict(provider=llm_overrides.get("provider", "ollama"))
 
     _log(f"[LLM] profile={llm_profile!r} model={_llm_model}")
 
@@ -452,6 +453,11 @@ async def generate_integration_doc(
             document_template=get_integration_template(),
             reviewer_feedback=reviewer_feedback,
             log_fn=_log,
+            provider=_llm_kw.get("provider", "ollama"),
+            model=_llm_kw.get("model"),
+            num_predict=_llm_kw.get("num_predict"),
+            timeout=_llm_kw.get("timeout"),
+            temperature=_llm_kw.get("temperature"),
         )
     else:
         # Single-pass fallback: original pipeline (always used when fact_pack disabled or failed)

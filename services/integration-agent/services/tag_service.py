@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Callable
 
-from services.llm_service import generate_with_ollama, llm_overrides
+from services.llm_service import generate_with_retry, llm_overrides
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -48,9 +48,10 @@ async def suggest_tags_via_llm(
         'Reply with a JSON array only. Example: ["Data Sync", "Real-time"]'
     )
     try:
-        raw = await generate_with_ollama(
+        raw = await generate_with_retry(
             prompt,
-            model=llm_overrides.get("tag_model", settings.tag_model),
+            provider=llm_overrides.get("tag_provider", "ollama"),
+            model=llm_overrides.get("tag_model",          settings.tag_model),
             num_predict=llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
             timeout=llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
             temperature=llm_overrides.get("tag_temperature",    settings.tag_temperature),
@@ -89,9 +90,10 @@ async def suggest_kb_tags_via_llm(
         'Reply with a JSON array only. Example: ["Data Mapping", "Integration Pattern", "Error Handling"]'
     )
     try:
-        raw = await generate_with_ollama(
+        raw = await generate_with_retry(
             prompt,
-            model=llm_overrides.get("tag_model", settings.tag_model),
+            provider=llm_overrides.get("tag_provider", "ollama"),
+            model=llm_overrides.get("tag_model",          settings.tag_model),
             num_predict=llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
             timeout=llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
             temperature=llm_overrides.get("tag_temperature",    settings.tag_temperature),

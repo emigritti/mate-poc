@@ -32,16 +32,53 @@ def test_get_llm_settings_returns_defaults(client):
 
 
 def test_get_llm_settings_structure(client):
-    """Response contains expected keys in both doc_llm and tag_llm groups."""
+    """Response contains expected keys in all profile groups."""
     data = client.get("/api/v1/admin/llm-settings").json()["data"]
-    # ADR-046: num_ctx / top_p / top_k / repeat_penalty added
-    assert set(data["effective"]["doc_llm"].keys()) == {
-        "model", "num_predict", "timeout_seconds", "temperature", "rag_max_chars",
-        "num_ctx", "top_p", "top_k", "repeat_penalty",
+    # ADR-046: num_ctx / top_p / top_k / repeat_penalty; ADR-049: provider
+    expected_keys = {
+        "provider", "model", "num_predict", "timeout_seconds", "temperature",
+        "rag_max_chars", "num_ctx", "top_p", "top_k", "repeat_penalty",
     }
-    assert set(data["effective"]["tag_llm"].keys()) == {
-        "num_predict", "timeout_seconds", "temperature"
-    }
+    assert set(data["effective"]["doc_llm"].keys()) == expected_keys
+    assert set(data["effective"]["premium_llm"].keys()) == expected_keys
+    assert set(data["effective"]["tag_llm"].keys()) == expected_keys
+
+
+def test_get_llm_settings_default_provider_is_ollama(client):
+    """All profiles default to provider='ollama' when no override is set."""
+    data = client.get("/api/v1/admin/llm-settings").json()["data"]
+    assert data["effective"]["doc_llm"]["provider"] == "ollama"
+    assert data["effective"]["premium_llm"]["provider"] == "ollama"
+    assert data["effective"]["tag_llm"]["provider"] == "ollama"
+
+
+def test_patch_provider_to_gemini(client):
+    """PATCH doc_llm.provider='gemini' is reflected in effective and marks override active."""
+    res = client.patch(
+        "/api/v1/admin/llm-settings",
+        json={"doc_llm": {"provider": "gemini", "model": "gemini-2.0-flash"}},
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["effective"]["doc_llm"]["provider"] == "gemini"
+    assert data["effective"]["doc_llm"]["model"] == "gemini-2.0-flash"
+    assert data["overrides_active"] is True
+
+
+def test_patch_provider_gemini_does_not_affect_other_profiles(client):
+    """PATCH doc_llm.provider='gemini' does not change premium_llm or tag_llm providers."""
+    client.patch("/api/v1/admin/llm-settings", json={"doc_llm": {"provider": "gemini"}})
+    data = client.get("/api/v1/admin/llm-settings").json()["data"]
+    assert data["effective"]["premium_llm"]["provider"] == "ollama"
+    assert data["effective"]["tag_llm"]["provider"] == "ollama"
+
+
+def test_reset_restores_provider_to_ollama(client):
+    """POST /reset restores provider to 'ollama' for all profiles."""
+    client.patch("/api/v1/admin/llm-settings", json={"doc_llm": {"provider": "gemini"}})
+    client.post("/api/v1/admin/llm-settings/reset")
+    data = client.get("/api/v1/admin/llm-settings").json()["data"]
+    assert data["effective"]["doc_llm"]["provider"] == "ollama"
 
 
 def test_patch_doc_llm_updates_effective(client):
