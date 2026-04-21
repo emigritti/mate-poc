@@ -146,6 +146,16 @@ export const API = {
     reset: ()     => fetch(`${AGENT}/api/v1/admin/llm-settings/reset`, { method: 'POST' }),
   },
 
+  agentSettings: {
+    get:   ()     => fetch(`${AGENT}/api/v1/admin/agent-settings`),
+    patch: (body) => fetch(`${AGENT}/api/v1/admin/agent-settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    reset: ()     => fetch(`${AGENT}/api/v1/admin/agent-settings/reset`, { method: 'POST' }),
+  },
+
   kb: {
     upload: (file) => {
       const fd = new FormData();

@@ -1,4 +1,4 @@
-import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap } from 'lucide-react';
+import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap, Settings2 } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
@@ -27,9 +27,10 @@ const NAV_GROUPS = [
   {
     label: 'Admin',
     items: [
-      { id: 'reset',        label: 'Reset Tools',  icon: Trash2            },
-      { id: 'project-docs', label: 'Project Docs', icon: BookMarked        },
-      { id: 'llm-settings', label: 'LLM Settings', icon: SlidersHorizontal },
+      { id: 'reset',          label: 'Reset Tools',    icon: Trash2            },
+      { id: 'project-docs',   label: 'Project Docs',   icon: BookMarked        },
+      { id: 'llm-settings',   label: 'LLM Settings',   icon: SlidersHorizontal },
+      { id: 'agent-settings', label: 'Agent Settings', icon: Settings2         },
     ],
   },
 ];

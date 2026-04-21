@@ -17,6 +17,7 @@ import ApprovalsPage from './components/pages/ApprovalsPage.jsx';
 import ResetPage from './components/pages/ResetPage.jsx';
 import ProjectDocsPage from './components/pages/ProjectDocsPage.jsx';
 import LlmSettingsPage from './components/pages/LlmSettingsPage.jsx';
+import AgentSettingsPage from './components/pages/AgentSettingsPage.jsx';
 import IngestionSourcesPage from './components/pages/IngestionSourcesPage.jsx';
 import PixelSidebar from './components/pixel/PixelSidebar.jsx';
 import PixelAgentWorkspace from './components/pixel/PixelAgentWorkspace.jsx';
@@ -43,6 +44,7 @@ const PAGE_META = {
   reset: { title: 'Reset Tools', subtitle: 'Admin data management', step: null },
   'project-docs': { title: 'Project Docs', subtitle: 'Browse governance documents, ADRs, and checklists', step: null },
   'llm-settings':       { title: 'LLM Settings',       subtitle: 'Tune model parameters and test response times',                  step: null },
+  'agent-settings':     { title: 'Agent Settings',     subtitle: 'Quality gate, RAG, FactPack, vision and KB chunking parameters', step: null },
   'ingestion-sources':  { title: 'Ingestion Sources',  subtitle: 'Manage OpenAPI, HTML and MCP knowledge base sources',            step: null },
 };
 
@@ -58,6 +60,7 @@ function renderPage(page) {
     case 'reset': return <ResetPage />;
     case 'project-docs': return <ProjectDocsPage />;
     case 'llm-settings':      return <LlmSettingsPage />;
+    case 'agent-settings':    return <AgentSettingsPage />;
     case 'ingestion-sources': return <IngestionSourcesPage />;
     default: return <RequirementsPage />;
   }
