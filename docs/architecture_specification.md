@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 6.0.0 |
+| **Version** | 6.1.0 |
 | **Date** | 2026-04-21 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20), v3.1.0 (2026-03-20), v4.0.0 (2026-03-21), v5.0.0 (2026-03-23) |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20), v3.1.0 (2026-03-20), v4.0.0 (2026-03-21), v5.0.0 (2026-03-23), v6.0.0 (2026-04-21) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -1945,6 +1945,7 @@ gantt
 | ADR-046 | LLM Multi-Profile Routing | Accepted | Three named LLM profiles: `default` (`qwen2.5:14b`, `num_ctx=8192`), `high_quality`/`premium` (`gemma4:26b`, `num_ctx=6144`), fast-utility (`qwen3:8b` for tags/expansion); UI profile selector shows "Default" and "High Quality" labels; `generate_with_ollama()` extended with `num_ctx / top_p / top_k / repeat_penalty / model` params; `llm_profile` field in `TriggerRequest` flows to `generate_integration_doc()`; tags and query expansion always use fast-utility model; all three profiles expose identical parameter set in `LlmSettingsPage` (`model`, `num_predict`, `timeout_seconds`, `temperature`, `rag_max_chars`, `num_ctx`, `top_p`, `top_k`, `repeat_penalty`) via `doc_llm` / `premium_llm` / `tag_llm` groups |
 | ADR-047 | Pixel UI Mode — 8-bit RPG Dual UI | Accepted | `UiModeContext` (localStorage) toggles between Classic and Pixel modes; `.pixel-mode` CSS design system (Press Start 2P, dark palette, pixel panels/buttons/animations); 5 RPG agent personas (Archivist/Librarian/Writer/Guardian/Mage) with emoji sprites and CSS keyframe animations; `PixelAgentWorkspace` replaces `AgentWorkspacePage` in pixel mode — live `PipelineView` + `PersonaNarrator` quest log; `PixelSidebar` + `UiModeToggle` in TopBar; Classic mode entirely unaffected |
 | ADR-048 | KB Metadata v2 Schema and In-Place Enrichment | Accepted | In-place enrichment of all existing ChromaDB chunks via `upsert()` — same chunk IDs, updated metadata; 18-type v2 `semantic_type` taxonomy (replaces 8-type v1); `kb_schema_version` flag tags enriched chunks; `SemanticBonusScorer` applies intent-aware score bonus during retrieval (ADR-043 integration); V1 chunks degrade gracefully; `POST /api/v1/kb/enrich` endpoint for manual trigger; `kb_schema_version` and `source_modality` stored per chunk |
+| ADR-049 | Google Gemini API as Alternative LLM Provider | Accepted | Per-profile provider switching (`ollama` \| `gemini`) stored in `llm_overrides`; `_generate_with_gemini()` added to `llm_service.py` using `google-generativeai>=0.8.0` async SDK; `generate_with_retry()` dispatches based on `provider` kwarg; `GEMINI_API_KEY` read from `.env` via `settings.gemini_api_key`; Gemini ignores `num_ctx/top_k/top_p/repeat_penalty`; `LlmSettingsPage.jsx` shows Provider dropdown per card; backward-compatible default `provider="ollama"` |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |

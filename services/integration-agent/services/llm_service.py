@@ -1,12 +1,14 @@
 """
-LLM Service — Ollama client with retry and exponential backoff.
+LLM Service — multi-provider client with retry and exponential backoff.
 
 Extracted from main.py (R13 + R15).
 Provides:
-  - generate_with_ollama(): single LLM call (non-blocking, httpx)
-  - generate_with_retry(): wraps generate_with_ollama with configurable retry
+  - generate_with_ollama(): single Ollama call (non-blocking, httpx)
+  - _generate_with_gemini(): single Google Gemini API call (ADR-049)
+  - generate_with_retry(): wraps provider call with configurable retry
 
 ADR-012: httpx.AsyncClient for non-blocking Ollama calls.
+ADR-049: Google Gemini API as alternative provider — per-profile switching.
 R13: Retry with exponential backoff (3 attempts, 5s/15s).
 """
 
@@ -119,9 +121,71 @@ async def generate_with_ollama(
         return body.get("response", "")
 
 
+async def _generate_with_gemini(
+    prompt: str,
+    *,
+    model: str = "gemini-2.0-flash",
+    num_predict: int | None = None,
+    timeout: int | None = None,
+    temperature: float | None = None,
+    log_fn: Callable[[str], None] | None = None,
+) -> str:
+    """
+    Call Google Gemini API and return the response text. (ADR-049)
+
+    Uses google-generativeai SDK with async generation.
+    Raises ValueError if GEMINI_API_KEY is not configured.
+    Raises google.api_core.exceptions.GoogleAPIError on API failures.
+
+    Ollama-specific params (num_ctx, top_k, repeat_penalty) are not forwarded
+    to Gemini — the model handles context internally.
+    """
+    api_key = settings.gemini_api_key
+    if not api_key:
+        raise ValueError(
+            "GEMINI_API_KEY not set — configure it in .env to use the Gemini provider"
+        )
+
+    try:
+        import google.generativeai as genai
+        from google.generativeai.types import GenerationConfig
+    except ImportError as exc:
+        raise RuntimeError(
+            "google-generativeai not installed — add it to requirements.txt"
+        ) from exc
+
+    _log = log_fn or (lambda msg: logger.info(msg))
+    _timeout = timeout or settings.ollama_timeout_seconds
+
+    _log(
+        f"[LLM/Gemini] → model={model} "
+        f"prompt_chars={len(prompt)} "
+        f"timeout={_timeout}s "
+        f"max_output_tokens={num_predict}"
+    )
+
+    genai.configure(api_key=api_key)
+    genai_model = genai.GenerativeModel(model_name=model)
+    gen_config = GenerationConfig(
+        max_output_tokens=num_predict,
+        temperature=temperature,
+    )
+
+    response = await genai_model.generate_content_async(
+        prompt,
+        generation_config=gen_config,
+        request_options={"timeout": _timeout},
+    )
+
+    text = response.text
+    _log(f"[LLM/Gemini] ✓ done — response_chars={len(text)}")
+    return text
+
+
 async def generate_with_retry(
     prompt: str,
     *,
+    provider: str = "ollama",
     max_retries: int = 3,
     model: str | None = None,
     num_predict: int | None = None,
@@ -136,38 +200,56 @@ async def generate_with_retry(
     """
     Retry-enabled LLM generation with exponential backoff.
 
+    Dispatches to Ollama or Gemini based on the `provider` parameter (ADR-049).
+
     Strategy:
       - Attempt 1: standard parameters
       - Attempt 2: wait 5s, same parameters
       - Attempt 3: wait 15s, same parameters
       - All attempts failed: re-raise the last exception
 
-    Retryable errors:
+    Retryable errors (Ollama):
       - httpx.TimeoutException
       - httpx.ConnectError
       - httpx.HTTPStatusError with 5xx status
 
-    Non-retryable (raised immediately):
-      - httpx.HTTPStatusError with 4xx status (client error / model not found)
-      - Any other unexpected error
+    Retryable errors (Gemini):
+      - Any exception (rate limits, transient API errors)
+
+    Non-retryable:
+      - Ollama: httpx.HTTPStatusError with 4xx (client error / model not found)
+      - Gemini: ValueError (missing API key — config error, not transient)
     """
     _log = log_fn or (lambda msg: logger.info(msg))
     last_exc: Exception | None = None
 
     for attempt in range(1, max_retries + 1):
         try:
-            return await generate_with_ollama(
-                prompt,
-                model=model,
-                num_predict=num_predict,
-                timeout=timeout,
-                temperature=temperature,
-                num_ctx=num_ctx,
-                top_p=top_p,
-                top_k=top_k,
-                repeat_penalty=repeat_penalty,
-                log_fn=log_fn,
-            )
+            if provider == "gemini":
+                return await _generate_with_gemini(
+                    prompt,
+                    model=model or llm_overrides.get("model", "gemini-2.0-flash"),
+                    num_predict=num_predict,
+                    timeout=timeout,
+                    temperature=temperature,
+                    log_fn=log_fn,
+                )
+            else:
+                return await generate_with_ollama(
+                    prompt,
+                    model=model,
+                    num_predict=num_predict,
+                    timeout=timeout,
+                    temperature=temperature,
+                    num_ctx=num_ctx,
+                    top_p=top_p,
+                    top_k=top_k,
+                    repeat_penalty=repeat_penalty,
+                    log_fn=log_fn,
+                )
+        except ValueError:
+            # Config error (missing API key) — not retryable
+            raise
         except httpx.HTTPStatusError as exc:
             # 4xx = client error (model not found, bad request) — don't retry
             if exc.response.status_code < 500:
@@ -175,9 +257,13 @@ async def generate_with_retry(
             last_exc = exc
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
             last_exc = exc
-        except Exception:
-            # Unknown errors — don't retry, propagate immediately
-            raise
+        except Exception as exc:
+            if provider == "gemini":
+                # Gemini API errors (rate limit, transient) — retry
+                last_exc = exc
+            else:
+                # Unknown Ollama errors — don't retry
+                raise
 
         if attempt < max_retries:
             delay = 5 * (3 ** (attempt - 1))  # 5s, 15s

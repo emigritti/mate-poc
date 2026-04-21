@@ -326,6 +326,11 @@ async def render_document_sections(
     document_template: str,
     reviewer_feedback: str = "",
     log_fn: Callable[[str], None] | None = None,
+    provider: str = "ollama",
+    model: str | None = None,
+    num_predict: int | None = None,
+    timeout: int | None = None,
+    temperature: float | None = None,
 ) -> str:
     """
     Step 2 of the FactPack pipeline — render the 16-section markdown from a FactPack.
@@ -391,6 +396,14 @@ async def render_document_sections(
         + ")..."
     )
 
-    raw = await generate_with_retry(prompt, log_fn=_log)
+    raw = await generate_with_retry(
+        prompt,
+        provider=provider,
+        model=model,
+        num_predict=num_predict,
+        timeout=timeout,
+        temperature=temperature,
+        log_fn=_log,
+    )
     _log(f"[FactPack] Render complete — {len(raw)} chars generated.")
     return raw

@@ -49,7 +49,7 @@ from unittest.mock import AsyncMock, patch
 def test_suggest_tags_via_llm_valid_json(monkeypatch):
     from services.tag_service import suggest_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(return_value='["Data Sync", "Real-time"]'),
     )
     result = asyncio.run(suggest_tags_via_llm("ERP", "PLM", "sync products daily"))
@@ -59,7 +59,7 @@ def test_suggest_tags_via_llm_valid_json(monkeypatch):
 def test_suggest_tags_via_llm_malformed_json(monkeypatch):
     from services.tag_service import suggest_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(return_value="Sure! Tags are: Sync, Export"),
     )
     result = asyncio.run(suggest_tags_via_llm("ERP", "PLM", "sync products"))
@@ -69,7 +69,7 @@ def test_suggest_tags_via_llm_malformed_json(monkeypatch):
 def test_suggest_tags_via_llm_exception(monkeypatch):
     from services.tag_service import suggest_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(side_effect=Exception("Ollama timeout")),
     )
     result = asyncio.run(suggest_tags_via_llm("ERP", "PLM", "sync products"))
@@ -79,7 +79,7 @@ def test_suggest_tags_via_llm_exception(monkeypatch):
 def test_suggest_tags_via_llm_max_2(monkeypatch):
     from services.tag_service import suggest_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(return_value='["A", "B", "C", "D"]'),
     )
     result = asyncio.run(suggest_tags_via_llm("ERP", "PLM", "sync products"))
@@ -93,13 +93,13 @@ def test_suggest_tags_via_llm_passes_tag_settings(monkeypatch):
 
     captured_kwargs: dict = {}
 
-    async def _mock(prompt, *, model=None, num_predict=None, timeout=None, temperature=None, log_fn=None):
+    async def _mock(prompt, *, provider=None, model=None, num_predict=None, timeout=None, temperature=None, log_fn=None, **kw):
         captured_kwargs["num_predict"]  = num_predict
         captured_kwargs["timeout"]      = timeout
         captured_kwargs["temperature"]  = temperature
         return '["Data Sync"]'
 
-    monkeypatch.setattr("services.tag_service.generate_with_ollama", _mock)
+    monkeypatch.setattr("services.tag_service.generate_with_retry", _mock)
     asyncio.run(suggest_tags_via_llm("ERP", "PLM", "sync products"))
 
     assert captured_kwargs["num_predict"] == settings.tag_num_predict
@@ -113,7 +113,7 @@ def test_suggest_kb_tags_valid_json(monkeypatch):
     """suggest_kb_tags_via_llm returns parsed tags from valid JSON array."""
     from services.tag_service import suggest_kb_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(return_value='["Data Mapping", "Integration Pattern", "Error Handling"]'),
     )
     result = asyncio.run(suggest_kb_tags_via_llm("Best practice content", "guide.md"))
@@ -124,7 +124,7 @@ def test_suggest_kb_tags_max_3(monkeypatch):
     """suggest_kb_tags_via_llm enforces a maximum of 3 tags."""
     from services.tag_service import suggest_kb_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(return_value='["A", "B", "C", "D", "E"]'),
     )
     result = asyncio.run(suggest_kb_tags_via_llm("content", "file.md"))
@@ -136,7 +136,7 @@ def test_suggest_kb_tags_truncates_at_50_chars(monkeypatch):
     from services.tag_service import suggest_kb_tags_via_llm
     long_tag = "A" * 100
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(return_value=f'["{long_tag}"]'),
     )
     result = asyncio.run(suggest_kb_tags_via_llm("content", "file.md"))
@@ -148,7 +148,7 @@ def test_suggest_kb_tags_malformed_json_returns_empty(monkeypatch):
     """suggest_kb_tags_via_llm returns [] when LLM response is not a JSON array."""
     from services.tag_service import suggest_kb_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(return_value="Here are some tags: Best Practice, REST"),
     )
     result = asyncio.run(suggest_kb_tags_via_llm("content", "file.md"))
@@ -159,7 +159,7 @@ def test_suggest_kb_tags_exception_returns_empty(monkeypatch):
     """suggest_kb_tags_via_llm returns [] on any exception — never raises."""
     from services.tag_service import suggest_kb_tags_via_llm
     monkeypatch.setattr(
-        "services.tag_service.generate_with_ollama",
+        "services.tag_service.generate_with_retry",
         AsyncMock(side_effect=Exception("LLM unavailable")),
     )
     result = asyncio.run(suggest_kb_tags_via_llm("content", "file.md"))
