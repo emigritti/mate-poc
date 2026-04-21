@@ -285,6 +285,9 @@ services:
       - TAG_TEMPERATURE=${TAG_TEMPERATURE:-0.0}
       - DOCS_ROOT=/app
       # API_KEY: set this env var to enable token auth; leave unset for open PoC mode
+      # ADR-049: Gemini provider — set GEMINI_API_KEY in .env to enable per-profile Gemini routing
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       mongodb:
         condition: service_started
@@ -321,6 +324,7 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
       # Set ANTHROPIC_API_KEY in .env — required for HTML collector (Phase 4)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       # API_KEY: optional, set to enable token-based auth on ingest trigger endpoints
       - API_KEY=${API_KEY:-}
     depends_on:
