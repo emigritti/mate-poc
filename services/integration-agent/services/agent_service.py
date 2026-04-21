@@ -234,6 +234,86 @@ def _build_section_reports(
     return section_reports, claim_reports
 
 
+def _build_traceability_appendix(
+    report: GenerationReport,
+    source: str,
+    target: str,
+) -> str:
+    """Render a markdown appendix with generation metadata and evidence traceability."""
+    lines: list[str] = [
+        "",
+        "---",
+        "",
+        "## Appendix — Evidence & Generation Traceability",
+        "",
+        "### Generation Metadata",
+        "",
+        "| Field | Value |",
+        "|-------|-------|",
+        f"| Integration | {source} → {target} |",
+        f"| Model | `{report.model}` |",
+        f"| Generation Path | `{report.generation_path}` |",
+        f"| Quality Score | {report.quality_score:.2f} |",
+        f"| Claude Enriched | {'Yes' if report.claude_enriched else 'No'} |",
+        f"| Prompt Characters | {report.prompt_chars:,} |",
+        f"| Context Characters | {report.context_chars:,} |",
+    ]
+
+    if report.fallback_reason:
+        lines.append(f"| Fallback Reason | {report.fallback_reason} |")
+
+    if report.quality_issues:
+        lines += ["", "**Quality Issues:**", ""]
+        for issue in report.quality_issues:
+            lines.append(f"- {issue}")
+
+    if report.sources:
+        lines += [
+            "",
+            "### Retrieved Sources",
+            "",
+            "| Source Type | Document ID | Score | Preview |",
+            "|-------------|-------------|-------|---------|",
+        ]
+        for s in report.sources[:10]:
+            preview = s.preview[:60].replace("|", "\\|")
+            lines.append(f"| {s.source_label} | `{s.doc_id}` | {s.score:.3f} | {preview}… |")
+
+    if report.section_reports:
+        lines += [
+            "",
+            "### Section Confidence (FactPack Evidence)",
+            "",
+            "| Section | Confidence | Issues |",
+            "|---------|------------|--------|",
+        ]
+        for sr in report.section_reports:
+            issues_str = ", ".join(sr.issues) if sr.issues else "—"
+            lines.append(f"| {sr.section} | {sr.confidence:.2f} | {issues_str} |")
+
+    if report.claim_reports:
+        lines += [
+            "",
+            "### Evidence Claims",
+            "",
+            (
+                f"Confirmed: **{report.confirmed_claim_count}** · "
+                f"Inferred: **{report.inferred_claim_count}** · "
+                f"To Validate: **{report.to_validate_count}** · "
+                f"Missing Evidence: **{report.missing_evidence_count}**"
+            ),
+            "",
+            "| Claim ID | Statement | Confidence | Sources |",
+            "|----------|-----------|------------|---------|",
+        ]
+        for cr in report.claim_reports:
+            stmt = cr.statement[:60].replace("|", "\\|")
+            lines.append(f"| {cr.claim_id} | {stmt} | `{cr.confidence}` | {cr.source_chunk_count} |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 async def generate_integration_doc(
     entry,                                         # CatalogEntry (avoid circular import with schemas)
     requirements: list,                            # list[Requirement]
@@ -343,6 +423,8 @@ async def generate_integration_doc(
     fact_pack: FactPack | None = None
     prompt_chars: int = 0
     claude_was_applied = False
+    generation_path: str
+    fallback_reason: str = ""
 
     if settings.fact_pack_enabled:
         # ADR-041 two-step path
@@ -360,6 +442,7 @@ async def generate_integration_doc(
         # Two-step path: render document from FactPack
         # ADR-042 bugfix: reviewer_feedback is now forwarded so HITL feedback is
         # not silently dropped when fact_pack_used=True.
+        generation_path = "fact_pack"
         prompt_chars = fact_pack.extraction_chars
         raw = await render_document_sections(
             fact_pack=fact_pack,
@@ -373,7 +456,16 @@ async def generate_integration_doc(
     else:
         # Single-pass fallback: original pipeline (always used when fact_pack disabled or failed)
         if settings.fact_pack_enabled:
-            _log("[FactPack] Extraction unavailable — falling back to single-pass pipeline.")
+            generation_path = "single_pass_fallback"
+            fallback_reason = "FactPack extraction failed or returned None — see logs"
+            _log("[FactPack][WARN] Extraction unavailable — falling back to single-pass pipeline.")
+            logger.warning(
+                "[FactPack] generation_path=single_pass_fallback for %s → %s: %s",
+                source, target, fallback_reason,
+            )
+        else:
+            generation_path = "single_pass_disabled"
+            fallback_reason = "FactPack disabled (FACT_PACK_ENABLED=false)"
         prompt = build_prompt(
             source_system=source,
             target_system=target,
@@ -449,6 +541,11 @@ async def generate_integration_doc(
         inferred_claim_count=inferred_count,
         missing_evidence_count=missing_count,
         to_validate_count=validate_count,
+        # Generation path tracking (document-quality improvement #4)
+        generation_path=generation_path,
+        fallback_reason=fallback_reason,
     )
 
-    return enriched, report
+    # ── Stage 8: Traceability Appendix (document-quality improvement #3) ─────
+    appendix = _build_traceability_appendix(report, source, target)
+    return enriched + appendix, report

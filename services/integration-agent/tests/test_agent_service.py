@@ -20,7 +20,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from schemas import ClaimReport, GenerationReport, SectionReport
-from services.agent_service import _build_section_reports, generate_integration_doc
+from services.agent_service import (
+    _build_section_reports,
+    _build_traceability_appendix,
+    generate_integration_doc,
+)
 from services.fact_pack_service import EvidenceClaim, FactPack
 
 
@@ -477,7 +481,7 @@ class TestKillSwitch:
 
 class TestGenerationReportBackwardCompat:
     def test_defaults_for_new_fields(self):
-        """GenerationReport created without FactPack fields uses safe defaults."""
+        """GenerationReport created without FactPack or path fields uses safe defaults."""
         report = GenerationReport(
             model="llama3.1:8b",
             prompt_chars=5000,
@@ -497,6 +501,9 @@ class TestGenerationReportBackwardCompat:
         assert report.inferred_claim_count == 0
         assert report.missing_evidence_count == 0
         assert report.to_validate_count == 0
+        # Point 4 new fields
+        assert report.generation_path == "single_pass_disabled"
+        assert report.fallback_reason == ""
 
     def test_existing_fields_unchanged(self):
         """Ensure the types and names of pre-ADR-041 fields are not altered."""
@@ -519,3 +526,262 @@ class TestGenerationReportBackwardCompat:
         assert report.quality_score == 1.0
         assert report.quality_issues == ["one"]
         assert report.claude_enriched is True
+
+
+# ── _build_traceability_appendix ─────────────────────────────────────────────
+
+def _make_report(**kwargs) -> GenerationReport:
+    defaults = dict(
+        model="qwen2.5:14b",
+        prompt_chars=5000,
+        context_chars=3000,
+        sources=[],
+        sections_count=12,
+        na_count=2,
+        quality_score=0.85,
+        quality_issues=[],
+        claude_enriched=False,
+        generation_path="fact_pack",
+        fallback_reason="",
+    )
+    defaults.update(kwargs)
+    return GenerationReport(**defaults)
+
+
+class TestBuildTraceabilityAppendix:
+    def test_appendix_contains_metadata_heading(self):
+        report = _make_report()
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "## Appendix" in appendix
+        assert "Evidence & Generation Traceability" in appendix
+
+    def test_appendix_shows_generation_path(self):
+        report = _make_report(generation_path="fact_pack")
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "fact_pack" in appendix
+
+    def test_appendix_shows_fallback_reason_when_present(self):
+        report = _make_report(
+            generation_path="single_pass_fallback",
+            fallback_reason="FactPack extraction failed or returned None — see logs",
+        )
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Fallback Reason" in appendix
+        assert "FactPack extraction failed" in appendix
+
+    def test_appendix_no_fallback_row_when_empty_reason(self):
+        report = _make_report(generation_path="fact_pack", fallback_reason="")
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Fallback Reason" not in appendix
+
+    def test_appendix_shows_quality_issues(self):
+        report = _make_report(quality_issues=["low word count", "too many n/a sections"])
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Quality Issues" in appendix
+        assert "low word count" in appendix
+
+    def test_appendix_no_quality_issues_section_when_passed(self):
+        report = _make_report(quality_issues=[])
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Quality Issues" not in appendix
+
+    def test_appendix_shows_sources_table(self):
+        from schemas import SourceChunkInfo
+        sources = [
+            SourceChunkInfo(source_label="kb_document", doc_id="KB-001", score=0.9, preview="Some content"),
+        ]
+        report = _make_report(sources=sources)
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Retrieved Sources" in appendix
+        assert "KB-001" in appendix
+
+    def test_appendix_no_sources_table_when_empty(self):
+        report = _make_report(sources=[])
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Retrieved Sources" not in appendix
+
+    def test_appendix_shows_section_confidence_for_fact_pack_path(self):
+        section_reports = [SectionReport(section="Overview", confidence=0.9, issues=[])]
+        report = _make_report(section_reports=section_reports)
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Section Confidence" in appendix
+        assert "Overview" in appendix
+
+    def test_appendix_no_section_confidence_for_single_pass(self):
+        report = _make_report(section_reports=[])
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Section Confidence" not in appendix
+
+    def test_appendix_shows_claims_summary_for_fact_pack_path(self):
+        claim_reports = [ClaimReport(claim_id="BR-01", statement="Only PUBLISHED", confidence="confirmed", source_chunk_count=2)]
+        report = _make_report(claim_reports=claim_reports, confirmed_claim_count=1)
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Evidence Claims" in appendix
+        assert "BR-01" in appendix
+        assert "confirmed" in appendix
+
+    def test_appendix_no_claims_section_for_single_pass(self):
+        report = _make_report(claim_reports=[])
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        assert "Evidence Claims" not in appendix
+
+    def test_appendix_caps_sources_at_ten(self):
+        from schemas import SourceChunkInfo
+        sources = [
+            SourceChunkInfo(source_label="kb_document", doc_id=f"KB-{i:03d}", score=0.5, preview=f"chunk {i}")
+            for i in range(15)
+        ]
+        report = _make_report(sources=sources)
+        appendix = _build_traceability_appendix(report, "SAP", "Salesforce")
+        # Only first 10 should appear
+        assert "KB-009" in appendix
+        assert "KB-010" not in appendix
+
+
+# ── Generation path tracking (Point 4) ───────────────────────────────────────
+
+class TestGenerationPath:
+    @pytest.mark.asyncio
+    async def test_generation_path_is_fact_pack(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+        fp = _minimal_fact_pack()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = True
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=fp):
+                _, report = await generate_integration_doc(entry, reqs)
+
+        assert report.generation_path == "fact_pack"
+        assert report.fallback_reason == ""
+
+    @pytest.mark.asyncio
+    async def test_generation_path_is_single_pass_fallback(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = True
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=None):
+                _, report = await generate_integration_doc(entry, reqs)
+
+        assert report.generation_path == "single_pass_fallback"
+        assert "FactPack extraction failed" in report.fallback_reason
+
+    @pytest.mark.asyncio
+    async def test_generation_path_is_single_pass_disabled(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = False
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=None):
+                _, report = await generate_integration_doc(entry, reqs)
+
+        assert report.generation_path == "single_pass_disabled"
+        assert "FACT_PACK_ENABLED=false" in report.fallback_reason
+
+    @pytest.mark.asyncio
+    async def test_fallback_emits_warning_log(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = True
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=None):
+                with patch("services.agent_service.logger") as mock_logger:
+                    await generate_integration_doc(entry, reqs)
+
+        mock_logger.warning.assert_called_once()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "single_pass_fallback" in warning_msg
+
+
+# ── Traceability appendix in document (Point 3) ──────────────────────────────
+
+class TestTraceabilityAppendixInDocument:
+    @pytest.mark.asyncio
+    async def test_appendix_appended_to_returned_document(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+        fp = _minimal_fact_pack()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = True
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=fp):
+                content, _ = await generate_integration_doc(entry, reqs)
+
+        assert "## Appendix" in content
+        assert "Evidence & Generation Traceability" in content
+
+    @pytest.mark.asyncio
+    async def test_appendix_present_in_single_pass_path(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = False
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=None):
+                content, _ = await generate_integration_doc(entry, reqs)
+
+        assert "## Appendix" in content
+
+    @pytest.mark.asyncio
+    async def test_appendix_contains_generation_path(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+        fp = _minimal_fact_pack()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = True
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=fp):
+                content, _ = await generate_integration_doc(entry, reqs)
+
+        assert "fact_pack" in content
+
+    @pytest.mark.asyncio
+    async def test_appendix_shows_fallback_reason_in_doc(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = True
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=None):
+                content, _ = await generate_integration_doc(entry, reqs)
+
+        assert "Fallback Reason" in content
+        assert "FactPack extraction failed" in content
+
+    @pytest.mark.asyncio
+    async def test_original_document_body_preserved(self):
+        entry = _make_entry()
+        reqs = _make_requirements()
+
+        with patch("services.agent_service.settings") as mock_settings:
+            mock_settings.fact_pack_enabled = False
+            mock_settings.ollama_rag_max_chars = 5000
+            mock_settings.ollama_model = "qwen2.5:14b"
+            with _patch_all_external(fact_pack=None):
+                content, _ = await generate_integration_doc(entry, reqs)
+
+        # _VALID_DOC content must still be present before the appendix
+        assert "## 1. Overview" in content
+        appendix_pos = content.index("## Appendix")
+        overview_pos = content.index("## 1. Overview")
+        assert overview_pos < appendix_pos
