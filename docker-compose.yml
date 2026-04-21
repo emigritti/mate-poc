@@ -285,6 +285,9 @@ services:
       - TAG_TEMPERATURE=${TAG_TEMPERATURE:-0.0}
       - DOCS_ROOT=/app
       # API_KEY: set this env var to enable token auth; leave unset for open PoC mode
+      # ADR-049: Gemini provider — set GEMINI_API_KEY in .env to enable per-profile Gemini routing
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       mongodb:
         condition: service_started
