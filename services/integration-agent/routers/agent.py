@@ -18,7 +18,7 @@ from auth import require_token
 from utils import _now_iso
 from config import settings
 from log_helpers import log_agent
-from output_guard import LLMOutputValidationError, assess_quality
+from output_guard import LLMOutputValidationError, QualityGateError, assess_quality, enforce_quality_gate
 from schemas import Approval, LogEntry
 from services.agent_service import generate_integration_doc
 from services.retriever import ScoredChunk
@@ -87,6 +87,7 @@ async def run_agentic_rag_flow(
 
         # RAG retrieval + LLM generation + optional Claude enrichment
         gen_report = None
+        quality = None
         try:
             spec_content, gen_report = await generate_integration_doc(
                 entry=entry,
@@ -100,15 +101,27 @@ async def run_agentic_rag_flow(
                 f"[LLM] Integration Spec generated for {entry.id} — "
                 f"{len(spec_content)} chars."
             )
-            # R14: quality assessment already computed inside generate_integration_doc
+            # Quality gate: assess then enforce before queueing for HITL review.
             quality = assess_quality(spec_content)
             if not quality.passed:
                 log_agent(
-                    f"[QUALITY] Low quality score {quality.quality_score:.2f} for {entry.id}"
+                    f"[QUALITY] Issues for {entry.id} (score={quality.quality_score:.2f})"
                     f" — {'; '.join(quality.issues)}"
                 )
             else:
-                log_agent(f"[QUALITY] Quality OK — score {quality.quality_score:.2f} for {entry.id}")
+                log_agent(f"[QUALITY] OK — score {quality.quality_score:.2f} for {entry.id}")
+            enforce_quality_gate(
+                quality,
+                min_score=settings.quality_gate_min_score,
+                mode=settings.quality_gate_mode,
+            )
+        except QualityGateError as exc:
+            log_agent(f"[QUALITY GATE] Document BLOCKED for {entry.id}: {exc}")
+            score_str = f"{quality.quality_score:.2f}" if quality else "n/a"
+            issues_str = "; ".join(quality.issues) if quality else str(exc)
+            spec_content = (
+                f"[QUALITY_GATE_BLOCKED: score={score_str} — {issues_str}]"
+            )
         except LLMOutputValidationError as exc:
             log_agent(f"[GUARD] Output rejected for {entry.id}: {exc}")
             spec_content = "[LLM_OUTPUT_REJECTED: structural guard failed — see agent logs]"
