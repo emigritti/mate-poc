@@ -151,13 +151,23 @@ DOCS_MANIFEST: list[dict] = [
     {"path": "docs/adr/ADR-035-raptor-lite-summaries.md", "name": "ADR-035 RAPTOR-lite Summaries", "category": "ADR", "description": "Section-level LLM summaries for hierarchical RAG retrieval."},
     {"path": "docs/adr/ADR-036-ingestion-platform-architecture.md", "name": "ADR-036 Ingestion Platform", "category": "ADR", "description": "n8n + multi-source collectors (OpenAPI, HTML, MCP)."},
     {"path": "docs/adr/ADR-037-claude-api-semantic-extraction.md", "name": "ADR-037 Claude Semantic Extraction", "category": "ADR", "description": "Claude API for HTML relevance filtering and capability extraction."},
-    {"path": "docs/adr/ADR-038-technical-design-generation.md", "name": "ADR-038 Technical Design Generation", "category": "ADR", "description": "Two-phase doc generation: functional approval → technical design."},
+    {"path": "docs/adr/ADR-038-technical-design-generation.md", "name": "ADR-038 Technical Design Generation", "category": "ADR", "description": "Two-phase doc generation: functional approval → technical design. (Superseded — merged into single Integration Spec)."},
+    {"path": "docs/adr/ADR-039-ingestion-sources-ui.md", "name": "ADR-039 Ingestion Sources UI", "category": "ADR", "description": "Nginx /ingestion/ route and IngestionSourcesPage dashboard."},
+    {"path": "docs/adr/ADR-040-ai-assisted-section-improvement.md", "name": "ADR-040 AI-Assisted Section Improvement", "category": "ADR", "description": "Section-scoped LLM assist in HITL approval editor."},
+    {"path": "docs/adr/ADR-041-fact-pack-intermediate-layer.md", "name": "ADR-041 FactPack Intermediate Layer", "category": "ADR", "description": "Two-step LLM pipeline: JSON FactPack extraction + section rendering."},
+    {"path": "docs/adr/ADR-042-prompt-builder-centralization.md", "name": "ADR-042 Prompt Builder Centralization", "category": "ADR", "description": "All prompts in prompt_builder.py; section-aware SECTION GUIDANCE block."},
+    {"path": "docs/adr/ADR-043-intent-aware-retrieval.md", "name": "ADR-043 Intent-Aware Retrieval", "category": "ADR", "description": "Intent-selectable query perspectives, TF-IDF vocabulary boost, tag fix."},
+    {"path": "docs/adr/ADR-044-kb-semantic-enrichment.md", "name": "ADR-044 KB Semantic Enrichment", "category": "ADR", "description": "enrich_chunk_metadata() — 6 ChromaDB fields per chunk; shared _process_kb_file()."},
+    {"path": "docs/adr/ADR-045-ui-semantic-chunking.md", "name": "ADR-045 UI Semantic Chunking", "category": "ADR", "description": "HTML collector UI screen extraction: ui_flow/validation/state_transition chunks."},
+    {"path": "docs/adr/ADR-046-llm-profile-routing.md", "name": "ADR-046 LLM Multi-Profile Routing", "category": "ADR", "description": "Default / High Quality / Fast-Utility LLM profiles with identical parameter set."},
+    {"path": "docs/adr/ADR-047-pixel-ui-mode.md", "name": "ADR-047 Pixel UI Mode", "category": "ADR", "description": "8-bit RPG dual UI with 5 agent personas and pixel CSS design system."},
+    {"path": "docs/adr/ADR-048-kb-metadata-v2-enrichment.md", "name": "ADR-048 KB Metadata v2 Enrichment", "category": "ADR", "description": "In-place ChromaDB enrichment, 18-type semantic taxonomy, intent-aware score bonus."},
     # ── Checklists ────────────────────────────────────────────────────────────
     {"path": "docs/code-review/CODE-REVIEW-CHECKLIST.md", "name": "Code Review Checklist", "category": "Checklist", "description": "Architecture/correctness/security gates."},
     {"path": "docs/security-review/SECURITY-REVIEW-CHECKLIST.md", "name": "Security Review Checklist", "category": "Checklist", "description": "OWASP-aligned security checklist."},
     {"path": "docs/unit-test-review/UNIT-TEST-REVIEW-CHECKLIST.md", "name": "Unit Test Review Checklist", "category": "Checklist", "description": "Test quality gates."},
     # ── Test Plans ────────────────────────────────────────────────────────────
-    {"path": "docs/test-plan/TEST-PLAN-001-remediation.md", "name": "TEST-PLAN-001 Remediation", "category": "Test Plan", "description": "Unit test plan with 314 tests."},
+    {"path": "docs/test-plan/TEST-PLAN-001-remediation.md", "name": "TEST-PLAN-001 Remediation", "category": "Test Plan", "description": "Unit test plan (420+ tests as of quality improvements #1/#2)."},
     # ── Mappings ──────────────────────────────────────────────────────────────
     {"path": "docs/mappings/UNIT-SECURITY-OWASP-MAPPING.md", "name": "OWASP Unit-Test Mapping", "category": "Mapping", "description": "Test-to-OWASP traceability."},
 ]

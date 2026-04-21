@@ -4,9 +4,9 @@
 | Metadata | |
 |---|---|
 | **Project** | Functional Integration Mate |
-| **Version** | 5.0.0 |
-| **Date** | 2026-03-23 |
-| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20), v3.1.0 (2026-03-20), v4.0.0 (2026-03-21) |
+| **Version** | 6.0.0 |
+| **Date** | 2026-04-21 |
+| **Previous Versions** | v1.0.0 (2026-03-04), v2.0.0 (2026-03-10), v2.1.0 (2026-03-11), v2.2.0 (2026-03-16), v2.3.0 (2026-03-19), v3.0.0 (2026-03-20), v3.1.0 (2026-03-20), v4.0.0 (2026-03-21), v5.0.0 (2026-03-23) |
 | **Classification** | Internal — Confidential |
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
@@ -52,8 +52,9 @@ The **Functional Integration Mate** is an AI-powered platform that automates the
 4. **Agentic Execution Engine** — AI agent that autonomously orchestrates documentation generation with RAG and HITL
 5. **Knowledge Base** — Multi-source document library supporting: single file upload (PDF, DOCX, XLSX, PPTX, MD), **batch file upload** (up to 10 files per request), registered HTTP/HTTPS URL links (fetched live at generation time, ADR-024), and automated multi-source ingestion (OpenAPI/Swagger specs, HTML documentation crawl, MCP server introspection) via the dedicated **Ingestion Platform** service (ADR-036)
 6. **Ingestion Platform** — Standalone FastAPI service (port 4006) with n8n workflow orchestrator (port 5678): three specialized collectors (OpenAPI, HTML, MCP), source registry, scheduled refresh, ETag caching, hash-based diff detection, and Claude-powered semantic diff summaries (ADR-037). All ingested chunks land in the shared `kb_collection` ChromaDB under distinct `src_*` ID prefix with enriched `source_type` metadata — zero changes required to the RAG retriever
-6. **LLM Settings** — Admin-configurable runtime overrides for all three LLM profiles (Default/Premium/Fast-Utility), each exposing identical parameters (model, num_predict, timeout, temperature, rag_max_chars, num_ctx, top_p, top_k, repeat_penalty), persisted in MongoDB and effective without restart
-7. **Admin Tools** — Project Docs browser (curated markdown viewer for ADRs, checklists, guides) and Reset Tools for full system reset including LLM override clearing
+6. **LLM Settings** — Admin-configurable runtime overrides for all three LLM profiles (Default/High Quality/Fast-Utility), each exposing identical parameters (model, num_predict, timeout, temperature, rag_max_chars, num_ctx, top_p, top_k, repeat_penalty), persisted in MongoDB and effective without restart
+7. **Agent Settings** — Admin-configurable runtime overrides for 15 quality/RAG/vision/chunking parameters (quality_gate_mode, quality_gate_min_score, RAG thresholds, FactPack flags, vision/RAPTOR flags, chunk size/overlap), persisted in MongoDB `agent_settings` collection and effective on next agent run
+8. **Admin Tools** — Project Docs browser (curated markdown viewer for ADRs, checklists, guides) and Reset Tools for full system reset including LLM and agent settings override clearing
 
 The platform focuses strictly on the **Documentation and Cataloging** layer of the integration lifecycle — not on runtime execution (ESB, iPaaS, or middleware role).
 
@@ -151,7 +152,7 @@ graph TB
 
     subgraph frontend["Frontend Layer"]
         gateway["Nginx Gateway<br/><b>nginx:alpine</b><br/>:8080<br/><i>Reverse proxy — single entry point</i>"]
-        dashboard["Web Dashboard<br/><b>React / Vite / Nginx</b><br/>internal<br/><i>SPA: CSV upload, agent control,<br/>real-time logs, HITL review, catalog,<br/>KB, LLM Settings</i>"]
+        dashboard["Web Dashboard<br/><b>React / Vite / Nginx</b><br/>internal<br/><i>SPA: CSV upload, agent control,<br/>real-time logs, HITL review, catalog,<br/>KB, LLM Settings, Agent Settings</i>"]
     end
 
     subgraph agent_layer["Agent Layer"]
@@ -202,7 +203,7 @@ graph TB
 | Container | Image / Stack | Port (ext → int) | Key Responsibility |
 |-----------|--------------|-------------------|--------------------|
 | `mate-gateway` | Nginx Alpine | `8080 → 80` | Reverse-proxy gateway: routes `/agent/`, `/plm/`, `/pim/` to backends; single public entry point |
-| `mate-web-dashboard` | Nginx + React (Vite) | internal `→ 80` | SPA: upload, agent control, logs, HITL, catalog, KB, LLM settings |
+| `mate-web-dashboard` | Nginx + React (Vite) | internal `→ 80` | SPA: upload, agent control, logs, HITL, catalog, KB, LLM settings, Agent settings, Ingestion sources |
 | `mate-integration-agent` | Python 3.12 / FastAPI + Motor | `4003 → 3003` | Agentic RAG loop, all business logic, 15 REST endpoints |
 | `mate-catalog-generator` | FastAPI | `4004 → 3004` | Catalog composition from agent output |
 | `mate-security-middleware` | FastAPI + JWT | `4000 → 3000` | Auth gateway (passthrough in PoC dev mode) |
@@ -234,7 +235,7 @@ graph TB
             r_appr["approvals.py<br/><i>/approvals/pending · /approve · /reject</i>"]
             r_docs["documents.py<br/><i>/documents · /promote-to-kb</i>"]
             r_kb["kb.py<br/><i>/kb/upload · /add-url · /search · /stats</i>"]
-            r_admin["admin.py<br/><i>/admin/reset · /llm-settings · /docs</i>"]
+            r_admin["admin.py<br/><i>/admin/reset · /llm-settings · /agent-settings · /docs</i>"]
         end
 
         subgraph svc_layer["Services Layer (services/)"]
@@ -282,7 +283,7 @@ graph TB
 | **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback; regenerate REJECTED doc with feedback injected (ADR-032) |
 | **Documents Router** | `routers/documents.py` | Final doc listing; promote-to-kb (ADR-023) |
 | **KB Router** | `routers/kb.py` | Single file upload via `parse_with_docling()` (ADR-034); **batch upload** `POST /api/v1/kb/batch-upload` (up to 10 files, partial success per file); RAPTOR-lite section summarisation → `summaries_col` (ADR-035); shared pipeline `_process_kb_file()` eliminates single/batch duplication — parse → auto-tag → enrich → ChromaDB upsert → state update (ADR-044); URL registration (ADR-024); tag management; semantic search; stats |
-| **Admin Router** | `routers/admin.py` | Reset tools; LLM settings CRUD (persist to MongoDB); project docs browser |
+| **Admin Router** | `routers/admin.py` | Reset tools; LLM settings CRUD (persist to MongoDB); agent settings CRUD (persist to MongoDB); project docs browser |
 | **LLM Service** | `services/llm_service.py` | `generate_with_retry()` — 3 attempts, 5s/15s exponential backoff (R13); Ollama `/api/generate` |
 | **RAG Service** | `services/rag_service.py` | ChromaDB approved_integrations + knowledge_base queries; `ContextAssembler` token-budgeted sections: `## DOCUMENT SUMMARIES` + `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` (R10 / ADR-035) |
 | **Tag Service** | `services/tag_service.py` | Tag extraction from catalog entry; LLM suggestion with dedicated settings (ADR-020) |
@@ -293,8 +294,8 @@ graph TB
 | **State** | `state.py` | Centralized in-memory globals: all dicts, lock, logs, `kb_chunks` BM25 corpus, `summaries_col` ChromaDB handle |
 | **Auth** | `auth.py` | `get_api_key()` FastAPI dependency; `hmac.compare_digest()` constant-time check |
 | **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent; RAG thresholds, BM25 weights, vision/RAPTOR-lite flags |
-| **Output Guard** | `output_guard.py` | Checks `# Integration Functional Design` heading; bleach strip; 50k truncation; `assess_quality()` → `QualityReport` warning-only gate (ADR-031) |
-| **Agent Service** | `services/agent_service.py` | `generate_integration_doc()` — two-step FactPack pipeline (ADR-041) with graceful degradation to single-pass; shared by agent flow and regenerate endpoint |
+| **Output Guard** | `output_guard.py` | Checks `# Integration Design` heading; bleach strip; 50k truncation; `assess_quality()` → `QualityReport` with 6 volume signals + 3 structural validators; configurable warn/block gate via `quality_gate_mode` (ADR-031, quality improvements #1/#2); `enforce_quality_gate()` raises `QualityGateError` in block mode |
+| **Agent Service** | `services/agent_service.py` | `generate_integration_doc()` — two-step FactPack pipeline (ADR-041) with graceful degradation to single-pass; tracks `generation_path` (`"fact_pack"` \| `"single_pass_fallback"` \| `"single_pass_disabled"`) and `fallback_reason` in `GenerationReport`; appends `## Appendix — Evidence & Generation Traceability` via `_build_traceability_appendix()` (quality improvement #3); shared by agent flow and regenerate endpoint |
 | **FactPack Service** | `services/fact_pack_service.py` | `extract_fact_pack()` (Claude/Ollama JSON extraction), `validate_fact_pack()` (pure Python), `render_document_sections()` (Ollama render) — ADR-041 |
 
 ### 5.1 Backend Module Structure (Phase 1 — ADR-026)
@@ -322,7 +323,7 @@ services/integration-agent/
 │   ├── approvals.py     — HITL approve/reject/regenerate (ADR-032)
 │   ├── documents.py     — final docs + KB promotion
 │   ├── kb.py            — Knowledge Base: Docling upload + RAPTOR-lite summarisation + URLs
-│   └── admin.py         — reset tools, LLM settings, project docs browser
+│   └── admin.py         — reset tools, LLM settings, agent settings, project docs browser
 └── services/
     ├── llm_service.py       — Ollama client + generate_with_retry() exponential-backoff (R13)
     ├── rag_service.py       — ContextAssembler: DOCUMENT SUMMARIES + PAST APPROVED + BEST PRACTICE (R10/ADR-035)
@@ -815,7 +816,8 @@ sequenceDiagram
 | 6b. FactPack Validate | Agent | `validate_fact_pack()`: pure-Python evidence validation | Advisory only — appends issues to FactPack; never blocks generation |
 | 6c. Document Render | Agent | `render_document_sections()`: Ollama renders 16 sections from FactPack — OR single-pass fallback: `generate_with_retry()` with full prompt | 900s timeout; async; error caught → log + skip; `missing_evidence` → explicit evidence gap markers (not `n/a`) |
 | 7. Output Guard | Agent | Structural + XSS check | Must start with `# Integration Design` |
-| 7a. Quality Check | Agent | `assess_quality()` evaluates section count, n/a ratio, word count → `QualityReport` logged (warning-only, never rejects) | Advisory gate — low scores signal to reviewers that content may need regeneration |
+| 7a. Quality Check | Agent | `assess_quality()` — 6 volume signals + 3 structural validators → `QualityReport`; `enforce_quality_gate()` checks mode | **warn** (default): log issues, continue to HITL; **block**: raise `QualityGateError` if score < `quality_gate_min_score` — document NOT queued |
+| 7b. Traceability | Agent | `_build_traceability_appendix()` appended to document | Generation metadata, retrieved sources, section confidence, evidence claims (FactPack only) |
 | 8. HITL Queue | Agent | Store as PENDING | No automatic write to final store without human |
 | 9. Human Review | Analyst | Edit + Approve/Reject in UI | `sanitize_human_content()` on submit |
 | 10. RAG Learn | Agent | Upsert approved doc → ChromaDB | Feeds future generations with approved patterns |
@@ -1248,12 +1250,18 @@ mongodb://mate-mongodb:27017/integration_mate
   │                           content_preview, uploaded_at,
   │                           source_type: "file"|"url",   ← ADR-024
   │                           url: string|null }           ← populated for source_type="url"
-  └── llm_settings          { _id: "current", overrides for all 3 profiles:
-                              doc_llm keys (no prefix): model/num_predict/timeout_seconds/temperature/rag_max_chars/num_ctx/top_p/top_k/repeat_penalty
-                              premium_llm keys (premium_ prefix): premium_model/premium_num_predict/…
-                              tag_llm keys (tag_ prefix): tag_model/tag_num_predict/…
-                              rag_distance_threshold, rag_bm25_weight,
-                              rag_n_results_per_query, rag_top_k_chunks }  ← Phase 2 RAG params (ADR-027..030)
+  ├── llm_settings          { _id: "current", overrides for all 3 profiles:
+  │                           doc_llm keys (no prefix): model/num_predict/timeout_seconds/temperature/rag_max_chars/num_ctx/top_p/top_k/repeat_penalty
+  │                           premium_llm keys (premium_ prefix): premium_model/premium_num_predict/…
+  │                           tag_llm keys (tag_ prefix): tag_model/tag_num_predict/…
+  │                           rag_distance_threshold, rag_bm25_weight,
+  │                           rag_n_results_per_query, rag_top_k_chunks }  ← Phase 2 RAG params (ADR-027..030)
+  └── agent_settings        { _id: "current", runtime overrides for 15 quality/RAG/vision/chunking params:
+                              quality_gate_mode, quality_gate_min_score, rag_distance_threshold,
+                              rag_bm25_weight, rag_n_results_per_query, rag_top_k_chunks, kb_max_rag_chars,
+                              fact_pack_enabled, fact_pack_max_tokens, llm_max_output_chars,
+                              vision_captioning_enabled, raptor_summarization_enabled,
+                              kb_max_summarize_sections, kb_chunk_size, kb_chunk_overlap }
 ```
 
 **Indexing strategy:**
@@ -1339,6 +1347,9 @@ All endpoints are served by `mate-integration-agent` on port `3003` (internal). 
 | `/api/v1/admin/llm-settings` | GET | — | Retrieve current effective LLM parameters and design defaults |
 | `/api/v1/admin/llm-settings` | PATCH | Token | Update LLM runtime parameters (persisted to MongoDB, applied immediately) |
 | `/api/v1/admin/llm-settings/reset` | POST | Token | Reset all LLM parameters to design defaults |
+| `/api/v1/admin/agent-settings` | GET | — | Retrieve current effective agent settings (quality gate, RAG, FactPack, vision, chunking) and design defaults |
+| `/api/v1/admin/agent-settings` | PATCH | Token | Update agent runtime settings (persisted to MongoDB, active on next agent run) |
+| `/api/v1/admin/agent-settings/reset` | POST | Token | Reset all agent settings to design defaults |
 | `/api/v1/admin/docs` | GET | — | Retrieve curated project documentation manifest |
 | `/api/v1/admin/docs/{path}` | GET | — | Retrieve markdown content of a specific project document |
 | `/api/v1/kb/upload` | POST | Token | Upload + parse + auto-tag a file to the Knowledge Base |
@@ -1463,7 +1474,7 @@ graph TB
 | CORS | Allowlist from env var | No `*` with credentials | A05 |
 | Input | Requirements file guards | Extension-based type detection, 1 MB size, UTF-8 encoding; CSV and Markdown parsers | A03 |
 | Input | Request bodies | Pydantic `Field(min_length, max_length)` | A03 |
-| LLM Output | Structural guard | Must start `# Integration Functional Design` | A03 |
+| LLM Output | Structural guard | Must start `# Integration Design` | A03 |
 | LLM Output | HTML sanitization | `bleach.clean(strip=True, tags=allowlist)` | A03 |
 | LLM Output | Truncation | Max 50,000 characters | A03 |
 | Frontend | XSS prevention | `escapeHtml()` on all server-sourced innerHTML | A03 |
@@ -1917,20 +1928,23 @@ gantt
 | ADR-028 | BM25+Dense Hybrid Retrieval (R8/R12) | Accepted | BM25Plus sparse + ChromaDB dense ensemble (0.6/0.4); `kb_chunks` corpus in `state.py`; multi-dimensional `$or` tag filter |
 | ADR-029 | Retrieval Threshold Filter & TF-IDF Re-rank (R9) | Accepted | Score threshold `1/(1+distance)` drops low-quality chunks; TF-IDF cosine re-rank (scikit-learn) before top-K selection |
 | ADR-030 | ContextAssembler Structured Sections (R10) | Accepted | RAG context split into `## PAST APPROVED EXAMPLES` + `## BEST PRACTICE PATTERNS` with token budget enforcement |
-| ADR-031 | Output Quality Checker | Accepted | `assess_quality()` warning-only gate |
+| ADR-031 | Output Quality Checker | Accepted | `assess_quality()` configurable warn/block gate; `enforce_quality_gate()` raises `QualityGateError` in block mode; extended by quality improvements #1 (6 volume signals) and #2 (3 structural validators) |
 | ADR-032 | Feedback Loop Regenerate | Accepted | HITL rejection feedback loop |
 | ADR-033 | TanStack Query Frontend | Accepted | React Query server-state pilot |
 | ADR-034 | Docling + LLaVA Vision Parser | Accepted | Layout-aware PDF/DOCX parsing via IBM Docling; `DoclingChunk` with `chunk_type` (text/table/figure), `section_header`, `page_num`; figure captioning via `llava:7b` (local Ollama) |
 | ADR-035 | RAPTOR-lite Section Summaries | Accepted | Section-header grouping of `DoclingChunk`s; sections ≥ 3 chunks summarised via llama3.1:8b; `SummaryChunk` stored in `kb_summaries` ChromaDB collection; dense-only retrieval injected as `## DOCUMENT SUMMARIES` first section |
 | ADR-036 | Ingestion Platform Architecture | Accepted | New `services/ingestion-platform/` (port 4006) with 3 collectors (OpenAPI, HTML, MCP), source registry, diff engine, n8n (port 5678) orchestrator; shared `kb_collection` ChromaDB with `src_*` chunk IDs; 3 new MongoDB collections (`sources`, `source_runs`, `source_snapshots`) |
 | ADR-037 | Claude API Semantic Extraction | Accepted | Claude Haiku for HTML relevance filter and diff summaries; Claude Sonnet for schema-constrained capability extraction and cross-page reconciliation; `ClaudeService` wrapper with graceful degradation when key absent; confidence < 0.7 → `low_confidence=True` metadata (not discarded) |
+| ADR-039 | Ingestion Sources UI — Gateway Route + Dashboard Page | Accepted | Nginx route `/ingestion/` proxies to `mate-ingestion-platform:4006`; `IngestionSourcesPage.jsx` provides full source CRUD, manual ingest trigger, run history, and snapshot/chunk inspection; gateway security headers extended; no backend changes to integration-agent |
+| ADR-040 | AI-Assisted Section Improvement in HITL Approval Flow | Accepted | `POST /api/v1/approvals/build-improvement-prompt` and `POST /api/v1/approvals/run-improvement` endpoints; section-scoped LLM assist in the HITL editor; reviewer remains in control — AI suggestions are applied only on explicit confirmation |
 | ADR-041 | FactPack Intermediate Layer | Accepted | Two-step LLM pipeline: `extract_fact_pack()` (Claude/Ollama → JSON FactPack) + `render_document_sections()` (Ollama → markdown); 4 confidence states (confirmed/inferred/missing_evidence/to_validate); `section_reports` + `claim_reports` in `GenerationReport`; graceful degradation to single-pass; kill-switch via `FACT_PACK_ENABLED=false` |
 | ADR-042 | Prompt Builder Centralization | Accepted | All prompt construction moved to `prompt_builder.py`; `_SECTION_INSTRUCTIONS` (16 sections) injects per-section FactPack field guidance into rendering prompt; `build_prompt_for_mode()` unified dispatcher; bugfix: `reviewer_feedback` now forwarded to `render_document_sections()` |
 | ADR-043 | Intent-Aware Retrieval, Tag Fix, and Query Perspective Extension | Accepted | Whole-token tag matching in `_tags_match_meta()` eliminates substring false positives; `_INTENT_PERSPECTIVES` enables intent-selectable LLM query perspectives; `_INTENT_VOCABULARY` enables intent vocabulary TF-IDF boost; `retrieve(*, intent="")` keyword-only extension point |
 | ADR-044 | KB Semantic Metadata Enrichment and Upload Pipeline Deduplication | Accepted | `enrich_chunk_metadata()` pure function adds 6 ChromaDB metadata fields per chunk: `semantic_type` (8-value deterministic classification), `entity_names`, `field_names`, `rule_markers`, `integration_keywords`, `source_modality`; `_process_kb_file()` shared pipeline eliminates single/batch upload duplication; zero LLM calls, zero latency |
 | ADR-045 | UI Semantic Chunking for HTML Ingestion | Accepted | `CapabilityKind.UI_SCREEN` added; extraction schema extended with optional `ui_context` block (page, role, fields, actions, validations, messages, state_transitions); `CanonicalChunk.chunk_type` field replaces hardcoded `"text"`; `HTMLChunker` generates typed multi-chunks per UI screen: 1 `ui_flow_chunk` + N `validation_rule_chunk` + N `state_transition_chunk`; backward compatible — non-UI capabilities unchanged |
-| ADR-046 | LLM Multi-Profile Routing | Accepted | Three named LLM profiles: `default` (`qwen2.5:14b`, `num_ctx=8192`), `premium` (`gemma4:26b`, `num_ctx=6144`), fast-utility (`qwen3:8b` for tags/expansion); `generate_with_ollama()` extended with `num_ctx / top_p / top_k / repeat_penalty / model` params; `llm_profile` field in `TriggerRequest` flows to `generate_integration_doc()`; UI toggle (Default / Premium) in `AgentWorkspacePage.jsx`; tags and query expansion always use fast-utility model; all three profiles expose identical parameter set in `LlmSettingsPage` (`model`, `num_predict`, `timeout_seconds`, `temperature`, `rag_max_chars`, `num_ctx`, `top_p`, `top_k`, `repeat_penalty`) via `doc_llm` / `premium_llm` / `tag_llm` groups; premium routing reads from `llm_overrides` (`premium_*` keys) rather than static pydantic defaults |
+| ADR-046 | LLM Multi-Profile Routing | Accepted | Three named LLM profiles: `default` (`qwen2.5:14b`, `num_ctx=8192`), `high_quality`/`premium` (`gemma4:26b`, `num_ctx=6144`), fast-utility (`qwen3:8b` for tags/expansion); UI profile selector shows "Default" and "High Quality" labels; `generate_with_ollama()` extended with `num_ctx / top_p / top_k / repeat_penalty / model` params; `llm_profile` field in `TriggerRequest` flows to `generate_integration_doc()`; tags and query expansion always use fast-utility model; all three profiles expose identical parameter set in `LlmSettingsPage` (`model`, `num_predict`, `timeout_seconds`, `temperature`, `rag_max_chars`, `num_ctx`, `top_p`, `top_k`, `repeat_penalty`) via `doc_llm` / `premium_llm` / `tag_llm` groups |
 | ADR-047 | Pixel UI Mode — 8-bit RPG Dual UI | Accepted | `UiModeContext` (localStorage) toggles between Classic and Pixel modes; `.pixel-mode` CSS design system (Press Start 2P, dark palette, pixel panels/buttons/animations); 5 RPG agent personas (Archivist/Librarian/Writer/Guardian/Mage) with emoji sprites and CSS keyframe animations; `PixelAgentWorkspace` replaces `AgentWorkspacePage` in pixel mode — live `PipelineView` + `PersonaNarrator` quest log; `PixelSidebar` + `UiModeToggle` in TopBar; Classic mode entirely unaffected |
+| ADR-048 | KB Metadata v2 Schema and In-Place Enrichment | Accepted | In-place enrichment of all existing ChromaDB chunks via `upsert()` — same chunk IDs, updated metadata; 18-type v2 `semantic_type` taxonomy (replaces 8-type v1); `kb_schema_version` flag tags enriched chunks; `SemanticBonusScorer` applies intent-aware score bonus during retrieval (ADR-043 integration); V1 chunks degrade gracefully; `POST /api/v1/kb/enrich` endpoint for manual trigger; `kb_schema_version` and `source_modality` stored per chunk |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |
