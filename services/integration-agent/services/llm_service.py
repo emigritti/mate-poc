@@ -5,10 +5,11 @@ Extracted from main.py (R13 + R15).
 Provides:
   - generate_with_ollama(): single Ollama call (non-blocking, httpx)
   - _generate_with_gemini(): single Google Gemini API call (ADR-049)
+  - _generate_with_anthropic(): single Anthropic Claude API call (ADR-049)
   - generate_with_retry(): wraps provider call with configurable retry
 
 ADR-012: httpx.AsyncClient for non-blocking Ollama calls.
-ADR-049: Google Gemini API as alternative provider — per-profile switching.
+ADR-049: Google Gemini and Anthropic Claude as alternative providers — per-profile switching.
 R13: Retry with exponential backoff (3 attempts, 5s/15s).
 """
 
@@ -182,6 +183,66 @@ async def _generate_with_gemini(
     return text
 
 
+async def _generate_with_anthropic(
+    prompt: str,
+    *,
+    model: str = "claude-sonnet-4-6",
+    num_predict: int | None = None,
+    timeout: int | None = None,
+    temperature: float | None = None,
+    log_fn: Callable[[str], None] | None = None,
+) -> str:
+    """
+    Call Anthropic Claude API and return the response text. (ADR-049)
+
+    Uses the anthropic SDK with async message creation.
+    Raises ValueError if ANTHROPIC_API_KEY is not configured.
+
+    Ollama-specific params (num_ctx, top_k, top_p, repeat_penalty) are not forwarded.
+    """
+    api_key = settings.anthropic_api_key
+    if not api_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY not set — configure it in .env to use the Anthropic provider"
+        )
+
+    try:
+        import anthropic as anthropic_sdk
+    except ImportError as exc:
+        raise RuntimeError(
+            "anthropic not installed — add it to requirements.txt"
+        ) from exc
+
+    _log = log_fn or (lambda msg: logger.info(msg))
+    _timeout = timeout or settings.ollama_timeout_seconds
+    _max_tokens = num_predict or 2000
+    _temperature = temperature if temperature is not None else settings.ollama_temperature
+
+    _log(
+        f"[LLM/Anthropic] → model={model} "
+        f"prompt_chars={len(prompt)} "
+        f"timeout={_timeout}s "
+        f"max_tokens={_max_tokens}"
+    )
+
+    client = anthropic_sdk.AsyncAnthropic(api_key=api_key, timeout=float(_timeout))
+    message = await client.messages.create(
+        model=model,
+        max_tokens=_max_tokens,
+        temperature=_temperature,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    text = message.content[0].text
+    _log(
+        f"[LLM/Anthropic] ✓ done — "
+        f"response_chars={len(text)} "
+        f"input_tokens={message.usage.input_tokens} "
+        f"output_tokens={message.usage.output_tokens}"
+    )
+    return text
+
+
 async def generate_with_retry(
     prompt: str,
     *,
@@ -200,7 +261,7 @@ async def generate_with_retry(
     """
     Retry-enabled LLM generation with exponential backoff.
 
-    Dispatches to Ollama or Gemini based on the `provider` parameter (ADR-049).
+    Dispatches to Ollama, Gemini, or Anthropic based on the `provider` parameter (ADR-049).
 
     Strategy:
       - Attempt 1: standard parameters
@@ -213,12 +274,12 @@ async def generate_with_retry(
       - httpx.ConnectError
       - httpx.HTTPStatusError with 5xx status
 
-    Retryable errors (Gemini):
+    Retryable errors (Gemini / Anthropic):
       - Any exception (rate limits, transient API errors)
 
     Non-retryable:
       - Ollama: httpx.HTTPStatusError with 4xx (client error / model not found)
-      - Gemini: ValueError (missing API key — config error, not transient)
+      - Gemini / Anthropic: ValueError (missing API key — config error, not transient)
     """
     _log = log_fn or (lambda msg: logger.info(msg))
     last_exc: Exception | None = None
@@ -229,6 +290,15 @@ async def generate_with_retry(
                 return await _generate_with_gemini(
                     prompt,
                     model=model or llm_overrides.get("model", "gemini-2.0-flash"),
+                    num_predict=num_predict,
+                    timeout=timeout,
+                    temperature=temperature,
+                    log_fn=log_fn,
+                )
+            elif provider == "anthropic":
+                return await _generate_with_anthropic(
+                    prompt,
+                    model=model or llm_overrides.get("model", "claude-sonnet-4-6"),
                     num_predict=num_predict,
                     timeout=timeout,
                     temperature=temperature,
@@ -258,8 +328,8 @@ async def generate_with_retry(
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
             last_exc = exc
         except Exception as exc:
-            if provider == "gemini":
-                # Gemini API errors (rate limit, transient) — retry
+            if provider in ("gemini", "anthropic"):
+                # Cloud API errors (rate limit, transient) — retry
                 last_exc = exc
             else:
                 # Unknown Ollama errors — don't retry

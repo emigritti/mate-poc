@@ -158,11 +158,12 @@ class Settings(BaseSettings):
     quality_gate_mode: str = "warn"          # "block" | "warn"
     quality_gate_min_score: float = 0.60
 
-    # ── Google Gemini API (ADR-049) ───────────────────────────────────
-    # Set GEMINI_API_KEY in .env to enable Gemini as an alternative LLM provider.
-    # Each profile (doc_llm / premium_llm / tag_llm) can independently switch to
-    # Gemini via the LLM Settings UI (provider = "gemini" | "ollama").
+    # ── External LLM API keys (ADR-049) ──────────────────────────────────
+    # Set in .env to enable cloud providers as alternatives to Ollama.
+    # Each profile (doc_llm / premium_llm / tag_llm) switches independently
+    # via the LLM Settings UI (provider = "ollama" | "gemini" | "anthropic").
     gemini_api_key: str | None = None
+    anthropic_api_key: str | None = None
 
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.

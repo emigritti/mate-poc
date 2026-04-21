@@ -73,9 +73,22 @@ def test_patch_provider_gemini_does_not_affect_other_profiles(client):
     assert data["effective"]["tag_llm"]["provider"] == "ollama"
 
 
+def test_patch_provider_to_anthropic(client):
+    """PATCH doc_llm.provider='anthropic' is reflected in effective and marks override active."""
+    res = client.patch(
+        "/api/v1/admin/llm-settings",
+        json={"doc_llm": {"provider": "anthropic", "model": "claude-sonnet-4-6"}},
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["effective"]["doc_llm"]["provider"] == "anthropic"
+    assert data["effective"]["doc_llm"]["model"] == "claude-sonnet-4-6"
+    assert data["overrides_active"] is True
+
+
 def test_reset_restores_provider_to_ollama(client):
     """POST /reset restores provider to 'ollama' for all profiles."""
-    client.patch("/api/v1/admin/llm-settings", json={"doc_llm": {"provider": "gemini"}})
+    client.patch("/api/v1/admin/llm-settings", json={"doc_llm": {"provider": "anthropic"}})
     client.post("/api/v1/admin/llm-settings/reset")
     data = client.get("/api/v1/admin/llm-settings").json()["data"]
     assert data["effective"]["doc_llm"]["provider"] == "ollama"

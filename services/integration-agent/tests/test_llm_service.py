@@ -14,6 +14,12 @@ Gemini path (ADR-049):
   - Gemini generic errors are retried (rate limits, transient API failures)
   - ValueError (missing GEMINI_API_KEY) is not retried — config error
   - Gemini success returns response text on first attempt
+
+Anthropic path (ADR-049):
+  - provider="anthropic" dispatches to _generate_with_anthropic (not ollama/gemini)
+  - Anthropic generic errors are retried (rate limits, transient API failures)
+  - ValueError (missing ANTHROPIC_API_KEY) is not retried — config error
+  - Anthropic success returns response text on first attempt
 """
 
 import asyncio
@@ -229,3 +235,110 @@ def test_gemini_generate_no_api_key_raises_value_error(monkeypatch):
 
     with pytest.raises(ValueError, match="GEMINI_API_KEY not set"):
         asyncio.run(_generate_with_gemini("prompt"))
+
+
+# ── Anthropic provider tests (ADR-049) ────────────────────────────────────────
+
+def test_anthropic_provider_dispatches_to_anthropic_not_ollama():
+    """provider='anthropic' calls _generate_with_anthropic, never generate_with_ollama."""
+    from services.llm_service import generate_with_retry
+
+    mock_anthropic = AsyncMock(return_value="anthropic response")
+    mock_ollama = AsyncMock(return_value="ollama response")
+
+    with patch("services.llm_service._generate_with_anthropic", mock_anthropic):
+        with patch("services.llm_service.generate_with_ollama", mock_ollama):
+            with patch("services.llm_service.asyncio.sleep", AsyncMock()):
+                result = asyncio.run(generate_with_retry("prompt", provider="anthropic"))
+
+    assert result == "anthropic response"
+    mock_anthropic.assert_called_once()
+    mock_ollama.assert_not_called()
+
+
+def test_anthropic_provider_does_not_call_gemini():
+    """provider='anthropic' never calls _generate_with_gemini."""
+    from services.llm_service import generate_with_retry
+
+    mock_anthropic = AsyncMock(return_value="anthropic response")
+    mock_gemini = AsyncMock(return_value="gemini response")
+
+    with patch("services.llm_service._generate_with_anthropic", mock_anthropic):
+        with patch("services.llm_service._generate_with_gemini", mock_gemini):
+            with patch("services.llm_service.asyncio.sleep", AsyncMock()):
+                result = asyncio.run(generate_with_retry("prompt", provider="anthropic"))
+
+    assert result == "anthropic response"
+    mock_gemini.assert_not_called()
+
+
+def test_anthropic_success_on_first_attempt_no_retry():
+    """Anthropic provider returns immediately on first success without retrying."""
+    from services.llm_service import generate_with_retry
+
+    mock_anthropic = AsyncMock(return_value="claude text")
+
+    with patch("services.llm_service._generate_with_anthropic", mock_anthropic):
+        with patch("services.llm_service.asyncio.sleep", AsyncMock()) as mock_sleep:
+            result = asyncio.run(generate_with_retry("prompt", provider="anthropic"))
+
+    assert result == "claude text"
+    mock_anthropic.assert_called_once()
+    mock_sleep.assert_not_called()
+
+
+def test_anthropic_generic_error_is_retried():
+    """Anthropic generic exceptions (rate limits, transient) trigger retry."""
+    from services.llm_service import generate_with_retry
+
+    mock_anthropic = AsyncMock(
+        side_effect=[RuntimeError("overloaded_error"), "claude recovered"]
+    )
+
+    with patch("services.llm_service._generate_with_anthropic", mock_anthropic):
+        with patch("services.llm_service.asyncio.sleep", AsyncMock()) as mock_sleep:
+            result = asyncio.run(generate_with_retry("prompt", provider="anthropic", max_retries=3))
+
+    assert result == "claude recovered"
+    assert mock_anthropic.call_count == 2
+    mock_sleep.assert_called_once_with(5)
+
+
+def test_anthropic_all_retries_exhausted_reraises():
+    """Anthropic re-raises the last exception after all retries are exhausted."""
+    from services.llm_service import generate_with_retry
+
+    mock_anthropic = AsyncMock(side_effect=RuntimeError("persistent API error"))
+
+    with patch("services.llm_service._generate_with_anthropic", mock_anthropic):
+        with patch("services.llm_service.asyncio.sleep", AsyncMock()):
+            with pytest.raises(RuntimeError, match="persistent API error"):
+                asyncio.run(generate_with_retry("prompt", provider="anthropic", max_retries=3))
+
+    assert mock_anthropic.call_count == 3
+
+
+def test_anthropic_value_error_not_retried():
+    """ValueError (missing ANTHROPIC_API_KEY) is never retried — config error."""
+    from services.llm_service import generate_with_retry
+
+    mock_anthropic = AsyncMock(side_effect=ValueError("ANTHROPIC_API_KEY not set"))
+
+    with patch("services.llm_service._generate_with_anthropic", mock_anthropic):
+        with patch("services.llm_service.asyncio.sleep", AsyncMock()) as mock_sleep:
+            with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not set"):
+                asyncio.run(generate_with_retry("prompt", provider="anthropic", max_retries=3))
+
+    mock_anthropic.assert_called_once()
+    mock_sleep.assert_not_called()
+
+
+def test_anthropic_generate_no_api_key_raises_value_error(monkeypatch):
+    """_generate_with_anthropic raises ValueError when ANTHROPIC_API_KEY is not configured."""
+    from services.llm_service import _generate_with_anthropic
+    from config import settings
+
+    monkeypatch.setattr(settings, "anthropic_api_key", None)
+
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not set"):
+        asyncio.run(_generate_with_anthropic("prompt"))

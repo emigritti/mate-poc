@@ -3,7 +3,7 @@ import { SlidersHorizontal, RotateCcw, Save, AlertCircle, CheckCircle2, Loader2,
 import { API } from '../../api.js';
 
 const MODEL_FIELDS = [
-  { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Model name — Ollama: e.g. qwen2.5:14b · Gemini: e.g. gemini-2.0-flash' },
+  { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Model name — Ollama: qwen2.5:14b · Gemini: gemini-2.0-flash · Anthropic: claude-sonnet-4-6' },
   { key: 'num_predict',     label: 'Max Tokens',        type: 'number', unit: 'tok', hint: 'Token cap for generation — set to 3000–5000 for full Integration Specs' },
   { key: 'timeout_seconds', label: 'Timeout',           type: 'number', unit: 's',   hint: 'HTTP timeout for LLM calls — increase for large models on CPU' },
   { key: 'temperature',     label: 'Temperature',       type: 'number', unit: '',    step: 0.01, hint: '0 = deterministic, 1 = creative' },
@@ -23,8 +23,9 @@ const MAIN_PROFILES = {
 const TAG_PROFILE = { groupKey: 'tag_llm', title: 'Fast-Utility', subtitle: 'Tag suggestion & query expansion only' };
 
 const PROVIDER_OPTIONS = [
-  { value: 'ollama', label: 'Ollama (local)' },
-  { value: 'gemini', label: 'Google Gemini API' },
+  { value: 'ollama',     label: 'Ollama (local)' },
+  { value: 'gemini',     label: 'Google Gemini API' },
+  { value: 'anthropic',  label: 'Anthropic Claude API' },
 ];
 
 
@@ -41,7 +42,7 @@ function ProviderRow({ effectiveVal, defaultVal, groupKey, onUpdate }) {
             </span>
           )}
         </div>
-        <p className="text-xs text-slate-400 mt-0.5">LLM backend — Ollama (local) or Google Gemini API (requires GEMINI_API_KEY in .env)</p>
+        <p className="text-xs text-slate-400 mt-0.5">LLM backend — Ollama (local), Gemini (GEMINI_API_KEY) or Anthropic Claude (ANTHROPIC_API_KEY)</p>
         {isOverridden && (
           <p className="text-[10px] text-slate-400 mt-0.5 font-mono">default: {defaultVal}</p>
         )}
@@ -116,7 +117,7 @@ function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, 
     ...fields.map(({ key }) => effective[key] !== defaults[key] ? 1 : 0),
   ].reduce((a, b) => a + b, 0);
 
-  const isGemini = effective.provider === 'gemini';
+  const isCloudProvider = effective.provider === 'gemini' || effective.provider === 'anthropic';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -143,10 +144,10 @@ function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, 
           groupKey={groupKey}
           onUpdate={onUpdate}
         />
-        {isGemini && (
+        {isCloudProvider && (
           <div className="flex items-center gap-2 py-2 text-xs text-indigo-600 bg-indigo-50 -mx-5 px-5 border-b border-indigo-100">
             <Info size={12} className="flex-shrink-0" />
-            Gemini ignores Context Window, Top-K, Top-P and Repeat Penalty — only Model, Max Tokens, Timeout and Temperature apply.
+            Cloud providers ignore Context Window, Top-K, Top-P and Repeat Penalty — only Model, Max Tokens, Timeout and Temperature apply.
           </div>
         )}
         {fields.map(f => (
@@ -304,7 +305,7 @@ export default function LlmSettingsPage() {
           Changes apply <strong>immediately</strong> without restart and persist in MongoDB.
           <strong> Standard</strong> is used for all document generation and FactPack extraction.
           <strong> High Quality</strong> is selected per-run from the Agent Workspace.
-          Set <strong>GEMINI_API_KEY</strong> in <code>.env</code> to enable the Gemini provider.
+          Set <strong>GEMINI_API_KEY</strong> or <strong>ANTHROPIC_API_KEY</strong> in <code>.env</code> to enable cloud providers.
           Reset restores env-var / pydantic defaults.
         </span>
       </div>
