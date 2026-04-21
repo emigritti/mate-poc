@@ -22,6 +22,7 @@
 13. [Phase 4 Polish — What Changed for End Users](#13-phase-4-polish--what-changed-for-end-users)
 14. [Phase 5 — Multi-Source Ingestion Platform](#14-phase-5--multi-source-ingestion-platform)
 15. [Pixel UI Mode (ADR-047)](#15-pixel-ui-mode-adr-047)
+16. [Document Quality Improvements (#1–#4)](#16-document-quality-improvements-14)
 
 ---
 
@@ -156,22 +157,35 @@ For each `(source, target)` pair, the agent executes:
    → HTTP GET per URL; timeout 10s; failed URLs inject "[URL unavailable: ...]"
 5. Build the LLM prompt:
       meta-prompt instructions
-    + functional design template (injected as structure)
+    + integration design template (injected as structure)
     + past approved examples (if found)       → "PAST APPROVED EXAMPLES"
     + KB file chunks + URL content (if found) → "BEST PRACTICES REFERENCE"
     + current requirements
 6. Call Ollama → generate Markdown document
-7. Validate output (structural guard + XSS sanitization)
-7a. Assess quality → `QualityReport` logged (warning-only)
+7. Validate output (structural guard `# Integration Design` prefix + XSS sanitization)
+7a. Assess quality → `QualityReport` (configurable gate — warn or block)
+7b. Append traceability appendix (Evidence & Sources section)
 8. Store document as PENDING in MongoDB → awaits human review
 ```
 
-After sanitization, `assess_quality()` evaluates the document against three signals:
-- **Section count** ≥ 5 (`## ` headings)
-- **n/a ratio** < 50% of sections
-- **Word count** ≥ 100
+After sanitization, `assess_quality()` evaluates the document against **9 signals** grouped in two layers:
 
-The result is a `QualityReport` logged as `[QUALITY] score X.XX` in the agent log stream. Quality check is **warning-only** — the document always proceeds to the HITL queue regardless of score. Low scores signal to reviewers that content may need regeneration.
+**Volume signals (6):**
+- Section count ≥ 10 (`## ` headings)
+- n/a ratio < 50% of sections
+- Word count ≥ 300
+- Mermaid diagram present (`\`\`\`mermaid`)
+- Mapping table present (pipe-table separator row)
+- Placeholder count (unfilled template tokens)
+
+**Structural validators (3):**
+- Mermaid block validation — recognized diagram type, minimum content, no stub nodes, edges/interactions present
+- Mapping table validation — complete header + separator + data rows with non-empty source/target columns
+- Section-artifact coverage — required artifacts per template section (flowchart in Architecture, sequenceDiagram in Detailed Flow, pipe table in Data Mapping)
+
+The result is a `QualityReport` logged as `[QUALITY] score X.XX` in the agent log stream. The **gate mode** is configurable via the Agent Settings page:
+- **warn** (default) — documents proceed to HITL regardless of score; issues logged as warnings
+- **block** — documents scoring below `quality_gate_min_score` raise `QualityGateError` and are **not** queued for review; the agent logs the failure and continues with the next integration pair
 
 ### Step 4 — Human Review (HITL)
 
@@ -715,7 +729,7 @@ New dependencies: `langchain-text-splitters==0.3.8`, `rank-bm25==0.2.2`, `scikit
 Phase 3 (Generation Quality) is now complete. It adds output quality assessment, a HITL feedback-loop regenerate endpoint, and a frontend server-state pilot.
 
 **Output quality assessment (R16, ADR-031)**
-After LLM output is sanitized, `assess_quality()` evaluates three signals (section count ≥ 5, n/a ratio < 50%, word count ≥ 100) and emits a `QualityReport` logged as `[QUALITY] score X.XX`. The check is warning-only — documents always proceed to the HITL queue.
+After LLM output is sanitized, `assess_quality()` evaluates **6 volume signals** (section count ≥ 10, n/a ratio < 50%, word count ≥ 300, mermaid diagram present, mapping table present, placeholder count) plus **3 structural validators** (Mermaid syntax, mapping table completeness, section-artifact coverage) and emits a `QualityReport` logged as `[QUALITY] score X.XX`. The gate mode is admin-configurable: **warn** (default) lets all documents proceed to HITL; **block** rejects documents scoring below `quality_gate_min_score` with a `QualityGateError`.
 
 **Feedback loop regenerate (R17, ADR-032)**
 `POST /api/v1/approvals/{id}/regenerate` allows reviewers to inject rejection feedback directly back into the generation pipeline via a `## PREVIOUS REJECTION FEEDBACK` block. The original rejected approval is preserved; a new PENDING approval is created.
@@ -723,7 +737,7 @@ After LLM output is sanitized, `assess_quality()` evaluates three signals (secti
 **TanStack Query frontend pilot (R18, ADR-033)**
 React Query (TanStack Query) is piloted for the approvals page to replace manual polling with declarative server-state management, improving UI consistency and reducing boilerplate.
 
-Test count: **263 tests** (247 baseline + 7 quality + 3 prompt feedback + 6 regenerate).
+Test count: **263 tests** (247 baseline + 7 quality + 3 prompt feedback + 6 regenerate). The quality suite was subsequently extended in document-quality improvements #1 and #2 (see §16).
 
 ### 9.3 Advanced RAG Pipeline — Docling + LLaVA + RAPTOR-lite (Phase 4 — ADR-034..035)
 
@@ -886,6 +900,27 @@ The `generation_report` field on each `Approval` now includes:
 | `claim_reports` | All extracted claims with `claim_id`, `statement`, `confidence`, `source_chunk_count` |
 | `confirmed_claim_count` | Number of claims directly supported by retrieved evidence |
 | `missing_evidence_count` | Number of claims with no supporting context — high values signal thin KB coverage |
+| `generation_path` | `"fact_pack"` \| `"single_pass_fallback"` \| `"single_pass_disabled"` — tracks which pipeline branch was taken |
+| `fallback_reason` | Human-readable reason why the FactPack path was not used (empty when `generation_path == "fact_pack"`) |
+
+**`generation_path` values:**
+
+| Value | Meaning |
+|-------|---------|
+| `"fact_pack"` | Two-step pipeline completed successfully |
+| `"single_pass_fallback"` | FactPack enabled but `extract_fact_pack()` returned `None` (LLM failure/JSON error/timeout); logs `[FactPack][WARN]` |
+| `"single_pass_disabled"` | `FACT_PACK_ENABLED=false` kill-switch active |
+
+#### Traceability Appendix (document-quality improvement #3)
+
+Every generated document ends with a `## Appendix — Evidence & Generation Traceability` section automatically appended by `_build_traceability_appendix()`. It includes:
+
+- **Generation Metadata** table (model, `generation_path`, quality score, Claude enrichment flag, character count)
+- **Retrieved Sources** — up to 10 KB chunks with source label and a 120-character preview
+- **Section Confidence** table (FactPack path only) — per-section score and issues
+- **Evidence Claims** list (FactPack path only) — each claim with `claim_id`, statement, and source chunk count
+
+The appendix is appended after `assess_quality()` so it does not affect the quality score.
 
 #### Graceful degradation and kill-switch
 
@@ -959,7 +994,7 @@ ContextAssembler output section to the LLM:
 | `DOCUMENT SUMMARIES` | Overview only — not for specific claim citations |
 
 Test count: **396 tests** (365 + 31 ADR-042 tests in `test_prompt_builder.py`:
-9 extraction prompt, 12 rendering prompt, 5 dispatcher, 5 section instructions completeness).
+9 extraction prompt, 12 rendering prompt, 5 dispatcher, 5 section instructions completeness). Further extended in document-quality improvements #1 and #2 (see §16).
 
 ---
 
@@ -990,7 +1025,7 @@ result = result.replace("{source_system}", source_system)
 ```
 
 **Structural output guard (OWASP A03 — LLM Output Injection)**
-The requirement that LLM output must start with `# Integration Functional Design` is an application-level contract. It forces the model to commit to the expected document structure, making it harder for a prompt injection attack embedded in a requirement description to redirect the LLM's output into an unexpected format.
+The requirement that LLM output must start with `# Integration Design` is an application-level contract. It forces the model to commit to the expected document structure, making it harder for a prompt injection attack embedded in a requirement description to redirect the LLM's output into an unexpected format.
 
 **bleach allowlist (OWASP A03 — Stored XSS)**
 Markdown rendered in a browser can include HTML. `bleach.clean(strip=True)` removes all HTML tags not in the allowlist. Note: `strip=True` removes the tag wrappers but preserves the text content — `<script>alert('xss')</script>` becomes `alert('xss')` (inert without the `<script>` tag that would trigger browser execution).
@@ -1078,9 +1113,7 @@ cd services/integration-agent
 python -m pytest tests/ -v
 ```
 
-All **314 tests** must pass before any commit (per CLAUDE.md Definition of Done):
-- 309 integration-agent tests (all previous phases)
-- 5 new batch-upload tests (`test_batch_upload.py`)
+All integration-agent tests must pass before any commit (per CLAUDE.md Definition of Done). The current baseline is **420+ tests** (396 through ADR-042 + 25+ document-quality improvement tests added by improvements #1 and #2).
 
 For the Ingestion Platform service:
 ```bash
@@ -1103,7 +1136,7 @@ Performs a full system reset:
 - Blocked while the agent is running (returns 409)
 
 ### Project Docs
-A read-only markdown browser for significant project documentation. Displays 19 curated documents grouped by category (Guides, ADRs, Checklists, Test Plans, Mappings). Content is served from the mounted `docs/` directory — path traversal and non-.md requests are rejected by the backend.
+A read-only markdown browser for significant project documentation. Displays curated documents grouped by category (Guides, ADRs, Checklists, Test Plans, Mappings). Content is served from the mounted `docs/` directory — path traversal and non-.md requests are rejected by the backend.
 
 ### LLM Settings
 An admin page for tuning LLM parameters at runtime without restarting the container. All three model profiles expose the **same set of parameters**:
@@ -1125,12 +1158,25 @@ The three profile sections are:
 | Profile | Group key | Default model | Purpose |
 |---|---|---|---|
 | **Default** | `doc_llm` | `qwen2.5:14b` | Standard document generation |
-| **Premium** | `premium_llm` | `gemma4:26b` | High-quality complex integrations |
+| **High Quality** | `premium_llm` | `gemma4:26b` | High-quality complex integrations |
 | **Fast-Utility** | `tag_llm` | `qwen3:8b` | Tag suggestion & query expansion |
 
 Changes are applied **immediately** to the running agent and persisted in MongoDB. The "Reset to Defaults" button restores pydantic-settings values (as defined in `config.py` or overridden by env vars at startup).
 
 **Why this matters:** On CPU-only hardware, explicit `num_ctx=8192` prevents silent truncation (Ollama default is 2048), while `top_p / top_k / repeat_penalty` control generation diversity and repetition without requiring a container rebuild.
+
+### Agent Settings
+An admin page for tuning quality gate, RAG, FactPack, vision, and KB chunking parameters at runtime. All 15 parameters are configurable without container restarts and persisted to MongoDB:
+
+| Group | Key parameters |
+|---|---|
+| **Quality Gate** | `quality_gate_mode` (warn/block), `quality_gate_min_score` (0–1) |
+| **RAG & Retrieval** | `rag_distance_threshold`, `rag_bm25_weight`, `rag_n_results_per_query`, `rag_top_k_chunks`, `kb_max_rag_chars` |
+| **Document Generation** | `fact_pack_enabled`, `fact_pack_max_tokens`, `llm_max_output_chars` |
+| **Vision & Summarization** | `vision_captioning_enabled`, `raptor_summarization_enabled`, `kb_max_summarize_sections` |
+| **KB Chunking** | `kb_chunk_size`, `kb_chunk_overlap` |
+
+Fields show a yellow **MODIFIED** badge when their current value differs from the design default. The **Reset to Defaults** button restores all parameters to the values from `config.py` / env vars at startup.
 
 ### LLM Multi-Profile Routing (ADR-046)
 
@@ -1139,7 +1185,7 @@ The **Agent Workspace** page includes a **Generation Profile** selector visible 
 | Profile | Model | Use case |
 |---|---|---|
 | **Default** | `qwen2.5:14b` (`num_ctx=8192`, `temperature=0.1`) | Most integrations — balanced quality and latency |
-| **Premium** | `gemma4:26b` (`num_ctx=6144`, `temperature=0.0`) | Complex integrations with high ambiguity or reasoning demands |
+| **High Quality** | `gemma4:26b` (`num_ctx=6144`, `temperature=0.0`) | Complex integrations with high ambiguity or reasoning demands |
 
 The fast-utility profile (`qwen3:8b`) is used internally for tag suggestion and query expansion regardless of the selected generation profile.
 
@@ -1313,3 +1359,40 @@ Agent log messages are transformed by `PersonaNarrator.js` from technical string
 ### Architecture Isolation
 
 All pixel components live in `src/components/pixel/`. Classic mode code is completely unchanged — the `UiModeProvider` wraps the app root and applies `.pixel-mode` to the wrapper div, but has no effect on Classic mode rendering. The pixel workspace reuses all existing React hooks (`useAgentLogs`, `useAgentStatus`) — no backend API changes.
+
+---
+
+## 16. Document Quality Improvements (#1–#4)
+
+Four incremental improvements to the generated document quality pipeline, implemented after ADR-042.
+
+### Improvement #1 — Presence Signals (6 volume checks)
+
+Extended `assess_quality()` in `output_guard.py` from 3 to 6 signals:
+
+| Signal | Threshold | Notes |
+|--------|-----------|-------|
+| Section count | ≥ 10 `## ` headings | Template has 16 sections |
+| n/a ratio | < 50% | Sections containing only `n/a` |
+| Word count | ≥ 300 | Total words in document |
+| Mermaid diagram | Present | At least one ` ```mermaid ` block |
+| Mapping table | Present | At least one pipe-table separator row |
+| Placeholder count | 0 | Unfilled `{...}` template tokens |
+
+The `quality_score` formula was updated to weight all 6 signals equally. The `QualityReport` dataclass gained `has_mermaid_diagram`, `mapping_table_count`, and `placeholder_count` fields.
+
+### Improvement #2 — Structural Validators (3 validators)
+
+Added `_validate_mermaid_blocks()`, `_validate_mapping_tables()`, and `_validate_section_artifacts()` to `output_guard.py`. Issues raised by these validators populate `report.issues` and influence `report.passed` but do **not** change `quality_score` (which measures content density, not structure).
+
+The `QualityReport` dataclass gained three sub-report lists: `mermaid_syntax_issues`, `table_structure_issues`, `section_artifact_issues`.
+
+### Improvement #3 — Traceability Appendix
+
+`_build_traceability_appendix(report, source, target) -> str` appended to every generated document after quality assessment. See §9.4 for full field description.
+
+### Improvement #4 — Generation Path Tracking + FactPack Warning Escalation
+
+`GenerationReport` gained `generation_path` and `fallback_reason` fields. The single-pass fallback log level was upgraded from `logger.info` to `logger.warning` — making FactPack degradation visible in monitoring without changing behavior.
+
+The **Agent Settings** page (§12) exposes `quality_gate_mode` and `quality_gate_min_score` to toggle the gate between warn and block modes without a container restart.
