@@ -1,25 +1,27 @@
 import { useState, useEffect } from 'react';
-import { SlidersHorizontal, RotateCcw, Save, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
+import { SlidersHorizontal, RotateCcw, Save, AlertCircle, CheckCircle2, Loader2, Info, Zap } from 'lucide-react';
 import { API } from '../../api.js';
 
-// ── Unified field metadata (same for all 3 profiles) ──────────────────────────
 const MODEL_FIELDS = [
   { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Ollama model name (e.g. qwen2.5:14b)' },
-  { key: 'num_predict',     label: 'Max Tokens',        type: 'number', unit: 'tok', hint: 'Token cap for generation' },
-  { key: 'timeout_seconds', label: 'Timeout',           type: 'number', unit: 's',   hint: 'HTTP timeout for Ollama calls' },
+  { key: 'num_predict',     label: 'Max Tokens',        type: 'number', unit: 'tok', hint: 'Token cap for generation — set to 3000–5000 for full Integration Specs' },
+  { key: 'timeout_seconds', label: 'Timeout',           type: 'number', unit: 's',   hint: 'HTTP timeout for Ollama calls — increase for large models on CPU' },
   { key: 'temperature',     label: 'Temperature',       type: 'number', unit: '',    step: 0.01, hint: '0 = deterministic, 1 = creative' },
   { key: 'rag_max_chars',   label: 'RAG Context Limit', type: 'number', unit: 'ch',  hint: 'Max characters of retrieved context injected into prompt' },
-  { key: 'num_ctx',         label: 'Context Window',    type: 'number', unit: 'tok', hint: 'Ollama context window size (num_ctx)' },
-  { key: 'top_p',           label: 'Top-P',             type: 'number', unit: '',    step: 0.01, hint: 'Nucleus sampling threshold' },
-  { key: 'top_k',           label: 'Top-K',             type: 'number', unit: '',    hint: 'Top-K sampling tokens' },
-  { key: 'repeat_penalty',  label: 'Repeat Penalty',    type: 'number', unit: '',    step: 0.01, hint: 'Penalizes token repetition' },
+  { key: 'num_ctx',         label: 'Context Window',    type: 'number', unit: 'tok', hint: 'Ollama context window size — set to ≥8192 to avoid silent truncation' },
+  { key: 'top_p',           label: 'Top-P',             type: 'number', unit: '',    step: 0.01, hint: 'Nucleus sampling — consider only tokens covering this probability mass' },
+  { key: 'top_k',           label: 'Top-K',             type: 'number', unit: '',    hint: 'Limit next-token selection to the K most probable tokens' },
+  { key: 'repeat_penalty',  label: 'Repeat Penalty',    type: 'number', unit: '',    step: 0.01, hint: 'Penalizes repeated tokens — raise to 1.1–1.3 if model loops' },
 ];
 
-const PROFILES = [
-  { groupKey: 'doc_llm',     title: 'Default Profile',      subtitle: 'Standard document generation' },
-  { groupKey: 'premium_llm', title: 'Premium Profile',      subtitle: 'High-quality complex integrations' },
-  { groupKey: 'tag_llm',     title: 'Fast-Utility Profile', subtitle: 'Tag suggestion & query expansion' },
-];
+// groupKey mapping for the two main modes
+const MAIN_PROFILES = {
+  standard:    { groupKey: 'doc_llm',     label: 'Standard',    subtitle: 'Document generation, FactPack extraction, RAG' },
+  high_quality: { groupKey: 'premium_llm', label: 'High Quality', subtitle: 'Complex integrations — larger model, slower' },
+};
+
+const TAG_PROFILE = { groupKey: 'tag_llm', title: 'Fast-Utility', subtitle: 'Tag suggestion & query expansion only' };
+
 
 function FieldRow({ fieldMeta, effectiveVal, defaultVal, groupKey, onUpdate }) {
   const isOverridden = effectiveVal !== defaultVal;
@@ -67,26 +69,23 @@ function FieldRow({ fieldMeta, effectiveVal, defaultVal, groupKey, onUpdate }) {
   );
 }
 
-function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, onUpdate }) {
+function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, onUpdate, compact = false }) {
   const overrideCount = fields.filter(({ key }) => effective[key] !== defaults[key]).length;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-        <SlidersHorizontal size={14} className="text-slate-400" />
+      <div className={`px-5 border-b border-slate-100 bg-slate-50 flex items-center gap-2 ${compact ? 'py-2.5' : 'py-3.5'}`}>
+        {compact
+          ? <Zap size={13} className="text-slate-400 flex-shrink-0" />
+          : <SlidersHorizontal size={14} className="text-slate-400 flex-shrink-0" />}
         <div className="flex-1 min-w-0">
-          <span
-            className="text-sm font-semibold text-slate-700 block"
-            style={{ fontFamily: 'Outfit, sans-serif' }}
-          >
+          <span className="text-sm font-semibold text-slate-700 block" style={{ fontFamily: 'Outfit, sans-serif' }}>
             {title}
           </span>
-          {subtitle && (
-            <span className="text-[11px] text-slate-400">{subtitle}</span>
-          )}
+          {subtitle && <span className="text-[11px] text-slate-400">{subtitle}</span>}
         </div>
         {overrideCount > 0 && (
-          <span className="ml-auto text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+          <span className="ml-auto text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
             {overrideCount} override{overrideCount > 1 ? 's' : ''} active
           </span>
         )}
@@ -107,13 +106,15 @@ function SettingsCard({ title, subtitle, fields, effective, defaults, groupKey, 
   );
 }
 
+
 export default function LlmSettingsPage() {
-  const [data,      setData]      = useState(null);
-  const [draft,     setDraft]     = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [saving,    setSaving]    = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [feedback,  setFeedback]  = useState(null);
+  const [data,         setData]         = useState(null);
+  const [draft,        setDraft]        = useState(null);
+  const [activeMode,   setActiveMode]   = useState('standard');
+  const [loading,      setLoading]      = useState(true);
+  const [saving,       setSaving]       = useState(false);
+  const [resetting,    setResetting]    = useState(false);
+  const [feedback,     setFeedback]     = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -141,7 +142,8 @@ export default function LlmSettingsPage() {
     setFeedback(null);
     try {
       const body = {};
-      for (const { groupKey } of PROFILES) {
+      const allGroups = [...Object.values(MAIN_PROFILES).map(p => p.groupKey), TAG_PROFILE.groupKey];
+      for (const groupKey of allGroups) {
         const changes = {};
         MODEL_FIELDS.forEach(({ key }) => {
           if (draft[groupKey][key] !== data.defaults[groupKey][key]) {
@@ -150,7 +152,6 @@ export default function LlmSettingsPage() {
         });
         if (Object.keys(changes).length) body[groupKey] = changes;
       }
-
       const res = await API.llmSettings.patch(body);
       const d   = await res.json();
       if (!res.ok) throw new Error(d.detail || `Error ${res.status}`);
@@ -181,8 +182,16 @@ export default function LlmSettingsPage() {
     }
   };
 
-  const isDirty = draft && data && PROFILES.some(({ groupKey }) =>
-    MODEL_FIELDS.some(({ key }) => draft[groupKey][key] !== data.effective[groupKey][key])
+  const allGroups = draft && data
+    ? [...Object.values(MAIN_PROFILES).map(p => p.groupKey), TAG_PROFILE.groupKey]
+    : [];
+  const isDirty = allGroups.some(gk =>
+    MODEL_FIELDS.some(({ key }) => draft[gk][key] !== data.effective[gk][key])
+  );
+
+  const { groupKey: activeGroupKey, label: activeLabel, subtitle: activeSubtitle } = MAIN_PROFILES[activeMode];
+  const hasHighQualityOverrides = draft && data && MODEL_FIELDS.some(
+    ({ key }) => draft['premium_llm'][key] !== data.defaults['premium_llm'][key]
   );
 
   if (loading) {
@@ -196,12 +205,43 @@ export default function LlmSettingsPage() {
   return (
     <div className="max-w-3xl space-y-5">
 
+      {/* Mode toggle */}
+      <div className="flex items-center gap-2">
+        {Object.entries(MAIN_PROFILES).map(([mode, { label }]) => {
+          const active = activeMode === mode;
+          const hasOverride = draft && data && MODEL_FIELDS.some(
+            ({ key }) => draft[MAIN_PROFILES[mode].groupKey][key] !== data.defaults[MAIN_PROFILES[mode].groupKey][key]
+          );
+          return (
+            <button
+              key={mode}
+              onClick={() => setActiveMode(mode)}
+              className={`relative flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
+                active
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                  : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300 hover:text-slate-700'
+              }`}
+            >
+              {label}
+              {hasOverride && !active && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+              )}
+            </button>
+          );
+        })}
+        <span className="ml-2 text-xs text-slate-400">
+          Toggle to configure parameters per quality level
+        </span>
+      </div>
+
       {/* Info banner */}
       <div className="flex items-start gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-700">
         <Info size={15} className="flex-shrink-0 mt-0.5" />
         <span>
-          Changes apply <strong>immediately</strong> without restart and are persisted in MongoDB.
-          Full Reset restores the values configured at design time (env vars / pydantic defaults).
+          Changes apply <strong>immediately</strong> without restart and persist in MongoDB.
+          <strong> Standard</strong> is used for all document generation and FactPack extraction.
+          <strong> High Quality</strong> is selected per-run from the Agent Workspace.
+          Reset restores env-var / pydantic defaults.
         </span>
       </div>
 
@@ -212,26 +252,37 @@ export default function LlmSettingsPage() {
             ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
             : 'bg-rose-50 border-rose-200 text-rose-700'
         }`}>
-          {feedback.type === 'success'
-            ? <CheckCircle2 size={15} />
-            : <AlertCircle size={15} />}
+          {feedback.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
           {feedback.msg}
         </div>
       )}
 
-      {/* Settings cards — one per profile */}
-      {draft && data && PROFILES.map(({ groupKey, title, subtitle }) => (
+      {/* Active profile card */}
+      {draft && data && (
         <SettingsCard
-          key={groupKey}
-          title={title}
-          subtitle={subtitle}
+          title={activeLabel}
+          subtitle={activeSubtitle}
           fields={MODEL_FIELDS}
-          effective={draft[groupKey]}
-          defaults={data.defaults[groupKey]}
-          groupKey={groupKey}
+          effective={draft[activeGroupKey]}
+          defaults={data.defaults[activeGroupKey]}
+          groupKey={activeGroupKey}
           onUpdate={updateDraft}
         />
-      ))}
+      )}
+
+      {/* Fast-Utility — compact, always visible */}
+      {draft && data && (
+        <SettingsCard
+          title={TAG_PROFILE.title}
+          subtitle={TAG_PROFILE.subtitle}
+          fields={MODEL_FIELDS}
+          effective={draft[TAG_PROFILE.groupKey]}
+          defaults={data.defaults[TAG_PROFILE.groupKey]}
+          groupKey={TAG_PROFILE.groupKey}
+          onUpdate={updateDraft}
+          compact
+        />
+      )}
 
       {/* Action buttons */}
       <div className="flex items-center justify-between pt-2">
