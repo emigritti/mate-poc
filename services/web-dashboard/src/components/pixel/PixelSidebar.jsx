@@ -2,63 +2,79 @@
  * PixelSidebar — Navigation sidebar for pixel mode (ADR-047).
  * Same nav structure as Sidebar.jsx but styled with pixel design system.
  */
-import { Zap, Upload, Globe, Bot, BookOpen, Database, List, FileText, CheckSquare, RotateCcw, BookMarked, Settings, Circle } from 'lucide-react';
+import { Upload, Globe, Bot, BookOpen, Database, List, FileText, CheckSquare, RotateCcw, BookMarked, Settings } from 'lucide-react';
 import UiModeToggle from './UiModeToggle';
 
 const NAV_GROUPS = [
   {
-    label: 'WORKFLOW',
+    label: '▌WORKFLOW',
     items: [
-      { id: 'requirements', label: 'Requirements', icon: Upload },
-      { id: 'apis',         label: 'API Systems',  icon: Globe },
-      { id: 'agent',        label: 'Agent',        icon: Bot },
+      { id: 'requirements', label: 'REQUIREMENTS', icon: Upload },
+      { id: 'apis',         label: 'API SYSTEMS',  icon: Globe },
+      { id: 'agent',        label: 'AGENT',        icon: Bot },
     ],
   },
   {
-    label: 'KNOWLEDGE',
+    label: '▌KNOWLEDGE',
     items: [
-      { id: 'kb',                label: 'Knowledge Base',    icon: BookOpen },
-      { id: 'ingestion-sources', label: 'Ingestion Sources', icon: Database },
+      { id: 'kb',                label: 'KNOW. BASE',  icon: BookOpen },
+      { id: 'ingestion-sources', label: 'INGESTION',   icon: Database },
     ],
   },
   {
-    label: 'RESULTS',
+    label: '▌RESULTS',
     items: [
-      { id: 'catalog',   label: 'Catalog',   icon: List },
-      { id: 'documents', label: 'Documents', icon: FileText },
-      { id: 'approvals', label: 'Approvals', icon: CheckSquare },
+      { id: 'catalog',   label: 'CATALOG',   icon: List },
+      { id: 'documents', label: 'DOCUMENTS', icon: FileText },
+      { id: 'approvals', label: 'APPROVALS', icon: CheckSquare },
     ],
   },
   {
-    label: 'ADMIN',
+    label: '▌ADMIN',
     items: [
-      { id: 'reset',        label: 'Reset',        icon: RotateCcw },
-      { id: 'project-docs', label: 'Project Docs', icon: BookMarked },
-      { id: 'llm-settings', label: 'LLM Settings', icon: Settings },
+      { id: 'reset',        label: 'RESET',      icon: RotateCcw },
+      { id: 'project-docs', label: 'PROJ. DOCS', icon: BookMarked },
+      { id: 'llm-settings', label: 'LLM CONFIG', icon: Settings },
     ],
   },
 ];
+
+const BORDER_COLOR = 'var(--pixel-border)';
+const BG           = 'var(--pixel-bg)';
+const ACCENT       = 'var(--pixel-accent)';
+const TEXT         = 'var(--pixel-text)';
+const MUTED        = 'var(--pixel-muted)';
 
 export default function PixelSidebar({ currentPage, onNavigate, services = {} }) {
   return (
     <div
       className="flex flex-col h-full overflow-hidden"
-      style={{ width: 200, minWidth: 200, background: 'var(--pixel-bg)', borderRight: '2px solid var(--pixel-border)' }}
+      style={{ width: 210, minWidth: 210, background: BG, borderRight: `3px solid ${BORDER_COLOR}` }}
     >
-      {/* Brand */}
+      {/* C64 boot header */}
       <div
-        className="flex items-center gap-2 px-4 py-4"
-        style={{ borderBottom: '1px solid var(--pixel-border)' }}
+        className="px-3 pt-3 pb-2"
+        style={{ borderBottom: `2px solid ${BORDER_COLOR}` }}
       >
-        <Zap size={16} style={{ color: 'var(--pixel-accent)' }} />
-        <span className="pixel-text" style={{ color: 'var(--pixel-accent)', fontSize: 7 }}>INT. MATE</span>
+        <p className="pixel-text" style={{ color: ACCENT, fontSize: 6, lineHeight: 1.8 }}>
+          **** INT.MATE ****
+        </p>
+        <p className="pixel-text" style={{ color: TEXT, fontSize: 5, lineHeight: 1.8 }}>
+          COMMODORE 64  BASIC
+        </p>
+        <p className="pixel-text" style={{ color: MUTED, fontSize: 5, lineHeight: 1.8 }}>
+          ══════════════════
+        </p>
+        <p className="pixel-text c64-cursor" style={{ color: TEXT, fontSize: 5, lineHeight: 1.8 }}>
+          READY.
+        </p>
       </div>
 
       {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto p-2 space-y-3">
+      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-3 pixel-scroll">
         {NAV_GROUPS.map(group => (
           <div key={group.label}>
-            <p className="pixel-text-sm px-2 mb-1" style={{ color: 'var(--pixel-muted)', fontSize: 5 }}>
+            <p className="pixel-text-sm px-1 mb-1" style={{ color: ACCENT, fontSize: 5 }}>
               {group.label}
             </p>
             {group.items.map(item => {
@@ -68,17 +84,22 @@ export default function PixelSidebar({ currentPage, onNavigate, services = {} })
                 <button
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
-                  className="w-full flex items-center gap-2 px-2 py-2 text-left"
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-left"
                   style={{
-                    background:   isActive ? 'var(--pixel-primary)' : 'transparent',
-                    color:        isActive ? 'var(--pixel-bg)'      : 'var(--pixel-text)',
-                    border:       isActive ? '1px solid var(--pixel-border)' : '1px solid transparent',
+                    background:   isActive ? BORDER_COLOR : 'transparent',
+                    color:        isActive ? BG           : TEXT,
+                    border:       'none',
+                    borderLeft:   isActive ? `3px solid ${ACCENT}` : '3px solid transparent',
                     borderRadius: 0,
-                    cursor: 'pointer',
+                    cursor:       'pointer',
+                    textShadow:   isActive ? 'none' : '0 0 6px rgba(136,136,255,0.4)',
                   }}
                 >
-                  <Icon size={11} />
-                  <span className="pixel-text-sm" style={{ fontSize: 6 }}>{item.label}</span>
+                  <span style={{ fontSize: 8, color: isActive ? BG : MUTED, minWidth: 10 }}>
+                    {isActive ? '►' : ' '}
+                  </span>
+                  <Icon size={10} />
+                  <span className="pixel-text-sm" style={{ fontSize: 5.5 }}>{item.label}</span>
                 </button>
               );
             })}
@@ -86,17 +107,16 @@ export default function PixelSidebar({ currentPage, onNavigate, services = {} })
         ))}
       </nav>
 
-      {/* Service status dots */}
+      {/* Service status — PETSCII style */}
       {Object.keys(services).length > 0 && (
-        <div className="p-3 space-y-1" style={{ borderTop: '1px solid var(--pixel-border)' }}>
+        <div className="px-3 py-2 space-y-0.5" style={{ borderTop: `1px solid ${BORDER_COLOR}` }}>
+          <p className="pixel-text-sm" style={{ color: ACCENT, fontSize: 5 }}>SYS STATUS</p>
           {Object.entries(services).map(([svc, status]) => (
             <div key={svc} className="flex items-center gap-1.5">
-              <Circle
-                size={6}
-                fill={status === 'ok' ? 'var(--pixel-primary)' : 'var(--pixel-danger)'}
-                style={{ color: status === 'ok' ? 'var(--pixel-primary)' : 'var(--pixel-danger)' }}
-              />
-              <span className="pixel-text-sm" style={{ fontSize: 5, color: 'var(--pixel-muted)' }}>
+              <span style={{ fontSize: 8, color: status === 'ok' ? 'var(--pixel-primary)' : 'var(--pixel-danger)', lineHeight: 1 }}>
+                {status === 'ok' ? '●' : '○'}
+              </span>
+              <span className="pixel-text-sm" style={{ fontSize: 5, color: status === 'ok' ? TEXT : 'var(--pixel-danger)' }}>
                 {svc.toUpperCase()}
               </span>
             </div>
@@ -105,7 +125,7 @@ export default function PixelSidebar({ currentPage, onNavigate, services = {} })
       )}
 
       {/* Mode toggle */}
-      <div className="p-3" style={{ borderTop: '1px solid var(--pixel-border)' }}>
+      <div className="p-3" style={{ borderTop: `2px solid ${BORDER_COLOR}` }}>
         <UiModeToggle />
       </div>
     </div>

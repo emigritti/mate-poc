@@ -50,28 +50,48 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Pixel Mode Design System (ADR-047)
-   8-bit gamified UI — applied when .pixel-mode class is on the root wrapper.
+   C64 Mode Design System (ADR-047 — Commodore 64 edition)
+   Authentic VIC-II color palette. Applied when .pixel-mode is on root wrapper.
    All pixel-* classes are scoped so they never leak into classic mode.
 ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --pixel-bg:        #0d0d0d;
-  --pixel-surface:   #1a1a2e;
-  --pixel-primary:   #4ade80;
-  --pixel-accent:    #fbbf24;
-  --pixel-danger:    #f87171;
-  --pixel-text:      #86efac;
-  --pixel-muted:     #6b7280;
-  --pixel-border:    #4ade80;
-  --pixel-shadow:    4px 4px 0px #166534;
+  /* VIC-II authentic colors */
+  --pixel-bg:        #4040A0;   /* C64 blue screen background */
+  --pixel-surface:   #2D2D8C;   /* Deeper blue for panels */
+  --pixel-primary:   #8888FF;   /* C64 light blue — default text/border */
+  --pixel-accent:    #D8D800;   /* C64 yellow */
+  --pixel-danger:    #FF5555;   /* C64 light red (brightened for LCD) */
+  --pixel-text:      #8888FF;   /* C64 light blue text */
+  --pixel-muted:     #6060BB;   /* Dimmed blue-gray */
+  --pixel-border:    #8888FF;   /* C64 light blue borders */
+  --pixel-shadow:    4px 4px 0px #1C1C6E;  /* Deep navy shadow */
   --pixel-font:      'Press Start 2P', monospace;
 }
 
-/* Root wrapper toggled by UiModeProvider */
+/* Root wrapper — C64 phosphor CRT feel */
 .pixel-mode {
   background-color: var(--pixel-bg);
   color: var(--pixel-text);
   font-family: var(--pixel-font);
+  text-shadow: 0 0 6px rgba(136, 136, 255, 0.4);
+  image-rendering: pixelated;
+  position: relative;
+}
+
+/* CRT scanlines overlay — fixed so it covers the whole viewport */
+.pixel-mode::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 30, 0.18) 2px,
+    rgba(0, 0, 30, 0.18) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
 }
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
@@ -86,7 +106,7 @@
 .pixel-panel-accent {
   background-color: var(--pixel-surface);
   border: 2px solid var(--pixel-accent);
-  box-shadow: 4px 4px 0px #92400e;
+  box-shadow: 4px 4px 0px #5C5C00;
   border-radius: 0 !important;
   padding: 16px;
 }
@@ -98,7 +118,7 @@
   background-color: var(--pixel-surface);
   color: var(--pixel-primary);
   border: 2px solid var(--pixel-border);
-  box-shadow: 3px 3px 0 #166534;
+  box-shadow: 3px 3px 0 #1C1C6E;
   border-radius: 0 !important;
   padding: 8px 14px;
   cursor: pointer;
@@ -108,10 +128,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  text-shadow: 0 0 6px rgba(136, 136, 255, 0.5);
 }
 .pixel-button:hover {
   transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 #166534;
+  box-shadow: 1px 1px 0 #1C1C6E;
+  background-color: #3838AA;
 }
 .pixel-button:active {
   transform: translate(3px, 3px);
@@ -121,19 +143,21 @@
 .pixel-button-danger {
   color: var(--pixel-danger) !important;
   border-color: var(--pixel-danger) !important;
-  box-shadow: 3px 3px 0 #7f1d1d !important;
+  box-shadow: 3px 3px 0 #880000 !important;
+  text-shadow: 0 0 6px rgba(255, 85, 85, 0.5) !important;
 }
 .pixel-button-danger:hover {
-  box-shadow: 1px 1px 0 #7f1d1d !important;
+  box-shadow: 1px 1px 0 #880000 !important;
 }
 
 .pixel-button-accent {
   color: var(--pixel-accent);
   border-color: var(--pixel-accent);
-  box-shadow: 3px 3px 0 #92400e;
+  box-shadow: 3px 3px 0 #5C5C00;
+  text-shadow: 0 0 6px rgba(216, 216, 0, 0.5);
 }
 .pixel-button-accent:hover {
-  box-shadow: 1px 1px 0 #92400e;
+  box-shadow: 1px 1px 0 #5C5C00;
 }
 
 /* ── Typography ─────────────────────────────────────────────────────────── */
@@ -153,6 +177,7 @@
   color: var(--pixel-accent);
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  text-shadow: 0 0 8px rgba(216, 216, 0, 0.6);
 }
 .pixel-heading-lg {
   font-family: var(--pixel-font);
@@ -160,6 +185,7 @@
   color: var(--pixel-accent);
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  text-shadow: 0 0 10px rgba(216, 216, 0, 0.7);
 }
 .pixel-badge {
   font-family: var(--pixel-font);
@@ -168,6 +194,18 @@
   border: 1px solid currentColor;
   border-radius: 0;
   text-transform: uppercase;
+}
+
+/* ── C64 blinking block cursor ──────────────────────────────────────────── */
+@keyframes c64-cursor-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.c64-cursor::after {
+  content: '█';
+  animation: c64-cursor-blink 0.8s step-end infinite;
+  color: var(--pixel-text);
+  margin-left: 2px;
 }
 
 /* ── Sprite animations ──────────────────────────────────────────────────── */
@@ -187,8 +225,18 @@
   50%       { transform: translateY(-4px); }
 }
 @keyframes pixel-glow {
-  0%, 100% { text-shadow: 0 0 4px var(--pixel-primary); }
-  50%       { text-shadow: 0 0 12px var(--pixel-primary), 0 0 20px var(--pixel-primary); }
+  0%, 100% { text-shadow: 0 0 4px var(--pixel-primary), 0 0 8px rgba(136,136,255,0.3); }
+  50%       { text-shadow: 0 0 12px var(--pixel-primary), 0 0 24px #4444CC, 0 0 40px rgba(136,136,255,0.2); }
+}
+/* C64 phosphor screen flicker (very subtle) */
+@keyframes c64-flicker {
+  0%,  96%, 100% { opacity: 1; }
+  97%             { opacity: 0.97; }
+  98%             { opacity: 1; }
+  99%             { opacity: 0.98; }
+}
+.pixel-mode {
+  animation: c64-flicker 8s ease-in-out infinite;
 }
 .pixel-working { animation: pixel-blink  0.8s ease-in-out infinite; }
 .pixel-success { animation: pixel-glow   1.5s ease-in-out infinite; }
@@ -199,3 +247,27 @@
 .pixel-scroll::-webkit-scrollbar       { width: 6px; }
 .pixel-scroll::-webkit-scrollbar-track { background: var(--pixel-bg); }
 .pixel-scroll::-webkit-scrollbar-thumb { background: var(--pixel-border); border-radius: 0; }
+
+/* ── C64 log-line overrides (inside pixel-mode) ─────────────────────────── */
+.pixel-mode .log-info    { color: #8888FF; }  /* C64 light blue */
+.pixel-mode .log-llm     { color: #D8D800; }  /* C64 yellow */
+.pixel-mode .log-rag     { color: #70A4B2; }  /* C64 cyan */
+.pixel-mode .log-success { color: #5CAB5E; }  /* C64 green */
+.pixel-mode .log-warn    { color: #D8D800; }  /* C64 yellow */
+.pixel-mode .log-warning { color: #D8D800; }
+.pixel-mode .log-error   { color: #FF5555; }  /* C64 light red */
+.pixel-mode .log-cancel  { color: #C77E51; }  /* C64 orange */
+
+/* ── CRT vignette (screen corners darken) ───────────────────────────────── */
+.pixel-mode::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 60%,
+    rgba(0, 0, 30, 0.45) 100%
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
