@@ -22,7 +22,7 @@ import db
 import state
 from config import settings
 from log_helpers import prune_logs
-from schemas import CatalogEntry, Approval, Document, KBDocument, Project
+from schemas import CatalogEntry, Approval, Document, KBDocument, Project, Requirement
 from services.llm_service import llm_overrides
 from routers.admin import agent_settings_overrides, _apply_agent_overrides
 from services.retriever import hybrid_retriever
@@ -146,6 +146,25 @@ async def lifespan(app: FastAPI):
             p = Project(**doc)
             state.projects[p.prefix] = p
         logger.info("[DB] Seeded %d projects from MongoDB.", len(state.projects))
+
+    # ADR-050: reload last unfinalized requirements session from MongoDB
+    if db.requirements_col is not None:
+        sample = await db.requirements_col.find_one({"project_id": None})
+        if sample:
+            last_upload_id = sample.get("upload_id")
+            if last_upload_id:
+                state.current_upload_id = last_upload_id
+                async for doc in db.requirements_col.find(
+                    {"upload_id": last_upload_id}, {"_id": 0}
+                ):
+                    doc.pop("upload_id", None)
+                    doc.pop("project_id", None)
+                    state.parsed_requirements.append(Requirement(**doc))
+                logger.info(
+                    "[DB] Restored %d requirements from upload session '%s'.",
+                    len(state.parsed_requirements),
+                    last_upload_id,
+                )
 
     prune_task = asyncio.create_task(_prune_logs_loop(), name="log-pruner")
 

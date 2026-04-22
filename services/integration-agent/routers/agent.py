@@ -10,6 +10,7 @@ import logging
 import uuid
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
+from typing import Optional
 from pydantic import BaseModel
 
 import db
@@ -32,6 +33,7 @@ class TriggerRequest(BaseModel):
     """Optional request body for POST /agent/trigger."""
     pinned_doc_ids: list[str] = []
     llm_profile: str = "default"   # "default" | "high_quality" (ADR-046)
+    project_id: Optional[str] = None  # ADR-050: None = process all TAG_CONFIRMED (backward-compat)
 
 
 # ── Agentic RAG flow ──────────────────────────────────────────────────────────
@@ -39,6 +41,7 @@ class TriggerRequest(BaseModel):
 async def run_agentic_rag_flow(
     pinned_chunks: list[ScoredChunk] | None = None,
     llm_profile: str = "default",
+    project_id: Optional[str] = None,
 ) -> None:
     """
     Core agentic loop: read TAG_CONFIRMED catalog entries → RAG → LLM → guard → HITL queue.
@@ -51,8 +54,14 @@ async def run_agentic_rag_flow(
                        in the PINNED REFERENCES section of every generated document.
         llm_profile:   "default" or "high_quality" — selects the Ollama model and sampling
                        parameters for document generation (ADR-046). "premium" accepted as alias.
+        project_id:    ADR-050 — restrict processing to entries for this project.
+                       None = process all TAG_CONFIRMED entries (backward-compatible).
     """
-    confirmed = [e for e in state.catalog.values() if e.status == "TAG_CONFIRMED"]
+    confirmed = [
+        e for e in state.catalog.values()
+        if e.status == "TAG_CONFIRMED"
+        and (project_id is None or e.project_id == project_id)
+    ]
     total = len(confirmed)
     log_agent(f"Processing {total} TAG_CONFIRMED integration(s)...")
 
@@ -208,9 +217,12 @@ async def trigger_agent(
             status_code=409, detail="Agent is already running. Wait for it to finish."
         )
 
-    # Gate: all catalog entries must have confirmed tags before generation
+    # Gate: catalog entries awaiting tag confirmation (scoped to project if provided, ADR-050)
+    pid = request.project_id.upper().strip() if request.project_id else None
     pending_tag_review = [
-        e.id for e in state.catalog.values() if e.status == "PENDING_TAG_REVIEW"
+        e.id for e in state.catalog.values()
+        if e.status == "PENDING_TAG_REVIEW"
+        and (pid is None or e.project_id == pid)
     ]
     if pending_tag_review:
         raise HTTPException(
@@ -248,7 +260,11 @@ async def trigger_agent(
 
     async def _guarded_flow() -> None:
         async with state.agent_lock:
-            await run_agentic_rag_flow(pinned_chunks=pinned_chunks, llm_profile=llm_profile)
+            await run_agentic_rag_flow(
+                pinned_chunks=pinned_chunks,
+                llm_profile=llm_profile,
+                project_id=pid,
+            )
 
     task = asyncio.create_task(_guarded_flow(), name=task_id)
     state.running_tasks[task_id] = task

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { LoadingProvider } from './context/LoadingContext.jsx';
 import { UiModeProvider, useUiMode } from './context/UiModeContext.jsx';
+import { ProjectProvider } from './context/ProjectContext.jsx';
 import GlobalLoadingBar from './components/ui/GlobalLoadingBar.jsx';
 import Sidebar from './components/layout/Sidebar.jsx';
 import TopBar from './components/layout/TopBar.jsx';
@@ -127,9 +128,11 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <UiModeProvider>
-        <LoadingProvider>
-          <AppInner />
-        </LoadingProvider>
+        <ProjectProvider>
+          <LoadingProvider>
+            <AppInner />
+          </LoadingProvider>
+        </ProjectProvider>
       </UiModeProvider>
     </QueryClientProvider>
   );

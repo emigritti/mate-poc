@@ -55,17 +55,25 @@ export const API = {
   },
 
   agent: {
-    trigger: (pinnedDocIds = [], llmProfile = 'default') => fetch(`${AGENT}/api/v1/agent/trigger`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinned_doc_ids: pinnedDocIds, llm_profile: llmProfile }),
-    }),
+    trigger: (pinnedDocIds = [], llmProfile = 'default', projectId = null) =>
+      fetch(`${AGENT}/api/v1/agent/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pinned_doc_ids: pinnedDocIds,
+          llm_profile: llmProfile,
+          ...(projectId ? { project_id: projectId } : {}),
+        }),
+      }),
     logs: (offset = 0) => fetch(`${AGENT}/api/v1/agent/logs?offset=${offset}`),
     cancel: () => fetch(`${AGENT}/api/v1/agent/cancel`, { method: 'POST' }),
   },
 
   catalog: {
-    list: () => fetch(`${AGENT}/api/v1/catalog/integrations`),
+    list: (projectId = null) => {
+      const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+      return fetch(`${AGENT}/api/v1/catalog/integrations${qs}`);
+    },
     integrationSpec: (id) => fetch(`${AGENT}/api/v1/catalog/integrations/${encodeURIComponent(id)}/integration-spec`),
     suggestTags: (id) => fetch(`${AGENT}/api/v1/catalog/integrations/${id}/suggest-tags`),
     confirmTags: (id, tags) =>

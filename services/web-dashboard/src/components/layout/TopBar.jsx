@@ -1,15 +1,9 @@
-import { useState } from 'react';
-import { Bell, User } from 'lucide-react';
+import { FolderOpen } from 'lucide-react';
 import UiModeToggle from '../pixel/UiModeToggle';
-
-const USERS = [
-  { id: 'admin',    label: 'Mario Rossi',    role: 'Admin' },
-  { id: 'reviewer', label: 'Laura Bianchi', role: 'Reviewer' },
-];
+import { useProject } from '../../context/ProjectContext.jsx';
 
 export default function TopBar({ title, subtitle }) {
-  const [userId, setUserId] = useState('admin');
-  const user = USERS.find(u => u.id === userId);
+  const { activeProjectId, setActiveProjectId, projects } = useProject();
 
   return (
     <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-slate-200 flex-shrink-0">
@@ -26,22 +20,17 @@ export default function TopBar({ title, subtitle }) {
       <div className="flex items-center gap-2">
         <UiModeToggle />
 
-        <button className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
-          <Bell size={17} />
-        </button>
-
         <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
-          <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
-            <User size={13} className="text-indigo-600" />
-          </div>
+          <FolderOpen size={14} className="text-indigo-500" />
           <select
-            value={userId}
-            onChange={e => setUserId(e.target.value)}
-            className="text-sm font-medium text-slate-700 bg-transparent border-none outline-none cursor-pointer pr-1"
+            value={activeProjectId ?? ''}
+            onChange={e => setActiveProjectId(e.target.value || null)}
+            className="text-sm font-medium text-slate-700 bg-transparent border border-slate-200 rounded-lg px-2 py-1 outline-none cursor-pointer focus:border-indigo-400"
           >
-            {USERS.map(u => (
-              <option key={u.id} value={u.id}>
-                {u.label} ({u.role})
+            <option value="">All Projects</option>
+            {projects.map(p => (
+              <option key={p.prefix} value={p.prefix}>
+                {p.client_name} ({p.prefix})
               </option>
             ))}
           </select>

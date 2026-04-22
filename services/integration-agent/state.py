@@ -9,6 +9,7 @@ Write-through to MongoDB is handled by the callers (routers).
 """
 
 import asyncio
+from typing import Optional
 
 from schemas import (
     Approval,
@@ -22,6 +23,7 @@ from schemas import (
 
 # ── In-memory state (write-through to MongoDB) ────────────────────────────────
 parsed_requirements: list[Requirement] = []
+current_upload_id: Optional[str] = None  # UUID of the active upload session (ADR-050)
 catalog:   dict[str, CatalogEntry] = {}
 documents: dict[str, Document]     = {}
 approvals: dict[str, Approval]     = {}

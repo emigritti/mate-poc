@@ -15,12 +15,13 @@ import io
 import re
 import uuid
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 import logging
 
 import db
 import state
 from config import settings
+from typing import Optional
 from schemas import CatalogEntry, FinalizeRequirementsRequest, Requirement
 from log_helpers import log_agent
 from utils import _now_iso
@@ -548,6 +549,18 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
             raise HTTPException(status_code=400, detail="File must be UTF-8 encoded.")
         state.parsed_requirements.extend(_parse_csv(text))
 
+    # ADR-050: assign upload session ID and persist to MongoDB
+    upload_id = uuid.uuid4().hex
+    state.current_upload_id = upload_id
+    for r in state.parsed_requirements:
+        r_doc = {**r.model_dump(), "upload_id": upload_id}
+        if db.requirements_col is not None:
+            await db.requirements_col.replace_one(
+                {"req_id": r.req_id, "upload_id": upload_id},
+                r_doc,
+                upsert=True,
+            )
+
     seen: dict[str, dict] = {}
     for r in state.parsed_requirements:
         key = f"{r.source_system}|||{r.target_system}"
@@ -556,15 +569,17 @@ async def upload_requirements(file: UploadFile = File(...)) -> dict:
 
     fmt = "docx" if is_docx else ("prose" if is_prose else "csv")
     logger.info(
-        "[UPLOAD] Parsed %d requirements from %s, %d integration pair(s) detected.",
+        "[UPLOAD] Parsed %d requirements from %s, %d integration pair(s) detected (upload_id=%s).",
         len(state.parsed_requirements),
         fmt,
         len(seen),
+        upload_id,
     )
     return {
         "status": "parsed",
         "total_parsed": len(state.parsed_requirements),
         "preview": list(seen.values()),
+        "upload_id": upload_id,
     }
 
 
@@ -629,6 +644,15 @@ async def finalize_requirements(body: FinalizeRequirementsRequest) -> dict:
             )
         created += 1
 
+    # ADR-050: stamp project_id on persisted requirements and close the upload session
+    if db.requirements_col is not None:
+        for r in resolved:
+            await db.requirements_col.update_one(
+                {"req_id": r.req_id, "upload_id": state.current_upload_id},
+                {"$set": {"project_id": project_id, "mandatory": r.mandatory}},
+            )
+    state.current_upload_id = None
+
     logger.info(
         "[FINALIZE] Created %d CatalogEntry(ies) under project '%s'.",
         created,
@@ -638,7 +662,16 @@ async def finalize_requirements(body: FinalizeRequirementsRequest) -> dict:
 
 
 @router.get("/requirements")
-async def get_requirements() -> dict:
+async def get_requirements(project_id: Optional[str] = Query(None)) -> dict:
+    """Return requirements. With project_id queries persisted requirements for that project;
+    without project_id returns the current in-memory upload session."""
+    if project_id and db.requirements_col is not None:
+        pid = project_id.upper().strip()
+        docs = [doc async for doc in db.requirements_col.find({"project_id": pid}, {"_id": 0})]
+        return {"status": "success", "data": docs}
+    if project_id:
+        # requirements_col unavailable (degraded mode)
+        return {"status": "success", "data": []}
     return {"status": "success", "data": [r.model_dump() for r in state.parsed_requirements]}
 
 
@@ -651,6 +684,12 @@ async def patch_requirement(
     for i, r in enumerate(state.parsed_requirements):
         if r.req_id == req_id:
             state.parsed_requirements[i] = r.model_copy(update={"mandatory": mandatory})
+            # ADR-050: sync to MongoDB
+            if db.requirements_col is not None:
+                await db.requirements_col.update_one(
+                    {"req_id": req_id},
+                    {"$set": {"mandatory": mandatory}},
+                )
             logger.info("[PATCH] Requirement '%s' mandatory set to %s.", req_id, mandatory)
             return {"status": "success", "req_id": req_id, "mandatory": mandatory}
     raise HTTPException(status_code=404, detail=f"Requirement '{req_id}' not found.")

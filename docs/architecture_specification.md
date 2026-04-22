@@ -248,7 +248,7 @@ graph TB
         end
 
         subgraph state_layer["State Layer"]
-            state["state.py<br/><i>Centralized in-memory globals:<br/>catalog · approvals · documents<br/>projects · kb_docs · kb_chunks<br/>summaries_col · agent_logs · _agent_lock</i>"]
+            state["state.py<br/><i>Centralized in-memory globals:<br/>catalog · approvals · documents<br/>projects · kb_docs · kb_chunks<br/>summaries_col · agent_logs · _agent_lock<br/>parsed_requirements · current_upload_id (ADR-050)</i>"]
         end
 
         subgraph cross_cut["Cross-Cutting Utilities"]
@@ -276,8 +276,8 @@ graph TB
 
 | Component | File | Key Behaviour |
 |-----------|------|---------------|
-| **Agent Router** | `routers/agent.py` | Trigger/cancel/logs; asyncio.Lock concurrency guard |
-| **Requirements Router** | `routers/requirements.py` | CSV and Markdown upload: size/encoding guards; file type detected by `.md` extension; Markdown parser extracts source/target from YAML frontmatter, mandatory flag from section headings; `Requirement.mandatory: bool` field; groups rows by `source|||target` key; finalize creates catalog entries |
+| **Agent Router** | `routers/agent.py` | Trigger/cancel/logs; asyncio.Lock concurrency guard; optional `project_id` in `TriggerRequest` scopes processing to a single project (ADR-050) |
+| **Requirements Router** | `routers/requirements.py` | CSV and Markdown upload: size/encoding guards; file type detected by `.md` extension; Markdown parser extracts source/target from YAML frontmatter, mandatory flag from section headings; `Requirement.mandatory: bool` field; groups rows by `source|||target` key; finalize creates catalog entries; **persists requirements to MongoDB** with `upload_id` + `project_id` (ADR-050); `GET /requirements?project_id=X` queries persisted requirements |
 | **Projects Router** | `routers/projects.py` | Project CRUD; idempotent POST; prefix uniqueness check |
 | **Catalog Router** | `routers/catalog.py` | Integration listing with project metadata; tag suggest/confirm (ADR-019) |
 | **Approvals Router** | `routers/approvals.py` | PENDING list; approve → ChromaDB upsert + MongoDB persist; reject with feedback; regenerate REJECTED doc with feedback injected (ADR-032) |
@@ -291,7 +291,7 @@ graph TB
 | **Vision Service** | `services/vision_service.py` | `caption_figure(image_bytes)` — calls `llava:7b` via Ollama `/api/chat` with base64 image; placeholder on error or when `vision_captioning_enabled=False` (ADR-034) |
 | **Summarizer Service** | `services/summarizer_service.py` | `summarize_section(chunks, doc_id, tags)` — RAPTOR-lite: groups by `section_header`, summarises sections ≥ 3 chunks via llama3.1:8b; returns `SummaryChunk\|None` (ADR-035) |
 | **Document Parser** | `document_parser.py` | `parse_with_docling()` — layout-aware parsing via IBM Docling: `DoclingChunk` per text/table/figure item with `section_header` + `page_num` (ADR-034); `enrich_chunk_metadata()` — deterministic semantic enrichment: 8-value `semantic_type` + `entity_names`, `field_names`, `rule_markers`, `integration_keywords`, `source_modality` (ADR-044); fallback: `semantic_chunk()` via LangChain (R11) |
-| **State** | `state.py` | Centralized in-memory globals: all dicts, lock, logs, `kb_chunks` BM25 corpus, `summaries_col` ChromaDB handle |
+| **State** | `state.py` | Centralized in-memory globals: all dicts, lock, logs, `kb_chunks` BM25 corpus, `summaries_col` ChromaDB handle; `parsed_requirements` list + `current_upload_id` for requirements session tracking (ADR-050) |
 | **Auth** | `auth.py` | `get_api_key()` FastAPI dependency; `hmac.compare_digest()` constant-time check |
 | **Config** | `config.py` | `pydantic-settings` — fails fast on startup if required env vars absent; RAG thresholds, BM25 weights, vision/RAPTOR-lite flags |
 | **Output Guard** | `output_guard.py` | Checks `# Integration Design` heading; bleach strip; 50k truncation; `assess_quality()` → `QualityReport` with 6 volume signals + 3 structural validators; configurable warn/block gate via `quality_gate_mode` (ADR-031, quality improvements #1/#2); `enforce_quality_gate()` raises `QualityGateError` in block mode |
@@ -1256,12 +1256,17 @@ mongodb://mate-mongodb:27017/integration_mate
   │                           tag_llm keys (tag_ prefix): tag_model/tag_num_predict/…
   │                           rag_distance_threshold, rag_bm25_weight,
   │                           rag_n_results_per_query, rag_top_k_chunks }  ← Phase 2 RAG params (ADR-027..030)
-  └── agent_settings        { _id: "current", runtime overrides for 15 quality/RAG/vision/chunking params:
-                              quality_gate_mode, quality_gate_min_score, rag_distance_threshold,
-                              rag_bm25_weight, rag_n_results_per_query, rag_top_k_chunks, kb_max_rag_chars,
-                              fact_pack_enabled, fact_pack_max_tokens, llm_max_output_chars,
-                              vision_captioning_enabled, raptor_summarization_enabled,
-                              kb_max_summarize_sections, kb_chunk_size, kb_chunk_overlap }
+  ├── agent_settings        { _id: "current", runtime overrides for 15 quality/RAG/vision/chunking params:
+  │                           quality_gate_mode, quality_gate_min_score, rag_distance_threshold,
+  │                           rag_bm25_weight, rag_n_results_per_query, rag_top_k_chunks, kb_max_rag_chars,
+  │                           fact_pack_enabled, fact_pack_max_tokens, llm_max_output_chars,
+  │                           vision_captioning_enabled, raptor_summarization_enabled,
+  │                           kb_max_summarize_sections, kb_chunk_size, kb_chunk_overlap }
+  └── requirements          { req_id (PK compound with upload_id), upload_id (UUID session), ← ADR-050
+                              source_system, target_system, category, description,
+                              mandatory: bool, project_id: string|null }
+                              Compound unique index: (req_id, upload_id); secondary index on project_id.
+                              project_id=null = pending session (restored on restart).
 ```
 
 **Indexing strategy:**
@@ -1270,7 +1275,9 @@ mongodb://mate-mongodb:27017/integration_mate
 - `documents`: unique index on `id`
 
 **Persistence pattern — Write-Through Cache:**
-Every mutation writes simultaneously to the in-memory Python dict AND to MongoDB. On container startup, `lifespan()` seeds all three dicts from MongoDB — surviving container restarts without data loss.
+Every mutation writes simultaneously to the in-memory Python dict AND to MongoDB. On container startup, `lifespan()` seeds all dicts from MongoDB — surviving container restarts without data loss.
+
+**Requirements persistence (ADR-050):** `Requirement` objects are also persisted immediately on upload (write-through to `requirements_col`). The last unfinalized session (`project_id=null`) is reloaded into `state.parsed_requirements` at startup, so analysts do not lose parsed requirements after a container restart.
 
 ### 9.3 ChromaDB Collection
 
@@ -1287,7 +1294,8 @@ Used exclusively for **RAG retrieval**: when a new integration requires document
 
 | Variable | Type | Purpose | Persisted? |
 |----------|------|---------|------------|
-| `parsed_requirements` | `list[Requirement]` | Current CSV upload (pre-finalize) | No (transient) |
+| `parsed_requirements` | `list[Requirement]` | Current upload session (pre-finalize); reloaded from MongoDB on restart (ADR-050) | Yes (MongoDB `requirements` col, `project_id=null` session) |
+| `current_upload_id` | `Optional[str]` | UUID of the active upload session; stamped on each persisted `Requirement`; cleared on finalize (ADR-050) | Derived (from `requirements` col) |
 | `projects` | `dict[str, Project]` | Client project registry | Yes (MongoDB) |
 | `catalog` | `dict[str, CatalogEntry]` | Integration entries | Yes (MongoDB) |
 | `documents` | `dict[str, Document]` | Approved final docs | Yes (MongoDB + ChromaDB) |

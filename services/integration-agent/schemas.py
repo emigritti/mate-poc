@@ -28,6 +28,8 @@ class Requirement(BaseModel):
     category: str
     description: str
     mandatory: bool = False
+    upload_id: Optional[str] = None   # UUID of the upload session (ADR-050)
+    project_id: Optional[str] = None  # set on finalize (ADR-050)
 
 
 class CatalogEntry(BaseModel):

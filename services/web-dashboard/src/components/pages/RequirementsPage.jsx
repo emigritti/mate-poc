@@ -5,6 +5,7 @@ import ProjectModal from '../ui/ProjectModal.jsx';
 import RequirementValidationModal from '../ui/RequirementValidationModal.jsx';
 import TagConfirmPanel from '../requirements/TagConfirmPanel.jsx';
 import { API } from '../../api.js';
+import { useProject } from '../../context/ProjectContext.jsx';
 
 const STATUS_MAP = {
   APPROVED:           { variant: 'success', label: 'Approved' },
@@ -15,6 +16,7 @@ const STATUS_MAP = {
 };
 
 export default function RequirementsPage() {
+  const { activeProjectId, refreshProjects, setActiveProjectId } = useProject();
   const [requirements, setRequirements] = useState([]);
   const [pendingTags, setPendingTags]   = useState([]);
   const [confirmedIds, setConfirmedIds] = useState(new Set());
@@ -30,8 +32,8 @@ export default function RequirementsPage() {
   const [fieldOverrides, setFieldOverrides] = useState({});
   const fileInputRef = useRef(null);
 
-  // Load existing data on mount and after each successful upload
-  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Load existing data on mount and when active project changes (ADR-050)
+  useEffect(() => { loadData(); }, [activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isIncomplete = (val) => !val || val.trim() === '' || val.trim().toLowerCase() === 'unknown';
 
@@ -91,9 +93,11 @@ export default function RequirementsPage() {
   };
 
   // Called by ProjectModal after project creation + finalize succeed
-  const handleProjectConfirmed = async (_projectId) => {
+  const handleProjectConfirmed = async (projectId) => {
     setUploadPreview(null);
     setFieldOverrides({});
+    await refreshProjects();          // sync TopBar dropdown with the new project
+    setActiveProjectId(projectId);    // auto-switch active client (ADR-050)
     await loadData();
   };
 
@@ -107,7 +111,7 @@ export default function RequirementsPage() {
     try {
       const [reqRes, catRes] = await Promise.all([
         API.requirements.list(),
-        API.catalog.list(),
+        API.catalog.list(activeProjectId),
       ]);
       const reqs = await reqRes.json();
       // Backend returns { status, data: [...] }

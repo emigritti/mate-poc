@@ -3,6 +3,7 @@ import { Play, Square, Terminal, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useAgentLogs } from '../../hooks/useAgentLogs';
 import { API } from '../../api.js';
 import PinnedRefsSelector from '../kb/PinnedRefsSelector';
+import { useProject } from '../../context/ProjectContext.jsx';
 
 const TIMEOUT_SECS = 120; // matches ollama_timeout_seconds default
 
@@ -54,6 +55,7 @@ function ProgressBar({ elapsed, progress }) {
 }
 
 export default function AgentWorkspacePage() {
+  const { activeProjectId } = useProject();
   const { logs, isRunning, trigger, cancel, triggerError, progress: apiProgress } = useAgentLogs();
 
   const [status,       setStatus]       = useState('idle'); // idle | running | done | error
@@ -128,7 +130,7 @@ export default function AgentWorkspacePage() {
   const handleStart = () => {
     setLocalError(null);
     trigger(
-      { pinnedDocIds, llmProfile },
+      { pinnedDocIds, llmProfile, projectId: activeProjectId },
       {
         onError: (e) => {
           setLocalError(e.message || 'Failed to start agent');

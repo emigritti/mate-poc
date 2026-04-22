@@ -36,6 +36,7 @@ llm_settings_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None
 agent_settings_col:  motor.motor_asyncio.AsyncIOMotorCollection | None = None
 projects_col:        motor.motor_asyncio.AsyncIOMotorCollection | None = None
 events_col:          motor.motor_asyncio.AsyncIOMotorCollection | None = None
+requirements_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None  # ADR-050
 
 
 async def init_db(retries: int = 20, delay: float = 3.0) -> None:
@@ -45,7 +46,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
     Retries up to `retries` times with `delay` seconds between attempts.
     On failure, collections remain None (degraded mode — no crash).
     """
-    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col, agent_settings_col, projects_col, events_col
+    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col, agent_settings_col, projects_col, events_col, requirements_col
 
     for attempt in range(1, retries + 1):
         try:
@@ -65,7 +66,8 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             llm_settings_col   = _db["llm_settings"]
             agent_settings_col = _db["agent_settings"]
             projects_col       = _db["projects"]
-            events_col       = _db["events"]
+            events_col         = _db["events"]
+            requirements_col   = _db["requirements"]  # ADR-050
 
             # Idempotent index creation
             await catalog_col.create_index("id", unique=True)
@@ -77,6 +79,11 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             await projects_col.create_index("prefix", unique=True)
             # TTL index: auto-delete events older than 90 days
             await events_col.create_index("ts", expireAfterSeconds=90 * 24 * 3600)
+            # ADR-050: requirements persistence
+            await requirements_col.create_index(
+                [("req_id", 1), ("upload_id", 1)], unique=True
+            )
+            await requirements_col.create_index("project_id")
 
             logger.info("[DB] MongoDB connected (attempt %d/%d).", attempt, retries)
             return

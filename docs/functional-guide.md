@@ -88,6 +88,7 @@ The Integration Agent:
 - Validates the file (max 1 MB, UTF-8 encoding).
 - Parses each item into a `Requirement` object with a `mandatory: bool` field.
 - Returns a preview `[{source, target}, …]` **without yet creating CatalogEntries** (ADR-025).
+- **Persists all parsed requirements to MongoDB** (`requirements` collection) with a session `upload_id`, so they survive container restarts (ADR-050). The upload session remains open until finalized.
 
 **Step 1a — Project Modal (mandatory)**
 
@@ -109,8 +110,20 @@ The prefix is auto-generated as the analyst types the client name (e.g., "Acme C
 On confirm:
 1. If the project is new: `POST /api/v1/projects` creates it.
 2. `POST /api/v1/requirements/finalize` creates CatalogEntries with IDs in the format `{PREFIX}-{6hex}` (e.g., `ACM-4F2A1B`).
+3. Each requirement in MongoDB is stamped with the `project_id` (ADR-050).
+4. The **TopBar project selector** automatically switches to the newly created/reused project.
 
 The catalog entry ID prefix makes every integration immediately identifiable by client.
+
+**Step 1b — Global Project Selector (TopBar)**
+
+The TopBar dropdown at the top of every page shows all existing projects and an **"All Projects"** option. Selecting a project filters:
+- The **Integration Catalog** — shows only that client's catalog entries.
+- The **Generated Docs** page — shows only that client's documents.
+- The **Requirements** page — shows only that client's finalized requirements.
+- The **Agent Workspace** trigger — processes only that client's `TAG_CONFIRMED` entries.
+
+The selected project is stored in `localStorage` and restored on browser refresh. Selecting **"All Projects"** reverts to unfiltered views (backward-compatible).
 
 **Step 1b — Enrich the Knowledge Base (optional but recommended)**
 
@@ -139,6 +152,7 @@ This step is optional: if the Knowledge Base is empty, the agent relies solely o
 The analyst clicks **"Start Agent Processing"** on the Agent Workspace page. This calls `POST /api/v1/agent/trigger`, which:
 - Checks that requirements have been uploaded.
 - Acquires an `asyncio.Lock` to prevent concurrent runs.
+- **If a project is selected in the TopBar**, scopes processing to only that project's `TAG_CONFIRMED` entries (ADR-050). The PENDING_TAG_REVIEW gate also checks only the selected project — pending tags in other projects do not block generation.
 - Starts `run_agentic_rag_flow()` as a background async task.
 
 The dashboard polls `/api/v1/agent/logs` via TanStack Query (ADR-033) with adaptive interval: every 3 seconds while the agent is running, slowing to 15 seconds when idle.
@@ -199,10 +213,11 @@ The analyst navigates to **"HITL Approvals (RAG)"** and sees the generated docum
 ### Step 5 — Catalog & Document Access
 
 After approval, the document is accessible via:
-- `GET /api/v1/catalog/integrations` → lists all integration entries. Supports filter params `?project_id=`, `?domain=`, `?accenture_ref=` for case-insensitive partial matching.
-- `GET /api/v1/catalog/integrations/{id}/functional-spec` → returns the approved Markdown.
-- The **"Integration Catalog"** page in the dashboard shows a filter bar above the grid (client dropdown, domain/Accenture text inputs with debounce). Each catalog card shows a prefix badge (e.g., `[ACM]`), the client name, domain, and optionally the Accenture reference.
-- The **"Generated Docs"** page renders the approved Markdown as formatted HTML via `marked.js`.
+- `GET /api/v1/catalog/integrations` → lists all integration entries. Supports filter param `?project_id=` (exact match on prefix, ADR-050).
+- `GET /api/v1/catalog/integrations/{id}/integration-spec` → returns the approved Markdown.
+- The **"Integration Catalog"** page in the dashboard is filtered by the active project selected in the TopBar. Each catalog card shows a prefix badge (e.g., `[ACM]`), the client name, domain, and optionally the Accenture reference.
+- The **"Generated Docs"** page renders the approved Markdown as formatted HTML and is also filtered by the active project.
+- `GET /api/v1/requirements?project_id={prefix}` → returns finalized requirements for a given project from MongoDB (ADR-050).
 
 ---
 

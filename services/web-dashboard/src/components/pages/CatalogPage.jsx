@@ -3,6 +3,7 @@ import { BookOpen, RefreshCw, ArrowRight, Loader2, AlertCircle, X, FileText } fr
 import MarkdownViewer from '../ui/MarkdownViewer.jsx';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
+import { useProject } from '../../context/ProjectContext.jsx';
 
 const STATUS_MAP = {
   APPROVED:           { variant: 'success', label: 'Approved' },
@@ -195,6 +196,7 @@ function IntegrationCard({ integration, onRefresh }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CatalogPage() {
+  const { activeProjectId } = useProject();
   const [integrations, setIntegrations] = useState([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState(null);
@@ -204,7 +206,7 @@ export default function CatalogPage() {
     setLoading(true);
     setError(null);
     try {
-      const res  = await API.catalog.list();
+      const res  = await API.catalog.list(activeProjectId);
       const data = await res.json();
       setIntegrations(data.data || []);
     } catch {
@@ -212,7 +214,7 @@ export default function CatalogPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeProjectId]);
 
   useEffect(() => { load(); }, [load]);
 

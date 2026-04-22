@@ -29,8 +29,8 @@ export function useAgentLogs() {
   });
 
   const triggerMutation = useMutation({
-    mutationFn: ({ pinnedDocIds = [], llmProfile = 'default' } = {}) =>
-      API.agent.trigger(pinnedDocIds, llmProfile),
+    mutationFn: ({ pinnedDocIds = [], llmProfile = 'default', projectId = null } = {}) =>
+      API.agent.trigger(pinnedDocIds, llmProfile, projectId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: LOGS_KEY }),
   });
 

@@ -3,8 +3,10 @@ import { FileText, BookOpen, Loader2, AlertCircle } from 'lucide-react';
 import MarkdownViewer from '../ui/MarkdownViewer.jsx';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
+import { useProject } from '../../context/ProjectContext.jsx';
 
 export default function DocumentsPage() {
+  const { activeProjectId } = useProject();
   const [integrations, setIntegrations]   = useState([]);
   const [selectedId, setSelectedId]       = useState(null);
   const [content, setContent]             = useState('');
@@ -33,13 +35,13 @@ export default function DocumentsPage() {
   };
 
   useEffect(() => {
-    API.catalog.list()
+    API.catalog.list(activeProjectId)
       .then(r => r.json())
       .then(d => setIntegrations(d.data || []))
       .catch(() => {})
       .finally(() => setListLoading(false));
     loadDocStatuses();
-  }, []);
+  }, [activeProjectId]);
 
   const handleSelect = async (id) => {
     setSelectedId(id);
