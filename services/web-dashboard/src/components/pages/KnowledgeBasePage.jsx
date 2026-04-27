@@ -3,6 +3,7 @@ import {
     Upload, Tag, FileText, X, Loader2,
     AlertCircle, BookOpen, BarChart3,
     FileSpreadsheet, FileType, Presentation, Link,
+    ArrowDownToLine,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
@@ -11,6 +12,7 @@ import PreviewModal from '../kb/PreviewModal';
 import SearchPanel from '../kb/SearchPanel';
 import UnifiedDocumentsPanel from '../kb/UnifiedDocumentsPanel';
 import AddUrlForm from '../kb/AddUrlForm';
+import KBExportImportModal from '../kb/KBExportImportModal';
 
 const FILE_TYPE_ICONS = {
     pdf: FileText,
@@ -77,6 +79,7 @@ export default function KnowledgeBasePage() {
     const [previewDoc, setPreviewDoc] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [activeTab, setActiveTab] = useState('file');
+    const [showExportImport, setShowExportImport] = useState(false);
     const fileInputRef = useRef(null);
 
     useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -169,6 +172,20 @@ export default function KnowledgeBasePage() {
 
     return (
         <div className="space-y-6 max-w-5xl">
+            {/* Page header with Export/Import button */}
+            <div className="flex items-center justify-between">
+                <h1 className="text-xl font-bold text-slate-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                    Knowledge Base
+                </h1>
+                <button
+                    onClick={() => setShowExportImport(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-indigo-300 transition-colors shadow-sm"
+                >
+                    <ArrowDownToLine size={14} className="text-indigo-500" />
+                    Export / Import
+                </button>
+            </div>
+
             {/* Stats bar */}
             {stats && stats.total_documents > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -308,6 +325,12 @@ export default function KnowledgeBasePage() {
                 <PreviewModal
                     doc={previewDoc}
                     onClose={() => setPreviewDoc(null)}
+                />
+            )}
+            {showExportImport && (
+                <KBExportImportModal
+                    onClose={() => setShowExportImport(false)}
+                    onImportDone={() => { setShowExportImport(false); loadData(); }}
                 />
             )}
         </div>

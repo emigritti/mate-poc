@@ -10,8 +10,11 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
+import json
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
-from typing import List
+from fastapi.responses import StreamingResponse
+from typing import List, Optional
 
 import db
 import state
@@ -30,6 +33,9 @@ from services.retriever import hybrid_retriever
 from schemas import (
     KBAddUrlRequest,
     KBDocument,
+    KBExportBundle,
+    KBExportChunk,
+    KBImportResult,
     KBSearchResponse,
     KBSearchResult,
     KBStatsResponse,
@@ -610,3 +616,221 @@ async def kb_enrich_document(
     except Exception as exc:
         logger.error("[KB-Enrich] Single-doc enrichment failed for %s: %s", document_id, exc)
         raise HTTPException(status_code=500, detail=f"Enrichment failed: {exc}")
+
+
+# ── KB Export / Import (ADR-051) ──────────────────────────────────────────────
+
+_ALL_SOURCE_TYPES = {"file", "url", "openapi", "html", "mcp"}
+
+
+def _parse_source_types(raw: Optional[str]) -> set[str]:
+    """Parse a comma-separated source_types query param into a validated set."""
+    if not raw:
+        return set(_ALL_SOURCE_TYPES)
+    requested = {s.strip().lower() for s in raw.split(",") if s.strip()}
+    unknown = requested - _ALL_SOURCE_TYPES
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown source_types: {sorted(unknown)}. Allowed: {sorted(_ALL_SOURCE_TYPES)}.",
+        )
+    return requested
+
+
+@router.get("/kb/export")
+async def kb_export(
+    source_types: Optional[str] = Query(
+        default=None,
+        description="Comma-separated list of source types to export. Defaults to all: file,url,openapi,html,mcp.",
+    ),
+    _token: str = Depends(require_token),
+) -> StreamingResponse:
+    """
+    Export the Knowledge Base as a portable JSON bundle (ADR-051).
+
+    Includes KBDocument metadata records for file/url source types and raw
+    chunk text + metadata for all requested source types.  Embeddings are
+    NOT exported — ChromaDB re-embeds on import.
+
+    Query params:
+        source_types: comma-separated subset of file,url,openapi,html,mcp
+    """
+    types = _parse_source_types(source_types)
+
+    # ── 1. Collect KBDocument records for file + url types ─────────────────
+    kb_docs_export: list[KBDocument] = [
+        doc for doc in state.kb_docs.values()
+        if doc.source_type in types
+    ]
+
+    # ── 2. Collect ChromaDB chunks ─────────────────────────────────────────
+    chunks_export: list[KBExportChunk] = []
+    if state.kb_collection is not None:
+        try:
+            result = state.kb_collection.get(include=["documents", "metadatas", "ids"])
+            ids   = result.get("ids") or []
+            texts = result.get("documents") or []
+            metas = result.get("metadatas") or []
+            for chunk_id, text, meta in zip(ids, texts, metas):
+                chunk_source_type = (meta or {}).get("source_type", "file")
+                if chunk_source_type in types:
+                    chunks_export.append(KBExportChunk(
+                        id=chunk_id,
+                        text=text or "",
+                        metadata=dict(meta or {}),
+                    ))
+        except Exception as exc:
+            logger.warning("[KB-Export] ChromaDB read failed: %s", exc)
+            raise HTTPException(status_code=500, detail=f"ChromaDB read failed: {exc}")
+
+    bundle = KBExportBundle(
+        exported_at=_now_iso(),
+        source_types_included=sorted(types),
+        kb_documents=kb_docs_export,
+        chunks=chunks_export,
+    )
+
+    payload = bundle.model_dump_json(indent=2).encode("utf-8")
+    logger.info(
+        "[KB-Export] Exported %d documents and %d chunks (types: %s).",
+        len(kb_docs_export), len(chunks_export), sorted(types),
+    )
+    return StreamingResponse(
+        iter([payload]),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="kb_export.json"'},
+    )
+
+
+@router.post("/kb/import")
+async def kb_import(
+    bundle_file: UploadFile = File(..., description="JSON bundle produced by GET /api/v1/kb/export"),
+    source_types: Optional[str] = Query(
+        default=None,
+        description="Comma-separated source types to import. Defaults to all types present in the bundle.",
+    ),
+    overwrite: bool = Query(
+        default=False,
+        description="If true, existing documents/chunks with the same ID are replaced.",
+    ),
+    _token: str = Depends(require_token),
+) -> dict:
+    """
+    Import a KB bundle produced by GET /api/v1/kb/export (ADR-051).
+
+    Documents and chunks are upserted by ID.  By default, existing records
+    are skipped; set overwrite=true to replace them.  The BM25 index is
+    rebuilt after a successful import.
+
+    Query params:
+        source_types: comma-separated subset to import (default: all in bundle)
+        overwrite:    replace existing records (default: false)
+    """
+    raw = await bundle_file.read()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON bundle: {exc}")
+
+    if data.get("export_version") != "1.0":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported bundle version: {data.get('export_version')!r}. Expected '1.0'.",
+        )
+
+    try:
+        bundle = KBExportBundle.model_validate(data)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Bundle validation failed: {exc}")
+
+    types = _parse_source_types(source_types)
+
+    docs_imported = 0
+    docs_skipped = 0
+    chunks_imported = 0
+    chunks_skipped = 0
+    errors: list[str] = []
+
+    # ── 1. Import KBDocument records (file + url) ──────────────────────────
+    for doc in bundle.kb_documents:
+        if doc.source_type not in types:
+            docs_skipped += 1
+            continue
+        if not overwrite and doc.id in state.kb_docs:
+            docs_skipped += 1
+            continue
+        state.kb_docs[doc.id] = doc
+        if db.kb_documents_col is not None:
+            try:
+                await db.kb_documents_col.replace_one(
+                    {"id": doc.id}, doc.model_dump(), upsert=True
+                )
+            except Exception as exc:
+                errors.append(f"MongoDB upsert failed for {doc.id}: {exc}")
+        docs_imported += 1
+
+    # ── 2. Import ChromaDB chunks ──────────────────────────────────────────
+    if state.kb_collection is not None and bundle.chunks:
+        ids_to_upsert: list[str] = []
+        texts_to_upsert: list[str] = []
+        metas_to_upsert: list[dict] = []
+
+        if not overwrite:
+            try:
+                existing = state.kb_collection.get(ids=[c.id for c in bundle.chunks])
+                existing_ids = set(existing.get("ids") or [])
+            except Exception:
+                existing_ids = set()
+        else:
+            existing_ids = set()
+
+        for chunk in bundle.chunks:
+            chunk_source = chunk.metadata.get("source_type", "file")
+            if chunk_source not in types:
+                chunks_skipped += 1
+                continue
+            if not overwrite and chunk.id in existing_ids:
+                chunks_skipped += 1
+                continue
+            ids_to_upsert.append(chunk.id)
+            texts_to_upsert.append(chunk.text)
+            metas_to_upsert.append(chunk.metadata)
+
+        if ids_to_upsert:
+            _BATCH = 500
+            for i in range(0, len(ids_to_upsert), _BATCH):
+                try:
+                    state.kb_collection.upsert(
+                        ids=ids_to_upsert[i:i + _BATCH],
+                        documents=texts_to_upsert[i:i + _BATCH],
+                        metadatas=metas_to_upsert[i:i + _BATCH],
+                    )
+                    chunks_imported += len(ids_to_upsert[i:i + _BATCH])
+                except Exception as exc:
+                    errors.append(f"ChromaDB batch upsert failed (offset {i}): {exc}")
+
+    # ── 3. Rebuild BM25 index from full ChromaDB state ─────────────────────
+    if state.kb_collection is not None and (chunks_imported > 0 or docs_imported > 0):
+        try:
+            result = state.kb_collection.get(include=["documents", "metadatas"])
+            new_chunks: dict[str, list[str]] = {}
+            for doc_text, meta in zip(result.get("documents") or [], result.get("metadatas") or []):
+                doc_id = (meta or {}).get("document_id", "unknown")
+                new_chunks.setdefault(doc_id, []).append(doc_text)
+            state.kb_chunks.clear()
+            state.kb_chunks.update(new_chunks)
+            hybrid_retriever.build_bm25_index(state.kb_chunks)
+        except Exception as exc:
+            errors.append(f"BM25 rebuild failed: {exc}")
+
+    logger.info(
+        "[KB-Import] docs_imported=%d docs_skipped=%d chunks_imported=%d chunks_skipped=%d errors=%d",
+        docs_imported, docs_skipped, chunks_imported, chunks_skipped, len(errors),
+    )
+    return KBImportResult(
+        documents_imported=docs_imported,
+        documents_skipped=docs_skipped,
+        chunks_imported=chunks_imported,
+        chunks_skipped=chunks_skipped,
+        errors=errors,
+    ).model_dump()

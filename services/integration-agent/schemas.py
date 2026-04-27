@@ -295,6 +295,37 @@ class KBStatsResponse(BaseModel):
     all_tags: List[str]
 
 
+class KBExportChunk(BaseModel):
+    """A single ChromaDB chunk serialised for export."""
+    id: str
+    text: str
+    metadata: Dict
+
+
+class KBExportBundle(BaseModel):
+    """
+    Portable KB snapshot produced by GET /api/v1/kb/export (ADR-051).
+
+    Contains KBDocument metadata records (file + url source types) and the
+    raw chunk text + metadata for all source types.  Embeddings are NOT
+    included — ChromaDB re-embeds chunks on import.
+    """
+    export_version: str = "1.0"
+    exported_at: str
+    source_types_included: List[str]
+    kb_documents: List[KBDocument]
+    chunks: List[KBExportChunk]
+
+
+class KBImportResult(BaseModel):
+    """Summary returned by POST /api/v1/kb/import (ADR-051)."""
+    documents_imported: int
+    documents_skipped: int
+    chunks_imported: int
+    chunks_skipped: int
+    errors: List[str]
+
+
 # ── Project models (ADR-025) ──────────────────────────────────────────────────
 
 class Project(BaseModel):

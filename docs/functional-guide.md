@@ -1414,3 +1414,71 @@ The `QualityReport` dataclass gained three sub-report lists: `mermaid_syntax_iss
 `GenerationReport` gained `generation_path` and `fallback_reason` fields. The single-pass fallback log level was upgraded from `logger.info` to `logger.warning` — making FactPack degradation visible in monitoring without changing behavior.
 
 The **Agent Settings** page (§12) exposes `quality_gate_mode` and `quality_gate_min_score` to toggle the gate between warn and block modes without a container restart.
+
+---
+
+## 17. KB Export / Import (ADR-051)
+
+The Knowledge Base can now be exported to a portable JSON bundle and restored from it — enabling environment migration, disaster recovery, and KB seeding.
+
+### Export
+
+**`GET /api/v1/kb/export`** — requires Bearer token.
+
+Downloads `kb_export.json`: a self-contained JSON bundle containing:
+- `KBDocument` metadata records (file + url source types)
+- Raw chunk text and metadata from ChromaDB for all source types (`file`, `url`, `openapi`, `html`, `mcp`)
+
+Optional query parameter:
+- `source_types` — comma-separated list to export only specific types (e.g. `?source_types=file,url`)
+
+Embeddings are **not** exported — ChromaDB re-embeds chunks automatically on import.
+
+### Import
+
+**`POST /api/v1/kb/import`** — requires Bearer token, `multipart/form-data` with field `bundle_file`.
+
+Optional query parameters:
+- `source_types` — filter which source types to import from the bundle
+- `overwrite` (default `false`) — if `true`, existing records with the same ID are replaced; otherwise they are skipped
+
+Returns a `KBImportResult` summary:
+```json
+{
+  "documents_imported": 3,
+  "documents_skipped": 1,
+  "chunks_imported": 142,
+  "chunks_skipped": 0,
+  "errors": []
+}
+```
+
+The BM25 sparse index is rebuilt automatically after a successful import.
+
+### UI
+
+The **Knowledge Base** page now has an **Export / Import** button in the top-right corner. Clicking it opens a modal with two tabs:
+- **Export** — source type checkboxes + "Download JSON bundle" button
+- **Import** — JSON file picker, source type filter, overwrite toggle, and an import summary result panel
+
+### Bundle Format
+
+```json
+{
+  "export_version": "1.0",
+  "exported_at": "2026-04-27T10:00:00Z",
+  "source_types_included": ["file", "url"],
+  "kb_documents": [ ...KBDocument records... ],
+  "chunks": [
+    { "id": "KB-XXXX-chunk-0", "text": "...", "metadata": { "source_type": "file", ... } }
+  ]
+}
+```
+
+Version `1.0` is the only supported format. Import rejects bundles with a different `export_version`.
+
+### Security
+
+- Both endpoints require authentication (Bearer token via `require_token`)
+- Bundle files are validated against `KBExportBundle` schema before any write operations
+- Source types are validated against the allowed set `{file, url, openapi, html, mcp}`

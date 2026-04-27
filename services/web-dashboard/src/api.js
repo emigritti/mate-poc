@@ -185,6 +185,19 @@ export const API = {
     }),
     search: (q, n = 5) => fetch(`${AGENT}/api/v1/kb/search?q=${encodeURIComponent(q)}&n=${n}`),
     stats: () => fetch(`${AGENT}/api/v1/kb/stats`),
+    export: (sourceTypes = null) => {
+      const qs = sourceTypes ? `?source_types=${encodeURIComponent(sourceTypes)}` : '';
+      return fetch(`${AGENT}/api/v1/kb/export${qs}`);
+    },
+    import: (file, sourceTypes = null, overwrite = false) => {
+      const params = new URLSearchParams();
+      if (sourceTypes) params.set('source_types', sourceTypes);
+      if (overwrite) params.set('overwrite', 'true');
+      const qs = params.toString() ? `?${params}` : '';
+      const fd = new FormData();
+      fd.append('bundle_file', file);
+      return fetch(`${AGENT}/api/v1/kb/import${qs}`, { method: 'POST', body: fd });
+    },
   },
 
   ingestion: {
