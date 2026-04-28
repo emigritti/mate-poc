@@ -36,6 +36,7 @@ from routers.approvals import router as approvals_router
 from routers.documents import router as documents_router
 from routers.kb import router as kb_router
 from routers.admin import router as admin_router
+from routers.wiki import router as wiki_router
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,9 @@ async def lifespan(app: FastAPI):
                     last_upload_id,
                 )
 
+    if db.wiki_entities_col is not None:
+        logger.info("[Wiki] wiki_entities and wiki_relationships collections ready.")
+
     prune_task = asyncio.create_task(_prune_logs_loop(), name="log-pruner")
 
     yield
@@ -202,6 +206,7 @@ app.include_router(approvals_router)
 app.include_router(documents_router)
 app.include_router(kb_router)
 app.include_router(admin_router)
+app.include_router(wiki_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

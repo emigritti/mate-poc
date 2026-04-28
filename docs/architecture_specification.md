@@ -1370,6 +1370,14 @@ All endpoints are served by `mate-integration-agent` on port `3003` (internal). 
 | `/api/v1/kb/stats` | GET | — | Knowledge Base statistics (counts, types, tags) |
 | `/api/v1/kb/export` | GET | Token | Export KB as portable JSON bundle (ADR-051); `source_types` filter param |
 | `/api/v1/kb/import` | POST | Token | Import KB from JSON bundle (ADR-051); `source_types`, `overwrite` params |
+| `/api/v1/wiki/entities` | GET | — | List wiki entities; `q`, `entity_type`, `tags`, `limit`, `offset` params (ADR-052) |
+| `/api/v1/wiki/entities/{entity_id}` | GET | — | Entity detail + outgoing/incoming edges + chunk previews (ADR-052) |
+| `/api/v1/wiki/entities/{entity_id}` | DELETE | Token | Delete entity and cascade-remove its relationship edges (ADR-052) |
+| `/api/v1/wiki/graph` | GET | — | React Flow graph data (`nodes`, `edges`); `entity_id`, `depth`, `rel_types`, `limit_nodes` params (ADR-052) |
+| `/api/v1/wiki/stats` | GET | — | Entity/relationship counts and top entities by chunk count (ADR-052) |
+| `/api/v1/wiki/search` | GET | — | Full-text search over entity names and aliases (ADR-052) |
+| `/api/v1/wiki/rebuild` | POST | Token | Trigger async graph rebuild; returns `{job_id, status}` (ADR-052) |
+| `/api/v1/wiki/rebuild/{job_id}` | GET | — | Poll async rebuild job status (ADR-052) |
 | `/api/v1/documents` | GET | — | List all generated and approved documents |
 | `/api/v1/documents/{id}/promote-to-kb` | POST | Token | Promote an approved document into the RAG store (ADR-023) |
 | `/api/v1/catalog/integrations/{id}/suggest-tags` | GET | — | LLM-suggested tags for an integration (ADR-019) |
@@ -1958,6 +1966,7 @@ gantt
 | ADR-049 | Google Gemini API as Alternative LLM Provider | Accepted | Per-profile provider switching (`ollama` \| `gemini`) stored in `llm_overrides`; `_generate_with_gemini()` added to `llm_service.py` using `google-generativeai>=0.8.0` async SDK; `generate_with_retry()` dispatches based on `provider` kwarg; `GEMINI_API_KEY` read from `.env` via `settings.gemini_api_key`; Gemini ignores `num_ctx/top_k/top_p/repeat_penalty`; `LlmSettingsPage.jsx` shows Provider dropdown per card; backward-compatible default `provider="ollama"` |
 | ADR-050 | Multi-Client Requirements Persistence | Accepted | `Requirement` has `upload_id` + `project_id`; `requirements_col` MongoDB collection with write-through; last unfinalized session reloaded at startup; `GET /requirements?project_id=X` queries persisted requirements; `current_upload_id` in state |
 | ADR-051 | KB Export / Import | Accepted | `GET /api/v1/kb/export` downloads `KBExportBundle` JSON (documents + chunks, no embeddings); `POST /api/v1/kb/import` restores from bundle; both endpoints require Bearer token; `source_types` query param selects subset (`file,url,openapi,html,mcp`); `overwrite=true` replaces existing records by ID; BM25 rebuilt after import; `KBExportImportModal.jsx` in UI with Export + Import tabs |
+| ADR-052 | LLM Wiki / Graph RAG | Accepted | Additive knowledge graph layer over the flat KB vector store; `wiki_entities` + `wiki_relationships` MongoDB collections; rule-based entity/relationship extraction from v2 chunk metadata (ADR-048) with optional LLM enrichment via `qwen3:8b`; `WikiGraphBuilder` upserts idempotently; retrieval step 8 in `retriever.py` runs `$graphLookup` traversal (depth 2) and injects neighbour chunks with `score=0.05`; `ContextAssembler.assemble()` extended with `## KNOWLEDGE GRAPH CONTEXT` section; `WikiPage.jsx` (3 tabs: Entities / Detail / Graph) with `@xyflow/react` canvas; 8 wiki API endpoints; CLI migration script `scripts/build_wiki_graph.py`; 8 new `wiki_*` config settings; graceful no-op when graph not yet built |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |

@@ -200,6 +200,17 @@ export const API = {
     },
   },
 
+  wiki: {
+    entities: (qs = '') => fetch(`${AGENT}/api/v1/wiki/entities${qs ? `?${qs}` : ''}`),
+    entity:   (id)      => fetch(`${AGENT}/api/v1/wiki/entities/${encodeURIComponent(id)}`),
+    graph:    (qs = '') => fetch(`${AGENT}/api/v1/wiki/graph${qs ? `?${qs}` : ''}`),
+    stats:    ()        => fetch(`${AGENT}/api/v1/wiki/stats`),
+    search:   (q, n=10) => fetch(`${AGENT}/api/v1/wiki/search?q=${encodeURIComponent(q)}&limit=${n}`),
+    rebuild:  (force=false, llmAssist=false) =>
+      fetch(`${AGENT}/api/v1/wiki/rebuild?force=${force}&llm_assist=${llmAssist}`, { method: 'POST' }),
+    rebuildStatus: (jobId) => fetch(`${AGENT}/api/v1/wiki/rebuild/${encodeURIComponent(jobId)}`),
+  },
+
   ingestion: {
     listSources:        ()         => fetch(`${INGESTION}/api/v1/sources`),
     createSource:       (body)     => fetch(`${INGESTION}/api/v1/sources`, {

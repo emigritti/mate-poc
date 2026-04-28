@@ -20,6 +20,7 @@ from rank_bm25 import BM25Plus
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+import db
 from config import settings
 from services.llm_service import generate_with_ollama, llm_overrides
 
@@ -520,10 +521,129 @@ class HybridRetriever:
         filtered = self._apply_threshold(merged)
         reranked = self._tfidf_rerank(filtered, query_text, intent)
         bonused  = self._apply_semantic_bonus(reranked, intent)
-        top_k    = bonused[:settings.rag_top_k_chunks]
+
+        # Step 8 — Graph RAG: inject wiki neighbour chunks (ADR-052)
+        if settings.wiki_graph_retrieval_enabled:
+            wiki_chunks = await self._retrieve_wiki_neighbours(bonused, collection)
+            if wiki_chunks:
+                bonused = sorted(bonused + wiki_chunks, key=lambda c: c.score, reverse=True)
+
+        top_k = bonused[:settings.rag_top_k_chunks]
 
         _log(f"[RAG] Final: {len(top_k)} chunks after ensemble+threshold+rerank+semantic_bonus (intent={intent!r})")
         return top_k
+
+    # ── Wiki Graph Retrieval (ADR-052) ───────────────────────────────────────
+
+    async def _retrieve_wiki_neighbours(
+        self,
+        primary_chunks: list[ScoredChunk],
+        kb_collection,
+    ) -> list[ScoredChunk]:
+        """
+        Expand retrieval via knowledge-graph traversal.
+
+        1. Collect chunk_ids from the top-5 primary chunks.
+        2. Find wiki entities that cite those chunk_ids.
+        3. $graphLookup on wiki_relationships (max depth wiki_graph_max_depth).
+        4. Collect chunk_ids from reached entities.
+        5. Fetch those chunks from ChromaDB.
+        6. Return as ScoredChunk with source_label="wiki_graph".
+
+        Returns [] gracefully when wiki collections or kb_collection are None,
+        or when no neighbours are found.
+        """
+        if db.wiki_entities_col is None or db.wiki_relationships_col is None:
+            return []
+        if kb_collection is None:
+            return []
+
+        seed_chunk_ids = [c.doc_id for c in primary_chunks[:5] if c.doc_id]
+        if not seed_chunk_ids:
+            return []
+
+        try:
+            # Find entities that reference the seed chunks
+            seed_entity_cursor = db.wiki_entities_col.find(
+                {"chunk_ids": {"$in": seed_chunk_ids}},
+                {"entity_id": 1, "_id": 0},
+            )
+            seed_entity_ids = [doc["entity_id"] async for doc in seed_entity_cursor]
+            if not seed_entity_ids:
+                return []
+
+            # Graph traversal via $graphLookup
+            pipeline = [
+                {"$match": {"entity_id": {"$in": seed_entity_ids}}},
+                {
+                    "$graphLookup": {
+                        "from": "wiki_relationships",
+                        "startWith": "$entity_id",
+                        "connectFromField": "entity_id",
+                        "connectToField": "from_entity_id",
+                        "as": "_neighbours",
+                        "maxDepth": settings.wiki_graph_max_depth,
+                        "depthField": "_depth",
+                    }
+                },
+                {"$limit": settings.wiki_graph_max_neighbours},
+            ]
+            cursor = db.wiki_entities_col.aggregate(pipeline)
+            neighbour_entity_ids: set[str] = set()
+            async for doc in cursor:
+                for rel in doc.get("_neighbours", []):
+                    if settings.wiki_graph_typed_edges_only and rel.get("rel_type") == "RELATED_TO":
+                        continue
+                    neighbour_entity_ids.add(rel.get("to_entity_id", ""))
+            neighbour_entity_ids.discard("")
+
+            if not neighbour_entity_ids:
+                return []
+
+            # Collect chunk_ids from neighbour entities
+            neighbour_chunk_ids: list[str] = []
+            ent_cursor = db.wiki_entities_col.find(
+                {"entity_id": {"$in": list(neighbour_entity_ids)}},
+                {"chunk_ids": 1, "entity_id": 1, "_id": 0},
+            )
+            entity_label_map: dict[str, str] = {}
+            async for doc in ent_cursor:
+                for cid in (doc.get("chunk_ids") or [])[:2]:  # cap per entity
+                    neighbour_chunk_ids.append(cid)
+                    entity_label_map[cid] = doc["entity_id"]
+
+            if not neighbour_chunk_ids:
+                return []
+
+            # Fetch chunks from ChromaDB
+            result = kb_collection.get(
+                ids=neighbour_chunk_ids[:20],  # safety cap
+                include=["documents", "metadatas"],
+            )
+            wiki_chunks: list[ScoredChunk] = []
+            for cid, text, meta in zip(
+                result.get("ids", []),
+                result.get("documents", []),
+                result.get("metadatas", []),
+            ):
+                if not text:
+                    continue
+                entity_label = entity_label_map.get(cid, "wiki_graph")
+                wiki_chunks.append(ScoredChunk(
+                    text=text,
+                    score=settings.wiki_graph_score_bonus,
+                    source_label=f"wiki_graph:{entity_label}",
+                    tags=[],
+                    doc_id=(meta or {}).get("document_id", ""),
+                    semantic_type=(meta or {}).get("semantic_type", ""),
+                ))
+
+            logger.info("[RAG] wiki_graph chunks injected: %d", len(wiki_chunks))
+            return wiki_chunks
+
+        except Exception as exc:
+            logger.warning("[RAG] wiki graph retrieval failed (non-fatal): %s", exc)
+            return []
 
     # ── RAPTOR-lite Summary Retrieval (ADR-032) ───────────────────────────────
 

@@ -223,6 +223,7 @@ class ContextAssembler:
         summary_max_chars: int | None = None,
         pinned_chunks: list[ScoredChunk] | None = None,
         pinned_max_chars: int = 1200,
+        wiki_chunks: list[ScoredChunk] | None = None,
     ) -> str:
         """Assemble a structured context string for the LLM prompt.
 
@@ -250,6 +251,7 @@ class ContextAssembler:
             and not url_chunks
             and not summary_chunks
             and not pinned_chunks
+            and not wiki_chunks
         )
         if all_empty:
             return ""
@@ -316,6 +318,25 @@ class ContextAssembler:
                     break
                 section_parts.append(entry)
                 chars_used += len(entry)
+            if len(section_parts) > 1:
+                sections.append("\n\n".join(section_parts))
+
+        # ── KNOWLEDGE GRAPH CONTEXT (ADR-052) ─────────────────────────────────
+        if wiki_chunks:
+            wiki_sorted = sorted(wiki_chunks, key=lambda c: c.score, reverse=True)
+            wiki_max = settings.wiki_rag_max_chars
+            header = "## KNOWLEDGE GRAPH CONTEXT (related concepts from LLM Wiki):"
+            section_parts = [header]
+            wiki_chars = 0
+            for chunk in wiki_sorted:
+                # source_label format: "wiki_graph:ENT-orderstatus"
+                entity_label = chunk.source_label.split(":", 1)[-1] if ":" in chunk.source_label else chunk.source_label
+                type_hint = f" · type: {chunk.semantic_type}" if chunk.semantic_type else ""
+                entry = f"### Source: wiki_graph · entity: {entity_label}{type_hint}\n{chunk.text}"
+                if wiki_chars + len(entry) > wiki_max:
+                    break
+                section_parts.append(entry)
+                wiki_chars += len(entry)
             if len(section_parts) > 1:
                 sections.append("\n\n".join(section_parts))
 

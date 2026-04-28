@@ -44,6 +44,7 @@ from schemas import (
 )
 from services.summarizer_service import summarize_section
 from services.tag_service import suggest_kb_tags_via_llm
+from services.wiki_graph_builder import WikiGraphBuilder
 from utils import _now_iso
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,28 @@ async def _run_raptor_summarization(
                 logger.info("[RAPTOR] Summary stored for doc=%s section='%s'.", doc_id, section_header)
             except Exception as exc:
                 logger.warning("[RAPTOR] summaries_col upsert failed for %s: %s", doc_id, exc)
+
+
+async def _run_wiki_graph_build(doc_id: str) -> None:
+    """Background task: build/update wiki graph for a newly uploaded KB document."""
+    if db.wiki_entities_col is None or db.wiki_relationships_col is None:
+        return
+    if state.kb_collection is None:
+        return
+    try:
+        builder = WikiGraphBuilder(
+            entities_col=db.wiki_entities_col,
+            relationships_col=db.wiki_relationships_col,
+            kb_collection=state.kb_collection,
+            ollama_host=settings.ollama_host,
+            llm_model=settings.tag_model,
+            llm_assist=settings.wiki_llm_relation_extraction,
+            typed_edges_only=settings.wiki_graph_typed_edges_only,
+        )
+        stats = await builder.build_for_document(doc_id)
+        logger.info("[Wiki] Auto-build for %s: %s", doc_id, stats)
+    except Exception as exc:
+        logger.warning("[Wiki] Auto-build failed for %s: %s", doc_id, exc)
 
 
 async def _process_kb_file(
@@ -238,6 +261,11 @@ async def kb_upload(
         tags_csv=tags_csv,
     )
     logger.info("[RAPTOR] Summarization enqueued as background task for doc=%s.", doc_id)
+
+    # ADR-052: wiki graph build (auto, gated by config flag)
+    if settings.wiki_auto_build_on_upload:
+        background_tasks.add_task(_run_wiki_graph_build, doc_id)
+        logger.info("[Wiki] Graph build enqueued as background task for doc=%s.", doc_id)
 
     # Update BM25 corpus — all chunk types (text, table, figure) are included (ADR-031).
     state.kb_chunks[doc_id] = [c.text for c in docling_chunks]
@@ -423,6 +451,19 @@ async def kb_delete_document(
     # Remove from BM25 corpus and rebuild index
     state.kb_chunks.pop(id, None)
     hybrid_retriever.build_bm25_index(state.kb_chunks)
+
+    # ADR-052: remove wiki graph nodes for this document
+    if db.wiki_entities_col is not None and db.wiki_relationships_col is not None:
+        try:
+            builder = WikiGraphBuilder(
+                entities_col=db.wiki_entities_col,
+                relationships_col=db.wiki_relationships_col,
+                kb_collection=state.kb_collection,
+            )
+            await builder.delete_for_document(id)
+        except Exception as exc:
+            logger.warning("[Wiki] Graph cleanup failed for %s: %s", id, exc)
+
     return {"status": "success", "message": f"KB document {id} deleted."}
 
 

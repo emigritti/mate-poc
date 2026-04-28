@@ -37,6 +37,8 @@ agent_settings_col:  motor.motor_asyncio.AsyncIOMotorCollection | None = None
 projects_col:        motor.motor_asyncio.AsyncIOMotorCollection | None = None
 events_col:          motor.motor_asyncio.AsyncIOMotorCollection | None = None
 requirements_col:    motor.motor_asyncio.AsyncIOMotorCollection | None = None  # ADR-050
+wiki_entities_col:       motor.motor_asyncio.AsyncIOMotorCollection | None = None  # ADR-052
+wiki_relationships_col:  motor.motor_asyncio.AsyncIOMotorCollection | None = None  # ADR-052
 
 
 async def init_db(retries: int = 20, delay: float = 3.0) -> None:
@@ -46,7 +48,7 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
     Retries up to `retries` times with `delay` seconds between attempts.
     On failure, collections remain None (degraded mode — no crash).
     """
-    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col, agent_settings_col, projects_col, events_col, requirements_col
+    global _client, _db, catalog_col, approvals_col, documents_col, kb_documents_col, llm_settings_col, agent_settings_col, projects_col, events_col, requirements_col, wiki_entities_col, wiki_relationships_col
 
     for attempt in range(1, retries + 1):
         try:
@@ -67,7 +69,9 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
             agent_settings_col = _db["agent_settings"]
             projects_col       = _db["projects"]
             events_col         = _db["events"]
-            requirements_col   = _db["requirements"]  # ADR-050
+            requirements_col       = _db["requirements"]      # ADR-050
+            wiki_entities_col      = _db["wiki_entities"]     # ADR-052
+            wiki_relationships_col = _db["wiki_relationships"] # ADR-052
 
             # Idempotent index creation
             await catalog_col.create_index("id", unique=True)
@@ -84,6 +88,22 @@ async def init_db(retries: int = 20, delay: float = 3.0) -> None:
                 [("req_id", 1), ("upload_id", 1)], unique=True
             )
             await requirements_col.create_index("project_id")
+            # ADR-052: wiki graph indexes
+            await wiki_entities_col.create_index("entity_id", unique=True)
+            await wiki_entities_col.create_index(
+                [("name", "text"), ("aliases", "text")],
+                name="wiki_entities_text",
+            )
+            await wiki_entities_col.create_index("entity_type")
+            await wiki_entities_col.create_index("doc_ids")  # multikey
+            await wiki_entities_col.create_index("tags_csv")
+            await wiki_relationships_col.create_index("rel_id", unique=True)
+            await wiki_relationships_col.create_index(
+                [("from_entity_id", 1), ("to_entity_id", 1)]
+            )
+            await wiki_relationships_col.create_index("rel_type")
+            await wiki_relationships_col.create_index("doc_ids")           # multikey
+            await wiki_relationships_col.create_index("evidence_chunk_ids") # multikey
 
             logger.info("[DB] MongoDB connected (attempt %d/%d).", attempt, retries)
             return

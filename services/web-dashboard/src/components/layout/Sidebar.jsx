@@ -1,4 +1,4 @@
-import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap, Settings2 } from 'lucide-react';
+import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap, Settings2, Network } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
@@ -13,6 +13,7 @@ const NAV_GROUPS = [
     label: 'Knowledge Base',
     items: [
       { id: 'kb',                label: 'Knowledge Base',    icon: Library     },
+      { id: 'wiki',              label: 'LLM Wiki',          icon: Network     },
       { id: 'ingestion-sources', label: 'Ingestion Sources', icon: DatabaseZap },
     ],
   },

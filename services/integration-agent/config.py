@@ -165,6 +165,24 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     anthropic_api_key: str | None = None
 
+    # ── LLM Wiki / Graph RAG (ADR-052) ───────────────────────────────────────
+    # Graph traversal inserted after semantic-bonus step in retrieve().
+    wiki_graph_retrieval_enabled: bool = True    # WIKI_GRAPH_RETRIEVAL_ENABLED
+    # Max $graphLookup recursion depth when expanding entity neighbours.
+    wiki_graph_max_depth: int = 2                # WIKI_GRAPH_MAX_DEPTH
+    # Cap on neighbour entities fetched per retrieval call.
+    wiki_graph_max_neighbours: int = 10          # WIKI_GRAPH_MAX_NEIGHBOURS
+    # Score injected for wiki-graph chunks (below any real RAG score).
+    wiki_graph_score_bonus: float = 0.05         # WIKI_GRAPH_SCORE_BONUS
+    # When True, uses qwen3:8b (tag_model) to upgrade RELATED_TO edges.
+    wiki_llm_relation_extraction: bool = False   # WIKI_LLM_RELATION_EXTRACTION
+    # Char budget for the KNOWLEDGE GRAPH CONTEXT section in the prompt.
+    wiki_rag_max_chars: int = 1500              # WIKI_RAG_MAX_CHARS
+    # If True, only explicitly typed edges (non-RELATED_TO) feed graph traversal.
+    wiki_graph_typed_edges_only: bool = True     # WIKI_GRAPH_TYPED_EDGES_ONLY
+    # Automatically trigger graph build when a new KB document is uploaded.
+    wiki_auto_build_on_upload: bool = True       # WIKI_AUTO_BUILD_ON_UPLOAD
+
     # ── Security (optional for PoC — enforced on mutating endpoints) ──
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.
     # If absent, endpoints log a warning and allow through (dev mode).

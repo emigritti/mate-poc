@@ -45,6 +45,10 @@ agent_progress: dict = {}
 agent_lock = asyncio.Lock()
 running_tasks: dict[str, asyncio.Task] = {}
 
+# ── Wiki / Graph RAG job tracking (ADR-052) ───────────────────────────────────
+# key: job_id (UUID), value: {status, started_at, finished_at, stats, error}
+wiki_build_jobs: dict[str, dict] = {}
+
 # ── ChromaDB — initialized with retry in lifespan ─────────────────────────────
 chroma_client  = None
 collection     = None

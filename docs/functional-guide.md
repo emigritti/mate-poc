@@ -1482,3 +1482,134 @@ Version `1.0` is the only supported format. Import rejects bundles with a differ
 - Both endpoints require authentication (Bearer token via `require_token`)
 - Bundle files are validated against `KBExportBundle` schema before any write operations
 - Source types are validated against the allowed set `{file, url, openapi, html, mcp}`
+
+---
+
+## 18. LLM Wiki — Graph RAG (ADR-052)
+
+### Overview
+
+The LLM Wiki transforms the flat vector Knowledge Base into a navigable **knowledge graph**. It extracts named entities and typed relationships from the existing v2 chunk metadata (ADR-048) and stores them in two new MongoDB collections — `wiki_entities` and `wiki_relationships`. The graph layer is **additive**: ChromaDB, BM25, and all existing retrieval pipelines are unchanged.
+
+Two capabilities are built on top of the graph:
+
+1. **Graph-enriched RAG** — a new retrieval step (step 8) traverses entity relationships to surface chunks that are semantically linked but not directly similar to the query.
+2. **LLM Wiki UI** — a browsable, Wikipedia-style interface for exploring entities, relationships, and the graph visually.
+
+### Entities
+
+An entity is any named concept extracted from chunk metadata. Each entity has:
+
+- `entity_id` — stable slug, e.g. `ENT-OrderStatus`
+- `entity_type` — one of: `system`, `api_entity`, `business_term`, `state`, `rule`, `field`, `process`, `generic`
+- `doc_ids` / `chunk_ids` — links back to source documents and chunks in ChromaDB
+- `aliases`, `tags_csv`, `semantic_types` — enrichment fields from v2 metadata
+
+Entity types are inferred automatically from the metadata fields where the entity was found:
+
+| Source field | `entity_type` |
+|---|---|
+| `system_names` | `system` |
+| `entity_names` + `semantic_type = entity_definition` | `api_entity` |
+| `business_terms` | `business_term` |
+| Nodes of `state_transitions` | `state` |
+| `entity_names` + `semantic_type = business_rule` | `rule` |
+| `field_names` (≥3 in chunk) | `field` |
+| `entity_names` + `semantic_type = integration_flow` | `process` |
+| fallback | `generic` |
+
+### Relationships
+
+Relationships connect two entities with a typed directed edge. Extraction is rule-based (deterministic) by default, with optional LLM enrichment for ambiguous edges.
+
+| `rel_type` | Meaning |
+|---|---|
+| `TRANSITIONS_TO` | State machine transition (from `state_transitions` metadata) |
+| `MAPS_TO` | Data field mapping between systems |
+| `CALLS` | System-to-system API invocation |
+| `GOVERNS` | Business rule controls an entity |
+| `TRIGGERS` | Entity triggers an event |
+| `HANDLES_ERROR` | Entity handles an error scenario |
+| `DEFINED_BY` | Field defined within a system |
+| `RELATED_TO` | Generic co-occurrence (fallback) |
+
+Each relationship stores its evidence (`evidence_chunk_ids`), extraction method (`rule_based` or `llm_assisted`), and weight.
+
+### Graph RAG — How It Works
+
+After BM25 + dense retrieval and semantic bonus scoring, retrieval step 8 runs a graph traversal:
+
+1. The top-5 primary chunks seed the traversal — their `chunk_ids` are looked up in `wiki_entities`.
+2. `$graphLookup` on `wiki_relationships` traverses up to `wiki_graph_max_depth` hops (default 2).
+3. Related entities' `chunk_ids` are fetched from ChromaDB and injected into the result set with a small score bonus (`wiki_graph_score_bonus = 0.05`).
+4. The merged set is re-ranked and sliced to `rag_top_k_chunks`.
+
+When graph chunks are injected, the agent context includes a `## KNOWLEDGE GRAPH CONTEXT` section that labels each chunk with its entity and relationship path. This is capped at `wiki_rag_max_chars` characters (default 1500).
+
+The feature is gated by `wiki_graph_retrieval_enabled` (default `True`) and gracefully degrades to a no-op if the graph has not been built yet.
+
+### LLM Wiki UI
+
+Navigate to **LLM Wiki** in the sidebar (Knowledge Base group) to access the three-tab interface:
+
+**Tab 1 — Entities**
+- Full entity list with live search, `entity_type` dropdown filter, and tag filter
+- Each row shows entity name, type badge (color-coded), chunk count, and tags
+- Click any row to open the Entity Detail tab
+
+**Tab 2 — Entity Detail**
+- Header: entity name, type badge, chunk count, source documents
+- Outgoing relationships: target entity (clickable), relationship type badge, weight bar, evidence chunk link
+- Incoming relationships: same structure from the reverse direction
+- Source chunks: up to 3 preview excerpts with `semantic_type` label
+
+**Tab 3 — Graph View**
+- Interactive React Flow canvas seeded by the currently selected entity (or full graph capped at 50 nodes)
+- Nodes colored by `entity_type`; edges labeled with `rel_type`
+- `TRANSITIONS_TO` edges are animated
+- Relationship type filter in the sidebar
+- Click a node to navigate directly to its Entity Detail
+
+The header bar shows live stats (entity count, relationship count) and a **Rebuild** button that triggers `POST /api/v1/wiki/rebuild` and polls for completion.
+
+### Building the Graph
+
+The graph is built automatically on every KB file upload (`wiki_auto_build_on_upload=True`). For an initial build against the full KB, run:
+
+```bash
+docker compose run integration-agent python scripts/build_wiki_graph.py --force
+```
+
+Additional flags:
+- `--llm-assist` — enable LLM enrichment of `RELATED_TO` edges via `qwen3:8b`
+- `--doc-id KB-XXXX` — rebuild graph for a single document (partial rebuild)
+
+The build is idempotent: running it twice produces the same entity and relationship counts.
+
+### Configuration
+
+All settings are live (no restart required if passed as env vars):
+
+| Setting | Default | Description |
+|---|---|---|
+| `WIKI_GRAPH_RETRIEVAL_ENABLED` | `true` | Enable/disable graph retrieval step |
+| `WIKI_GRAPH_MAX_DEPTH` | `2` | Max hops in `$graphLookup` traversal |
+| `WIKI_GRAPH_MAX_NEIGHBOURS` | `10` | Max entity neighbours per query |
+| `WIKI_GRAPH_SCORE_BONUS` | `0.05` | Score assigned to wiki-graph chunks |
+| `WIKI_LLM_RELATION_EXTRACTION` | `false` | Enable LLM enrichment for `RELATED_TO` edges |
+| `WIKI_RAG_MAX_CHARS` | `1500` | Max chars injected into agent context |
+| `WIKI_GRAPH_TYPED_EDGES_ONLY` | `true` | Suppress `RELATED_TO` when typed edge exists |
+| `WIKI_AUTO_BUILD_ON_UPLOAD` | `true` | Auto-build graph on KB file upload |
+
+### API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/wiki/entities` | List entities with search and filters |
+| `GET` | `/api/v1/wiki/entities/{entity_id}` | Entity detail + edges + chunk previews |
+| `GET` | `/api/v1/wiki/graph` | React Flow graph data (nodes + edges) |
+| `GET` | `/api/v1/wiki/stats` | Entity/relationship counts |
+| `GET` | `/api/v1/wiki/search` | Full-text search over entity names |
+| `POST` | `/api/v1/wiki/rebuild` | Trigger async graph rebuild [token] |
+| `GET` | `/api/v1/wiki/rebuild/{job_id}` | Poll rebuild job status |
+| `DELETE` | `/api/v1/wiki/entities/{entity_id}` | Delete entity + cascade [token] |
