@@ -113,7 +113,8 @@
       "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc add services/integration-agent/prompt_builder.py)",
       "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc status)",
       "Bash(git -C:*)",
-      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc push origin main)"
+      "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc push origin main)",
+      "Bash(git diff *)"
     ]
   },
   "hooks": {
