@@ -127,10 +127,18 @@ class Settings(BaseSettings):
     # for typical docs (< 30 pages). Override via DOCLING_TIMEOUT_SECONDS.
     docling_timeout_seconds: int = 180
 
-    # Vision captioning: set to False to skip LLaVA calls (figures get placeholder caption).
+    # Vision captioning: set to False to skip VLM calls (figures get placeholder caption).
     vision_captioning_enabled: bool = True
-    # Ollama model used for image captioning (must support multimodal via /api/chat).
-    vision_model_name: str = "llava:7b"
+    # ── VLM / Vision (ADR-X1) ─────────────────────────────────────────────────
+    # Primary VLM — IBM Granite-Vision tuned for enterprise documents.
+    # Pull: `ollama pull granite3.2-vision:2b`.
+    vlm_model_name: str = "granite3.2-vision:2b"
+    # Fallback VLM — used when the primary fails or VLM_FORCE_FALLBACK=true.
+    vlm_fallback_model_name: str = "llava:7b"
+    # When True, the fallback model is used directly (skips primary attempt).
+    vlm_force_fallback: bool = False
+    # DEPRECATED — kept for backward compat in older tests; reads same value as vlm_model_name.
+    vision_model_name: str = "granite3.2-vision:2b"
     # RAPTOR-lite: set to False to skip section summarization at KB upload time.
     raptor_summarization_enabled: bool = True
     # Max sections to summarize per KB document upload. Acts as a safety cap so
