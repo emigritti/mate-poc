@@ -334,6 +334,44 @@ class HybridRetriever:
 
         return list(seen.values())
 
+    # ── Reciprocal Rank Fusion (ADR-X3) ───────────────────────────────────────
+
+    def _rrf_merge(
+        self,
+        chroma_chunks: list[ScoredChunk],
+        bm25_chunks: list[ScoredChunk],
+        k: int = 60,
+    ) -> list[ScoredChunk]:
+        """Reciprocal Rank Fusion (ADR-X3).
+
+        Robust to heterogeneous score scales — fuses by rank, not by score.
+        For each chunk, RRF_score(d) = Σ 1/(k + rank_i(d)) over its appearance
+        in each input source.  k=60 is the standard constant.
+        """
+        rrf_scores: dict[str, float] = {}
+        chunk_map: dict[str, ScoredChunk] = {}
+
+        for source in (chroma_chunks, bm25_chunks):
+            sorted_src = sorted(source, key=lambda c: c.score, reverse=True)
+            for rank, chunk in enumerate(sorted_src, start=1):
+                key = chunk.text[:100]
+                rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (k + rank)
+                if key not in chunk_map:
+                    chunk_map[key] = chunk
+
+        out: list[ScoredChunk] = []
+        for key, score in sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True):
+            existing = chunk_map[key]
+            out.append(ScoredChunk(
+                text=existing.text,
+                score=score,
+                source_label=existing.source_label,
+                tags=existing.tags,
+                doc_id=existing.doc_id,
+                semantic_type=existing.semantic_type,
+            ))
+        return out
+
     # ── Ensemble Merge (ADR-027) ──────────────────────────────────────────────
 
     def _ensemble_merge(
@@ -527,7 +565,10 @@ class HybridRetriever:
         bm25_chunks   = self._query_bm25(queries)
         _log(f"[RAG] Retrieved: {len(chroma_chunks)} Chroma + {len(bm25_chunks)} BM25 chunks")
 
-        merged   = self._ensemble_merge(chroma_chunks, bm25_chunks)
+        if settings.rag_use_rrf:
+            merged = self._rrf_merge(chroma_chunks, bm25_chunks, k=settings.rag_rrf_k)
+        else:
+            merged = self._ensemble_merge(chroma_chunks, bm25_chunks)
         filtered = self._apply_threshold(merged)
         reranked = self._tfidf_rerank(filtered, query_text, intent)
         bonused  = self._apply_semantic_bonus(reranked, intent)
