@@ -43,20 +43,41 @@ logger = logging.getLogger(__name__)
 
 # ── ChromaDB init with retry ──────────────────────────────────────────────────
 
+def _make_embedder(mode):
+    """Construct the configured embedder; returns None to keep ChromaDB default.
+
+    ADR-X2: nomic-embed-text via Ollama with task-aware prefixes.
+    """
+    if settings.embedder_provider != "ollama":
+        return None
+    from embedding_function import OllamaEmbeddingFunction
+    return OllamaEmbeddingFunction(
+        model=settings.embedder_model_name,
+        ollama_host=settings.ollama_host,
+        mode=mode,
+    )
+
+
 async def _init_chromadb(retries: int = 20, delay: float = 5.0) -> None:
+    # ADR-X2: build Ollama-backed embedders (mode-pair) when provider=ollama.
+    state.kb_doc_embedder = _make_embedder("document")
+    state.kb_query_embedder = _make_embedder("query")
     for attempt in range(1, retries + 1):
         try:
             state.chroma_client = chromadb.HttpClient(
                 host=settings.chroma_host, port=settings.chroma_port
             )
             state.collection = state.chroma_client.get_or_create_collection(
-                name="approved_integrations"
+                name="approved_integrations",
+                embedding_function=state.kb_doc_embedder,
             )
             state.kb_collection = state.chroma_client.get_or_create_collection(
-                name="knowledge_base"
+                name="knowledge_base",
+                embedding_function=state.kb_doc_embedder,
             )
             state.summaries_col = state.chroma_client.get_or_create_collection(
-                name="kb_summaries"
+                name="kb_summaries",
+                embedding_function=state.kb_doc_embedder,
             )
             logger.info("[ChromaDB] Connected (attempt %d/%d).", attempt, retries)
             return

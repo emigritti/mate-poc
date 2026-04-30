@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+import state
 from config import settings
 from services.llm_service import llm_overrides
 from services.retriever import TAGS_CSV_FIELD, ScoredChunk
@@ -121,11 +122,20 @@ async def query_kb_context(
         try:
             n_results = 15 if filter_tag else 3
             include   = ["documents", "metadatas"] if filter_tag else ["documents"]
-            results = kb_collection.query(
-                query_texts=[query_text],
-                n_results=n_results,
-                include=include,
-            )
+            # ADR-X2: use query-mode embedder explicitly to apply search_query: prefix
+            if state.kb_query_embedder is not None:
+                query_embeddings = state.kb_query_embedder([query_text])
+                results = kb_collection.query(
+                    query_embeddings=query_embeddings,
+                    n_results=n_results,
+                    include=include,
+                )
+            else:
+                results = kb_collection.query(
+                    query_texts=[query_text],
+                    n_results=n_results,
+                    include=include,
+                )
             all_docs = (results or {}).get("documents", [[]])[0]
             if filter_tag:
                 metas = (results or {}).get("metadatas", [[]])[0]

@@ -21,6 +21,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 import db
+import state
 from config import settings
 from services.llm_service import generate_with_ollama, llm_overrides
 
@@ -261,11 +262,20 @@ class HybridRetriever:
 
         for query in queries:
             try:
-                results = collection.query(
-                    query_texts=[query],
-                    n_results=n,
-                    include=["documents", "distances", "metadatas"],
-                )
+                # ADR-X2: use query-mode embedder explicitly to apply search_query: prefix
+                if state.kb_query_embedder is not None:
+                    query_embeddings = state.kb_query_embedder([query])
+                    results = collection.query(
+                        query_embeddings=query_embeddings,
+                        n_results=n,
+                        include=["documents", "distances", "metadatas"],
+                    )
+                else:
+                    results = collection.query(
+                        query_texts=[query],
+                        n_results=n,
+                        include=["documents", "distances", "metadatas"],
+                    )
                 docs  = (results.get("documents") or [[]])[0]
                 dists = (results.get("distances")  or [[]])[0]
                 metas = (results.get("metadatas")  or [[]])[0]
@@ -668,11 +678,20 @@ class HybridRetriever:
             return []
 
         try:
-            raw = summaries_col.query(
-                query_texts=[query_text],
-                n_results=top_k * 2,  # over-fetch to allow for tag filtering
-                include=["documents", "distances", "metadatas"],
-            )
+            # ADR-X2: use query-mode embedder explicitly to apply search_query: prefix
+            if state.kb_query_embedder is not None:
+                query_embeddings = state.kb_query_embedder([query_text])
+                raw = summaries_col.query(
+                    query_embeddings=query_embeddings,
+                    n_results=top_k * 2,  # over-fetch to allow for tag filtering
+                    include=["documents", "distances", "metadatas"],
+                )
+            else:
+                raw = summaries_col.query(
+                    query_texts=[query_text],
+                    n_results=top_k * 2,  # over-fetch to allow for tag filtering
+                    include=["documents", "distances", "metadatas"],
+                )
         except Exception as exc:
             logger.warning("[RAG] retrieve_summaries query failed: %s", exc)
             return []
