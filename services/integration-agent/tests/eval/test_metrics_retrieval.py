@@ -53,7 +53,7 @@ def test_recall_at_k_capped_when_relevant_exceeds_k():
 
 
 def test_ndcg_at_k_imperfect_order():
-    """Catches discount-formula regressions: hand-computed expected ~0.7039."""
+    """Catches discount-formula regressions: hand-computed expected ~0.6934."""
     # retrieved = [x, a, b], relevant = {a, b}, k=3
     # DCG  = 0/log2(2) + 1/log2(3) + 1/log2(4) = 0 + 0.6309 + 0.5    = 1.1309
     # IDCG = 1/log2(2) + 1/log2(3)             = 1.0   + 0.6309      = 1.6309
