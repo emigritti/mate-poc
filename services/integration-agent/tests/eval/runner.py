@@ -18,6 +18,13 @@ async def _retrieve_for_query(query: str, intent: str) -> list:
 
 
 async def _run_async(questions: list[dict]) -> dict[str, Any]:
+    """Run all golden questions through the retriever and aggregate metrics.
+
+    Note: faithfulness_substring measures whether the top-3 retrieved chunks
+    contain the expected_answer_must_contain tokens — it is a retrieval-coverage
+    proxy, NOT end-to-end LLM-answer faithfulness.  The latter requires an LLM
+    in the loop (see llm_judge_faithfulness, opt-in via ANTHROPIC_API_KEY).
+    """
     mrr_inputs: list[tuple[list[str], set[str]]] = []
     recall5_scores: list[float] = []
     ndcg5_scores: list[float] = []
