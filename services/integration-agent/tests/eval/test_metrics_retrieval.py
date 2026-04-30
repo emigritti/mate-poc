@@ -42,3 +42,32 @@ def test_ndcg_at_k_perfect_order():
 
 def test_ndcg_at_k_zero_relevant():
     assert ndcg_at_k(["a", "b"], set(), k=2) == 0.0
+
+
+def test_recall_at_k_capped_when_relevant_exceeds_k():
+    """Denominator is capped at k — perfect retrieval at k=2 with 5 relevant items returns 1.0."""
+    retrieved = ["a", "b", "c", "d", "e"]
+    relevant = {"a", "b", "x", "y", "z"}
+    # Top-2 contains 2 of the relevant items → 2/min(5,2) = 2/2 = 1.0
+    assert recall_at_k(retrieved, relevant, k=2) == 1.0
+
+
+def test_ndcg_at_k_imperfect_order():
+    """Catches discount-formula regressions: hand-computed expected ~0.7039."""
+    # retrieved = [x, a, b], relevant = {a, b}, k=3
+    # DCG  = 0/log2(2) + 1/log2(3) + 1/log2(4) = 0 + 0.6309 + 0.5    = 1.1309
+    # IDCG = 1/log2(2) + 1/log2(3)             = 1.0   + 0.6309      = 1.6309
+    # NDCG = 1.1309 / 1.6309 ≈ 0.6934
+    retrieved = ["x", "a", "b"]
+    relevant = {"a", "b"}
+    assert ndcg_at_k(retrieved, relevant, k=3) == pytest.approx(0.6934, abs=1e-3)
+
+
+def test_mrr_mixed_match_and_miss():
+    """Catches MRR averaging bugs."""
+    queries = [
+        (["a"], {"a"}),       # rank 1 → 1.0
+        (["b"], {"x"}),       # no match → 0.0
+    ]
+    # mean = 0.5
+    assert mrr(queries) == pytest.approx(0.5)

@@ -11,11 +11,16 @@ def recall_at_k(
     relevant: set[str],
     k: int,
 ) -> float:
-    """Fraction of relevant items present in the top-k retrieved list."""
+    """Fraction of relevant items present in the top-k retrieved list.
+
+    Denominator is min(len(relevant), k) — consistent with NDCG@k IDCG.
+    """
+    if k <= 0:
+        return 0.0
     if not relevant:
         return 0.0
     top_k = set(retrieved[:k])
-    return len(top_k & relevant) / len(relevant)
+    return len(top_k & relevant) / min(len(relevant), k)
 
 
 def mrr(queries: Iterable[tuple[list[str], set[str]]]) -> float:
@@ -44,6 +49,8 @@ def ndcg_at_k(
 
     Binary relevance: gain = 1 if item in relevant, else 0.
     """
+    if k <= 0:
+        return 0.0
     if not relevant:
         return 0.0
     dcg = sum(
