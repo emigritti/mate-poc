@@ -570,7 +570,12 @@ class HybridRetriever:
         else:
             merged = self._ensemble_merge(chroma_chunks, bm25_chunks)
         filtered = self._apply_threshold(merged)
-        reranked = self._tfidf_rerank(filtered, query_text, intent)
+        if settings.reranker_enabled:
+            from services.reranker_service import cross_encoder_rerank
+            top_n = filtered[:settings.reranker_top_n]
+            reranked = cross_encoder_rerank(query_text, top_n)
+        else:
+            reranked = self._tfidf_rerank(filtered, query_text, intent)
         bonused  = self._apply_semantic_bonus(reranked, intent)
 
         # Step 8 — Graph RAG: inject wiki neighbour chunks (ADR-052)
