@@ -20,11 +20,15 @@ CHUNK_TEXT_PREVIEW_LEN = 300
 
 def _get_chroma_collection():
     """Open a ChromaDB HTTP client and return the shared kb_collection."""
+    from routers.ingest import _make_doc_embedder
     client = chromadb.HttpClient(
         host=settings.chroma_host,
         port=settings.chroma_port,
     )
-    return client.get_or_create_collection("kb_collection")
+    return client.get_or_create_collection(
+        "kb_collection",
+        embedding_function=_make_doc_embedder(),
+    )
 
 
 def _doc_to_run(doc: dict) -> SourceRun:

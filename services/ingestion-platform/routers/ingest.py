@@ -78,7 +78,23 @@ def _get_chroma_collection():
         host=settings.chroma_host,
         port=settings.chroma_port,
     )
-    return client.get_or_create_collection("kb_collection")
+    embedder = _make_doc_embedder()
+    return client.get_or_create_collection(
+        "kb_collection",
+        embedding_function=embedder,
+    )
+
+
+def _make_doc_embedder():
+    """ADR-X2: same embedder as integration-agent for dimension parity."""
+    if settings.embedder_provider != "ollama":
+        return None
+    from embedding_function import OllamaEmbeddingFunction
+    return OllamaEmbeddingFunction(
+        model=settings.embedder_model_name,
+        ollama_host=settings.ollama_host,
+        mode="document",
+    )
 
 
 async def _start_run(source_id: str, trigger: RunTrigger, collector_type: SourceType) -> SourceRun:
