@@ -204,6 +204,22 @@ class Settings(BaseSettings):
     embedder_doc_prefix: str = "search_document: "
     embedder_query_prefix: str = "search_query: "
 
+    # ── Reranker / Fusion (ADR-X3) ────────────────────────────────────────────
+    # Cross-encoder reranker — replaces TF-IDF cosine after RRF fusion.
+    # Set RERANKER_ENABLED=false to fall back to the legacy TF-IDF path.
+    reranker_enabled: bool = True
+    reranker_model_name: str = "BAAI/bge-reranker-base"
+    reranker_top_n: int = 30
+    # Reciprocal Rank Fusion — replaces weighted-merge (rank-based, scale-robust).
+    # Set RAG_USE_RRF=false to fall back to the legacy weighted ensemble.
+    rag_use_rrf: bool = True
+    rag_rrf_k: int = 60
+    # Optional Claude Haiku LLM-judge cascade after the cross-encoder (top-K final).
+    # Off by default — opt-in via env var, only used when ANTHROPIC_API_KEY is set.
+    llm_judge_enabled: bool = False
+    llm_judge_top_k: int = 10
+    llm_judge_model: str = "claude-haiku-4-5"
+
 
 # Module-level singleton — imported by main.py and other modules.
 # If required vars are missing, this line raises ValidationError at startup.
