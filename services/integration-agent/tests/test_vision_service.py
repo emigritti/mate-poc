@@ -1,143 +1,119 @@
-"""
-Unit tests for services.vision_service (ADR-031).
-
-TDD: tests written before implementation.
-
-Covers:
-  - caption_figure returns a non-empty string when Ollama responds
-  - caption_figure returns placeholder when vision_captioning_enabled=False
-  - caption_figure returns placeholder when Ollama times out (graceful fallback)
-  - caption_figure returns placeholder when Ollama returns 5xx (graceful fallback)
-  - caption_figure sends image as base64 in the request body
-"""
-import asyncio
-import base64
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import httpx
 import pytest
+import httpx
+from unittest.mock import patch
+from services.vision_service import caption_figure
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_caption_uses_primary_vlm_first(monkeypatch):
+    monkeypatch.setattr("config.settings.vlm_model_name", "granite3.2-vision:2b")
+    monkeypatch.setattr("config.settings.vlm_fallback_model_name", "llava:7b")
+    monkeypatch.setattr("config.settings.vlm_force_fallback", False)
+    monkeypatch.setattr("config.settings.vision_captioning_enabled", True)
 
-SAMPLE_IMAGE_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100  # fake PNG bytes
+    captured_models = []
 
+    async def fake_post(self, url, json, **kw):
+        captured_models.append(json["model"])
 
-def _make_ollama_chat_response(content: str) -> MagicMock:
-    """Build a fake successful httpx response for /api/chat."""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "message": {"role": "assistant", "content": content}
-    }
-    mock_resp.raise_for_status = MagicMock()
-    return mock_resp
+        class R:
+            status_code = 200
 
+            def raise_for_status(self):
+                pass
 
-def _mock_settings(enabled: bool = True):
-    mock = MagicMock()
-    mock.vision_captioning_enabled = enabled
-    mock.vision_model_name = "llava:7b"
-    mock.ollama_host = "http://localhost:11434"
-    mock.tag_timeout_seconds = 15
-    return mock
+            def json(self):
+                return {"message": {"content": "primary caption"}}
 
+        return R()
 
-def _async_client_posting(response):
-    """Build a mocked httpx.AsyncClient that returns `response` on .post()."""
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.post = AsyncMock(return_value=response)
-    return mock_client
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        out = await caption_figure(b"\x00\x01")
+    assert out == "primary caption"
+    assert captured_models == ["granite3.2-vision:2b"]
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_caption_falls_back_to_llava_on_primary_error(monkeypatch):
+    monkeypatch.setattr("config.settings.vlm_model_name", "granite3.2-vision:2b")
+    monkeypatch.setattr("config.settings.vlm_fallback_model_name", "llava:7b")
+    monkeypatch.setattr("config.settings.vlm_force_fallback", False)
+    monkeypatch.setattr("config.settings.vision_captioning_enabled", True)
 
-def test_caption_figure_returns_description_from_ollama():
-    """caption_figure returns the LLM description when Ollama responds successfully."""
-    from services.vision_service import caption_figure
+    calls = []
 
-    expected = "A bar chart showing PLM to PIM field mapping with 5 columns."
+    async def fake_post(self, url, json, **kw):
+        calls.append(json["model"])
+        primary = json["model"] == "granite3.2-vision:2b"
 
-    with patch("services.vision_service.settings", _mock_settings()), \
-         patch("httpx.AsyncClient", return_value=_async_client_posting(
-             _make_ollama_chat_response(expected)
-         )):
-        result = asyncio.run(caption_figure(SAMPLE_IMAGE_BYTES))
+        class R:
+            status_code = 500 if primary else 200
 
-    assert result == expected
+            def raise_for_status(self):
+                if primary:
+                    req = httpx.Request("POST", url)
+                    raise httpx.HTTPStatusError(
+                        "boom",
+                        request=req,
+                        response=httpx.Response(500, request=req),
+                    )
 
+            def json(self):
+                return {"message": {"content": "fallback caption"}}
 
-def test_caption_figure_returns_placeholder_when_disabled():
-    """caption_figure returns placeholder text when vision_captioning_enabled=False."""
-    from services.vision_service import caption_figure
+        return R()
 
-    with patch("services.vision_service.settings", _mock_settings(enabled=False)):
-        result = asyncio.run(caption_figure(SAMPLE_IMAGE_BYTES))
-
-    assert result == "[FIGURE: no caption available]"
-
-
-def test_caption_figure_returns_placeholder_on_timeout():
-    """caption_figure gracefully returns placeholder when Ollama times out."""
-    from services.vision_service import caption_figure
-
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.post = AsyncMock(
-        side_effect=httpx.TimeoutException("timed out", request=MagicMock())
-    )
-
-    with patch("services.vision_service.settings", _mock_settings()), \
-         patch("httpx.AsyncClient", return_value=mock_client):
-        result = asyncio.run(caption_figure(SAMPLE_IMAGE_BYTES))
-
-    assert result == "[FIGURE: no caption available]"
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        out = await caption_figure(b"\x00\x01")
+    assert out == "fallback caption"
+    assert calls == ["granite3.2-vision:2b", "llava:7b"]
 
 
-def test_caption_figure_returns_placeholder_on_server_error():
-    """caption_figure gracefully returns placeholder when Ollama returns 5xx."""
-    from services.vision_service import caption_figure
+@pytest.mark.asyncio
+async def test_caption_skips_primary_when_force_fallback_set(monkeypatch):
+    monkeypatch.setattr("config.settings.vlm_model_name", "granite3.2-vision:2b")
+    monkeypatch.setattr("config.settings.vlm_fallback_model_name", "llava:7b")
+    monkeypatch.setattr("config.settings.vlm_force_fallback", True)
+    monkeypatch.setattr("config.settings.vision_captioning_enabled", True)
 
-    exc = httpx.HTTPStatusError(
-        "service unavailable",
-        request=MagicMock(),
-        response=MagicMock(status_code=503),
-    )
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.post = AsyncMock(side_effect=exc)
+    calls = []
 
-    with patch("services.vision_service.settings", _mock_settings()), \
-         patch("httpx.AsyncClient", return_value=mock_client):
-        result = asyncio.run(caption_figure(SAMPLE_IMAGE_BYTES))
+    async def fake_post(self, url, json, **kw):
+        calls.append(json["model"])
 
-    assert result == "[FIGURE: no caption available]"
+        class R:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"message": {"content": "ok"}}
+
+        return R()
+
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        await caption_figure(b"\x00")
+    assert calls == ["llava:7b"]
 
 
-def test_caption_figure_sends_image_as_base64():
-    """caption_figure encodes image bytes as base64 in the Ollama /api/chat request."""
-    from services.vision_service import caption_figure
+@pytest.mark.asyncio
+async def test_caption_returns_placeholder_when_disabled(monkeypatch):
+    monkeypatch.setattr("config.settings.vision_captioning_enabled", False)
+    out = await caption_figure(b"\x00")
+    assert out == "[FIGURE: no caption available]"
 
-    expected_b64 = base64.b64encode(SAMPLE_IMAGE_BYTES).decode()
-    captured: dict = {}
 
-    async def _capture_post(url, json=None, **kwargs):
-        captured.update(json or {})
-        return _make_ollama_chat_response("a diagram")
+@pytest.mark.asyncio
+async def test_caption_returns_placeholder_when_both_models_fail(monkeypatch):
+    monkeypatch.setattr("config.settings.vlm_model_name", "primary:1")
+    monkeypatch.setattr("config.settings.vlm_fallback_model_name", "fallback:1")
+    monkeypatch.setattr("config.settings.vlm_force_fallback", False)
+    monkeypatch.setattr("config.settings.vision_captioning_enabled", True)
 
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.post = _capture_post
+    async def fake_post(self, url, json, **kw):
+        raise httpx.ConnectError("network down")
 
-    with patch("services.vision_service.settings", _mock_settings()), \
-         patch("httpx.AsyncClient", return_value=mock_client):
-        asyncio.run(caption_figure(SAMPLE_IMAGE_BYTES))
-
-    messages = captured.get("messages", [])
-    assert messages, "No messages in payload"
-    assert expected_b64 in messages[0].get("images", [])
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        out = await caption_figure(b"\x00")
+    assert out == "[FIGURE: no caption available]"

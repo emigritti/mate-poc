@@ -1,13 +1,10 @@
-"""
-Vision Service — LLaVA figure captioning via Ollama (ADR-031).
+"""Vision Service — VLM figure captioning via Ollama (ADR-X1).
 
-Provides:
-  - caption_figure(image_bytes): call llava:7b via Ollama /api/chat with base64 image.
+Primary: Granite-Vision-3.2-2B (IBM, tuned for enterprise documents).
+Fallback: LLaVA-7b (legacy, kept for env-var-driven override).
 
 Fallback-first design: any failure (timeout, server error, disabled flag) returns
 the "[FIGURE: no caption available]" placeholder so KB ingestion never crashes.
-
-All processing is local — no external API calls. Ollama must have llava:7b pulled.
 """
 
 import base64
@@ -28,43 +25,48 @@ _CAPTION_PROMPT = (
 )
 
 
-async def caption_figure(image_bytes: bytes) -> str:
-    """
-    Generate a text caption for an image using LLaVA via Ollama /api/chat.
+async def _call_vlm(model: str, image_bytes: bytes) -> str:
+    image_b64 = base64.b64encode(image_bytes).decode()
+    payload = {
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": _CAPTION_PROMPT,
+            "images": [image_b64],
+        }],
+        "stream": False,
+    }
+    async with httpx.AsyncClient(timeout=settings.tag_timeout_seconds) as client:
+        resp = await client.post(f"{settings.ollama_host}/api/chat", json=payload)
+        resp.raise_for_status()
+        body = resp.json()
+        return (body.get("message", {}).get("content") or "").strip()
 
-    Returns the caption string on success, or _PLACEHOLDER on any failure /
-    when vision_captioning_enabled=False.
+
+async def caption_figure(image_bytes: bytes) -> str:
+    """Generate a text caption for an image using the configured VLM with fallback.
+
+    Order:
+      1. settings.vlm_model_name (Granite-Vision by default)
+      2. settings.vlm_fallback_model_name (LLaVA by default) — used on error
+         or when settings.vlm_force_fallback is True.
+      3. _PLACEHOLDER on both failures.
     """
     if not settings.vision_captioning_enabled:
         return _PLACEHOLDER
 
-    image_b64 = base64.b64encode(image_bytes).decode()
-    payload = {
-        "model": settings.vision_model_name,
-        "messages": [
-            {
-                "role": "user",
-                "content": _CAPTION_PROMPT,
-                "images": [image_b64],
-            }
-        ],
-        "stream": False,
-    }
+    primary = settings.vlm_model_name
+    fallback = settings.vlm_fallback_model_name
+    models = [fallback] if settings.vlm_force_fallback else [primary, fallback]
 
-    try:
-        async with httpx.AsyncClient(timeout=settings.tag_timeout_seconds) as client:
-            resp = await client.post(
-                f"{settings.ollama_host}/api/chat",
-                json=payload,
-            )
-            resp.raise_for_status()
-            body = resp.json()
-            caption = body.get("message", {}).get("content", "").strip()
-            if not caption:
-                logger.warning("[Vision] LLaVA returned empty caption.")
-                return _PLACEHOLDER
-            logger.info("[Vision] Caption generated (%d chars).", len(caption))
-            return caption
-    except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError) as exc:
-        logger.warning("[Vision] Caption failed (%s: %s) — using placeholder.", type(exc).__name__, exc)
-        return _PLACEHOLDER
+    for model in models:
+        try:
+            caption = await _call_vlm(model, image_bytes)
+            if caption:
+                logger.info("[Vision] Caption ok (%s, %d chars).", model, len(caption))
+                return caption
+            logger.warning("[Vision] %s returned empty caption.", model)
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError) as exc:
+            logger.warning("[Vision] %s failed (%s) — trying next.", model, type(exc).__name__)
+
+    return _PLACEHOLDER
