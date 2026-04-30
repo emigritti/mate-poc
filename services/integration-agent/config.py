@@ -196,6 +196,14 @@ class Settings(BaseSettings):
     # If absent, endpoints log a warning and allow through (dev mode).
     api_key: str | None = None
 
+    # ── Embedder (ADR-X2) ─────────────────────────────────────────────────────
+    # Provider: "ollama" (default) or "default" (ChromaDB native MiniLM).
+    embedder_provider: str = "ollama"
+    embedder_model_name: str = "nomic-embed-text:v1.5"
+    # nomic-embed-text task prefixes — ingestion vs retrieval.
+    embedder_doc_prefix: str = "search_document: "
+    embedder_query_prefix: str = "search_query: "
+
 
 # Module-level singleton — imported by main.py and other modules.
 # If required vars are missing, this line raises ValidationError at startup.
