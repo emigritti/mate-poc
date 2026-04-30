@@ -8,7 +8,7 @@ Supported formats:
   - XLSX (via openpyxl)
   - PPTX (via python-pptx)
   - MD   (plain text read)
-  - PNG / JPG (via vision_service.caption_figure — LLaVA)
+  - PNG / JPG (via vision_service.caption_figure — VLM, default Granite-Vision)
   - SVG  (text extraction via stdlib xml.etree.ElementTree)
 
 Each parser returns the full text content as a string.  The chunker then
@@ -555,7 +555,7 @@ def _extract_svg_text(svg_bytes: bytes) -> str:
 async def _parse_image_standalone(file_bytes: bytes, file_type: str) -> list[DoclingChunk]:
     """Parse a standalone image file into a single DoclingChunk.
 
-    PNG/JPG: captions the image via vision_service.caption_figure() (LLaVA).
+    PNG/JPG: captions the image via vision_service.caption_figure() (VLM with fallback).
              Falls back to a placeholder when vision is disabled or fails.
     SVG:     extracts text nodes from the XML tree (stdlib — no extra deps).
     """
@@ -590,7 +590,7 @@ async def parse_with_docling(file_bytes: bytes, file_type: str) -> list[DoclingC
     handled by _parse_image_standalone().
 
     Falls back to legacy text-only parsing when Docling is not installed.
-    Figure captions are generated via vision_service.caption_figure() (llava:7b).
+    Figure captions are generated via vision_service.caption_figure() (VLM with fallback chain).
     """
     # Standalone images bypass Docling — handle them directly.
     if file_type in _IMAGE_TYPES:
