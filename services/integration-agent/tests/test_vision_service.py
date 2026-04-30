@@ -117,3 +117,39 @@ async def test_caption_returns_placeholder_when_both_models_fail(monkeypatch):
     with patch("httpx.AsyncClient.post", new=fake_post):
         out = await caption_figure(b"\x00")
     assert out == "[FIGURE: no caption available]"
+
+
+@pytest.mark.asyncio
+async def test_caption_sends_image_as_base64_in_payload(monkeypatch):
+    """The request body must carry the image as base64 in messages[0].images[]."""
+    import base64
+
+    monkeypatch.setattr("config.settings.vlm_model_name", "any:1")
+    monkeypatch.setattr("config.settings.vlm_fallback_model_name", "fallback:1")
+    monkeypatch.setattr("config.settings.vlm_force_fallback", False)
+    monkeypatch.setattr("config.settings.vision_captioning_enabled", True)
+
+    sample_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+    expected_b64 = base64.b64encode(sample_bytes).decode()
+    captured = {}
+
+    async def fake_post(self, url, json, **kw):
+        captured.update(json)
+
+        class R:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"message": {"content": "ok"}}
+
+        return R()
+
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        await caption_figure(sample_bytes)
+
+    messages = captured.get("messages") or []
+    assert messages, "No messages in payload"
+    assert expected_b64 in (messages[0].get("images") or [])
