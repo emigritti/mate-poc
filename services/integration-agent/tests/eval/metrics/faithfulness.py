@@ -25,6 +25,10 @@ def llm_judge_faithfulness(
     """Score answer faithfulness 0-5 via Claude judge.
 
     Returns None when ANTHROPIC_API_KEY is absent (graceful skip).
+
+    CALLER CONTRACT (CLAUDE.md §1): inputs MUST be synthetic / public /
+    Accenture-Internal data only.  This function forwards `query`, `answer`,
+    and `contexts` to the Claude API over the public network.
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
