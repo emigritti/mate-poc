@@ -19,6 +19,7 @@ os.environ.setdefault("CHROMA_HOST",  "localhost")
 # The dedicated reranker tests in test_reranker_service.py monkeypatch
 # _get_model directly, so they're unaffected by this default.
 os.environ.setdefault("RERANKER_ENABLED", "false")
+os.environ.setdefault("CONTEXTUAL_RETRIEVAL_ENABLED", "false")
 
 # Ensure API_KEY is absent so settings.api_key = None and _require_token
 # bypasses auth enforcement (PoC dev mode).  setdefault("API_KEY", "") is

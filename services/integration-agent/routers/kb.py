@@ -167,6 +167,16 @@ async def _process_kb_file(
     if not docling_chunks:
         raise RuntimeError("No text could be extracted from the file.")
 
+    # ADR-X4: prepend situating annotations before embedding (Anthropic Contextual Retrieval).
+    # Disabled by default in unit tests via CONTEXTUAL_RETRIEVAL_ENABLED env (see conftest.py).
+    if settings.contextual_retrieval_enabled and len(docling_chunks) > 1:
+        try:
+            from services.contextual_retrieval_service import add_context_to_chunks
+            full_doc = "\n\n".join(c.text for c in docling_chunks)
+            docling_chunks = await add_context_to_chunks(full_doc, docling_chunks)
+        except Exception as exc:
+            log_agent(f"[KB] Contextual retrieval failed (graceful): {exc}")
+
     preview_text = " ".join(c.text for c in docling_chunks if c.chunk_type == "text")[:1000]
     auto_tags = await suggest_kb_tags_via_llm(
         preview_text or docling_chunks[0].text[:1000], filename, log_fn=log_agent,
