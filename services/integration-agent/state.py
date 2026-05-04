@@ -54,3 +54,8 @@ chroma_client  = None
 collection     = None
 kb_collection  = None
 summaries_col  = None  # RAPTOR-lite summaries collection (ADR-032)
+
+# ── Embedders (ADR-X2) ────────────────────────────────────────────────────────
+# Initialized in main.py lifespan based on settings.embedder_provider.
+kb_doc_embedder = None       # ChromaDB EmbeddingFunction (mode="document")
+kb_query_embedder = None     # ChromaDB EmbeddingFunction (mode="query")

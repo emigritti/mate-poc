@@ -232,3 +232,50 @@ def test_upload_includes_figure_chunks_in_bm25_corpus(client):
 
     figure_caption = "[FIGURE: Flow diagram showing sync between PLM and PIM.]"
     assert figure_caption in all_texts, "Figure caption missing from BM25 corpus"
+
+
+@pytest.mark.asyncio
+async def test_kb_upload_invokes_contextual_retrieval_when_enabled(monkeypatch):
+    """ADR-X4: routers/kb._process_kb_file calls add_context_to_chunks when enabled."""
+    from unittest.mock import AsyncMock, MagicMock
+    from document_parser import DoclingChunk
+    from routers import kb as kb_router
+
+    monkeypatch.setattr("config.settings.contextual_retrieval_enabled", True)
+
+    fake_chunks = [
+        DoclingChunk(text="alpha", chunk_type="text", page_num=1,
+                     section_header="S", index=0, metadata={}),
+        DoclingChunk(text="beta", chunk_type="text", page_num=1,
+                     section_header="S", index=1, metadata={}),
+    ]
+
+    # Mock the parser to return our fake chunks
+    monkeypatch.setattr(
+        "routers.kb.parse_with_docling",
+        AsyncMock(return_value=fake_chunks),
+    )
+    monkeypatch.setattr(
+        "routers.kb.suggest_kb_tags_via_llm",
+        AsyncMock(return_value=["test"]),
+    )
+
+    # Mock state.kb_collection so upsert doesn't blow up
+    fake_collection = MagicMock()
+    monkeypatch.setattr("routers.kb.state.kb_collection", fake_collection)
+    monkeypatch.setattr("routers.kb.state.kb_chunks", {})
+    monkeypatch.setattr("routers.kb.state.kb_docs", {})
+
+    # Spy on add_context_to_chunks
+    spy = AsyncMock(side_effect=lambda doc, chunks: chunks)
+    monkeypatch.setattr(
+        "services.contextual_retrieval_service.add_context_to_chunks",
+        spy,
+    )
+
+    await kb_router._process_kb_file(b"content", "test.pdf", "pdf")
+    spy.assert_awaited_once()
+    # First arg is the joined doc text; second is the chunks list
+    call_args = spy.await_args
+    assert "alpha" in call_args[0][0] and "beta" in call_args[0][0]
+    assert len(call_args[0][1]) == 2

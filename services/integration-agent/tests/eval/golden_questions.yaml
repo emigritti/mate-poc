@@ -1,0 +1,51 @@
+# tests/eval/golden_questions.yaml
+# 5 seed queries — extend to 30-50 before treating numbers as authoritative
+- id: gq-001
+  query: "What are the status mapping rules from PIM to PLM?"
+  intent: data_mapping
+  expected_chunk_keywords:
+    - "product_status"
+    - "lifecycle_state"
+  expected_doc_ids: []  # filled after baseline run inspection
+  expected_answer_must_contain:
+    - "status"
+
+- id: gq-002
+  query: "How is authentication handled between PLM and DAM?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "OAuth"
+    - "token"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "authentication"
+
+- id: gq-003
+  query: "What error handling pattern is used for failed PIM uploads?"
+  intent: errors
+  expected_chunk_keywords:
+    - "retry"
+    - "dead-letter"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "retry"
+
+- id: gq-004
+  query: "Describe the end-to-end product data flow."
+  intent: overview
+  expected_chunk_keywords:
+    - "product"
+    - "flow"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "PIM"
+
+- id: gq-005
+  query: "What validation rules apply to product_status?"
+  intent: business_rules
+  expected_chunk_keywords:
+    - "validation"
+    - "mandatory"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "validation"

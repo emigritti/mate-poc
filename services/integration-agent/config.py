@@ -127,10 +127,18 @@ class Settings(BaseSettings):
     # for typical docs (< 30 pages). Override via DOCLING_TIMEOUT_SECONDS.
     docling_timeout_seconds: int = 180
 
-    # Vision captioning: set to False to skip LLaVA calls (figures get placeholder caption).
+    # Vision captioning: set to False to skip VLM calls (figures get placeholder caption).
     vision_captioning_enabled: bool = True
-    # Ollama model used for image captioning (must support multimodal via /api/chat).
-    vision_model_name: str = "llava:7b"
+    # ── VLM / Vision (ADR-X1) ─────────────────────────────────────────────────
+    # Primary VLM — IBM Granite-Vision tuned for enterprise documents.
+    # Pull: `ollama pull granite3.2-vision:2b`.
+    vlm_model_name: str = "granite3.2-vision:2b"
+    # Fallback VLM — used when the primary fails or VLM_FORCE_FALLBACK=true.
+    vlm_fallback_model_name: str = "llava:7b"
+    # When True, the fallback model is used directly (skips primary attempt).
+    vlm_force_fallback: bool = False
+    # DEPRECATED — kept for backward compat in older tests; reads same value as vlm_model_name.
+    vision_model_name: str = "granite3.2-vision:2b"
     # RAPTOR-lite: set to False to skip section summarization at KB upload time.
     raptor_summarization_enabled: bool = True
     # Max sections to summarize per KB document upload. Acts as a safety cap so
@@ -187,6 +195,41 @@ class Settings(BaseSettings):
     # Set API_KEY in .env to enable token-based auth on trigger/approve/reject.
     # If absent, endpoints log a warning and allow through (dev mode).
     api_key: str | None = None
+
+    # ── Embedder (ADR-X2) ─────────────────────────────────────────────────────
+    # Provider: "ollama" (default) or "default" (ChromaDB native MiniLM).
+    embedder_provider: str = "ollama"
+    embedder_model_name: str = "nomic-embed-text:v1.5"
+    # nomic-embed-text task prefixes — ingestion vs retrieval.
+    embedder_doc_prefix: str = "search_document: "
+    embedder_query_prefix: str = "search_query: "
+
+    # ── Reranker / Fusion (ADR-X3) ────────────────────────────────────────────
+    # Cross-encoder reranker — replaces TF-IDF cosine after RRF fusion.
+    # Set RERANKER_ENABLED=false to fall back to the legacy TF-IDF path.
+    reranker_enabled: bool = True
+    reranker_model_name: str = "BAAI/bge-reranker-base"
+    reranker_top_n: int = 30
+    # Reciprocal Rank Fusion — replaces weighted-merge (rank-based, scale-robust).
+    # Set RAG_USE_RRF=false to fall back to the legacy weighted ensemble.
+    rag_use_rrf: bool = True
+    rag_rrf_k: int = 60
+    # Optional Claude Haiku LLM-judge cascade after the cross-encoder (top-K final).
+    # Off by default — opt-in via env var, only used when ANTHROPIC_API_KEY is set.
+    llm_judge_enabled: bool = False
+    llm_judge_top_k: int = 10
+    llm_judge_model: str = "claude-haiku-4-5"
+
+    # ── Contextual Retrieval (ADR-X4) ─────────────────────────────────────────
+    # Prepends a situating annotation (~50-100 tokens) to every chunk before
+    # embedding (Anthropic, Sept 2024). +35-49% recall@20 reported.
+    # Compliance (CLAUDE.md §1): doc text is sent to Claude — opt-out via flag,
+    # callers MUST use synthetic / public / Accenture-Internal data only.
+    contextual_retrieval_enabled: bool = True
+    contextual_provider: str = "claude"           # "claude" | "ollama"
+    contextual_model_claude: str = "claude-haiku-4-5"
+    contextual_model_ollama: str = "llama3.1:8b"
+    contextual_max_tokens: int = 120
 
 
 # Module-level singleton — imported by main.py and other modules.

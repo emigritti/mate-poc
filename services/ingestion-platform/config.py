@@ -40,5 +40,15 @@ class Settings(BaseSettings):
     # ── Auth (optional) ───────────────────────────────────────────────────────
     api_key: str | None = None
 
+    # ── Embedder (ADR-X2) ─────────────────────────────────────────────────────
+    # Provider: "ollama" (default) or "default" (ChromaDB native MiniLM).
+    # MUST match integration-agent/config.py — both services write to the same
+    # kb_collection in ChromaDB, and dimensions must be consistent.
+    ollama_host: str = "http://mate-ollama:11434"
+    embedder_provider: str = "ollama"
+    embedder_model_name: str = "nomic-embed-text:v1.5"
+    embedder_doc_prefix: str = "search_document: "
+    embedder_query_prefix: str = "search_query: "
+
 
 settings = Settings()

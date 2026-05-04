@@ -21,6 +21,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 import db
+import state
 from config import settings
 from services.llm_service import generate_with_ollama, llm_overrides
 
@@ -261,11 +262,20 @@ class HybridRetriever:
 
         for query in queries:
             try:
-                results = collection.query(
-                    query_texts=[query],
-                    n_results=n,
-                    include=["documents", "distances", "metadatas"],
-                )
+                # ADR-X2: use query-mode embedder explicitly to apply search_query: prefix
+                if state.kb_query_embedder is not None:
+                    query_embeddings = state.kb_query_embedder([query])
+                    results = collection.query(
+                        query_embeddings=query_embeddings,
+                        n_results=n,
+                        include=["documents", "distances", "metadatas"],
+                    )
+                else:
+                    results = collection.query(
+                        query_texts=[query],
+                        n_results=n,
+                        include=["documents", "distances", "metadatas"],
+                    )
                 docs  = (results.get("documents") or [[]])[0]
                 dists = (results.get("distances")  or [[]])[0]
                 metas = (results.get("metadatas")  or [[]])[0]
@@ -323,6 +333,44 @@ class HybridRetriever:
                     )
 
         return list(seen.values())
+
+    # ── Reciprocal Rank Fusion (ADR-X3) ───────────────────────────────────────
+
+    def _rrf_merge(
+        self,
+        chroma_chunks: list[ScoredChunk],
+        bm25_chunks: list[ScoredChunk],
+        k: int = 60,
+    ) -> list[ScoredChunk]:
+        """Reciprocal Rank Fusion (ADR-X3).
+
+        Robust to heterogeneous score scales — fuses by rank, not by score.
+        For each chunk, RRF_score(d) = Σ 1/(k + rank_i(d)) over its appearance
+        in each input source.  k=60 is the standard constant.
+        """
+        rrf_scores: dict[str, float] = {}
+        chunk_map: dict[str, ScoredChunk] = {}
+
+        for source in (chroma_chunks, bm25_chunks):
+            sorted_src = sorted(source, key=lambda c: c.score, reverse=True)
+            for rank, chunk in enumerate(sorted_src, start=1):
+                key = chunk.text[:100]
+                rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (k + rank)
+                if key not in chunk_map:
+                    chunk_map[key] = chunk
+
+        out: list[ScoredChunk] = []
+        for key, score in sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True):
+            existing = chunk_map[key]
+            out.append(ScoredChunk(
+                text=existing.text,
+                score=score,
+                source_label=existing.source_label,
+                tags=existing.tags,
+                doc_id=existing.doc_id,
+                semantic_type=existing.semantic_type,
+            ))
+        return out
 
     # ── Ensemble Merge (ADR-027) ──────────────────────────────────────────────
 
@@ -517,9 +565,22 @@ class HybridRetriever:
         bm25_chunks   = self._query_bm25(queries)
         _log(f"[RAG] Retrieved: {len(chroma_chunks)} Chroma + {len(bm25_chunks)} BM25 chunks")
 
-        merged   = self._ensemble_merge(chroma_chunks, bm25_chunks)
+        if settings.rag_use_rrf:
+            merged = self._rrf_merge(chroma_chunks, bm25_chunks, k=settings.rag_rrf_k)
+        else:
+            merged = self._ensemble_merge(chroma_chunks, bm25_chunks)
         filtered = self._apply_threshold(merged)
-        reranked = self._tfidf_rerank(filtered, query_text, intent)
+        if settings.reranker_enabled:
+            from services.reranker_service import cross_encoder_rerank
+            top_n = filtered[:settings.reranker_top_n]
+            reranked = cross_encoder_rerank(query_text, top_n)
+        else:
+            reranked = self._tfidf_rerank(filtered, query_text, intent)
+        if settings.llm_judge_enabled:
+            from services.llm_judge_service import llm_judge_rerank
+            reranked = await llm_judge_rerank(
+                query_text, reranked[:settings.llm_judge_top_k],
+            )
         bonused  = self._apply_semantic_bonus(reranked, intent)
 
         # Step 8 — Graph RAG: inject wiki neighbour chunks (ADR-052)
@@ -668,11 +729,20 @@ class HybridRetriever:
             return []
 
         try:
-            raw = summaries_col.query(
-                query_texts=[query_text],
-                n_results=top_k * 2,  # over-fetch to allow for tag filtering
-                include=["documents", "distances", "metadatas"],
-            )
+            # ADR-X2: use query-mode embedder explicitly to apply search_query: prefix
+            if state.kb_query_embedder is not None:
+                query_embeddings = state.kb_query_embedder([query_text])
+                raw = summaries_col.query(
+                    query_embeddings=query_embeddings,
+                    n_results=top_k * 2,  # over-fetch to allow for tag filtering
+                    include=["documents", "distances", "metadatas"],
+                )
+            else:
+                raw = summaries_col.query(
+                    query_texts=[query_text],
+                    n_results=top_k * 2,  # over-fetch to allow for tag filtering
+                    include=["documents", "distances", "metadatas"],
+                )
         except Exception as exc:
             logger.warning("[RAG] retrieve_summaries query failed: %s", exc)
             return []
