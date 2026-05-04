@@ -88,7 +88,7 @@ services:
     # integration-agent depends on service_completed_successfully so it
     # never starts a generation job against a missing model.
     # Pulls in order: doc-LLM, VLM (ADR-X1), VLM fallback (only if requested).
-    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:14b} && ollama pull ${VLM_MODEL_NAME:-granite3.2-vision:2b} && { [ \"${VLM_PULL_FALLBACK:-false}\" = \"true\" ] && ollama pull ${VLM_FALLBACK_MODEL_NAME:-llava:7b} || true; }"]
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:14b} && ollama pull ${VLM_MODEL_NAME:-granite3.2-vision:2b} && ollama pull ${EMBEDDER_MODEL_NAME:-nomic-embed-text:v1.5} && { [ \"${VLM_PULL_FALLBACK:-false}\" = \"true\" ] && ollama pull ${VLM_FALLBACK_MODEL_NAME:-llava:7b} || true; }"]
     environment:
       - OLLAMA_HOST=http://mate-ollama:11434
     depends_on:
