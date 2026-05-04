@@ -576,6 +576,11 @@ class HybridRetriever:
             reranked = cross_encoder_rerank(query_text, top_n)
         else:
             reranked = self._tfidf_rerank(filtered, query_text, intent)
+        if settings.llm_judge_enabled:
+            from services.llm_judge_service import llm_judge_rerank
+            reranked = await llm_judge_rerank(
+                query_text, reranked[:settings.llm_judge_top_k],
+            )
         bonused  = self._apply_semantic_bonus(reranked, intent)
 
         # Step 8 — Graph RAG: inject wiki neighbour chunks (ADR-052)
