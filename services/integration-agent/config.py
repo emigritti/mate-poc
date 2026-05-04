@@ -220,6 +220,17 @@ class Settings(BaseSettings):
     llm_judge_top_k: int = 10
     llm_judge_model: str = "claude-haiku-4-5"
 
+    # ── Contextual Retrieval (ADR-X4) ─────────────────────────────────────────
+    # Prepends a situating annotation (~50-100 tokens) to every chunk before
+    # embedding (Anthropic, Sept 2024). +35-49% recall@20 reported.
+    # Compliance (CLAUDE.md §1): doc text is sent to Claude — opt-out via flag,
+    # callers MUST use synthetic / public / Accenture-Internal data only.
+    contextual_retrieval_enabled: bool = True
+    contextual_provider: str = "claude"           # "claude" | "ollama"
+    contextual_model_claude: str = "claude-haiku-4-5"
+    contextual_model_ollama: str = "llama3.1:8b"
+    contextual_max_tokens: int = 120
+
 
 # Module-level singleton — imported by main.py and other modules.
 # If required vars are missing, this line raises ValidationError at startup.
