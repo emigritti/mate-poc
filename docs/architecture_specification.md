@@ -11,6 +11,12 @@
 | **Authors** | Solution Architecture Team |
 | **Governance** | Accenture Responsible AI — Human-in-the-Loop required for all AI-generated artifacts |
 
+> **In progress on branch `rag-modernization`** (not yet merged): the RAG pipeline
+> is being modernized via four sequential ADRs (X1 parser/VLM, X2 embedder,
+> X3 reranker+RRF, X4 contextual retrieval), gated by a lightweight eval harness.
+> Reference: [docs/plans/2026-04-30-rag-pipeline-modernization-design.md](plans/2026-04-30-rag-pipeline-modernization-design.md)
+> and [HOW-TO/how-to-rag-pipeline-modernized.md](../HOW-TO/how-to-rag-pipeline-modernized.md).
+
 ---
 
 ## Table of Contents
