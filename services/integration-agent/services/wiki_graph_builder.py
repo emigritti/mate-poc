@@ -85,7 +85,7 @@ class WikiGraphBuilder:
 
     async def build(self, force: bool = False) -> dict:
         """Process all chunks in kb_collection and build the graph."""
-        result = await self.kb_collection.get(include=["documents", "metadatas"])
+        result = self.kb_collection.get(include=["documents", "metadatas"])
         return await self._process_chunks(
             result.get("ids", []),
             result.get("documents", []),
@@ -95,7 +95,7 @@ class WikiGraphBuilder:
 
     async def build_for_document(self, doc_id: str, force: bool = False) -> dict:
         """Rebuild graph for a single KB document (partial rebuild)."""
-        result = await self.kb_collection.get(
+        result = self.kb_collection.get(
             where={"document_id": doc_id},
             include=["documents", "metadatas"],
         )
