@@ -115,8 +115,8 @@ async def _run_raptor_summarization(
                 logger.warning("[RAPTOR] summaries_col upsert failed for %s: %s", doc_id, exc)
 
 
-async def _run_wiki_graph_build(doc_id: str) -> None:
-    """Background task: build/update wiki graph for a newly uploaded KB document."""
+async def _run_wiki_graph_build(doc_id: str, force: bool = False) -> None:
+    """Background task: build/update wiki graph for a KB document."""
     if db.wiki_entities_col is None or db.wiki_relationships_col is None:
         return
     if state.kb_collection is None:
@@ -131,8 +131,8 @@ async def _run_wiki_graph_build(doc_id: str) -> None:
             llm_assist=settings.wiki_llm_relation_extraction,
             typed_edges_only=settings.wiki_graph_typed_edges_only,
         )
-        stats = await builder.build_for_document(doc_id)
-        logger.info("[Wiki] Auto-build for %s: %s", doc_id, stats)
+        stats = await builder.build_for_document(doc_id, force=force)
+        logger.info("[Wiki] Auto-build for %s (force=%s): %s", doc_id, force, stats)
     except Exception as exc:
         logger.warning("[Wiki] Auto-build failed for %s: %s", doc_id, exc)
 
@@ -481,6 +481,7 @@ async def kb_delete_document(
 async def kb_update_tags(
     id: str,
     body: KBUpdateTagsRequest,
+    background_tasks: BackgroundTasks,
     _token: str = Depends(require_token),
 ) -> dict:
     """Update tags for a Knowledge Base document."""
@@ -509,6 +510,10 @@ async def kb_update_tags(
             )
         except Exception as exc:
             logger.warning("[KB] ChromaDB tag update failed for %s: %s", id, exc)
+
+    if settings.wiki_auto_build_on_upload:
+        background_tasks.add_task(_run_wiki_graph_build, id, True)
+        logger.info("[Wiki] Graph rebuild enqueued as background task for doc=%s.", id)
 
     return {
         "status": "success",
