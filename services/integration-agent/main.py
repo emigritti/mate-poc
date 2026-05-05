@@ -12,7 +12,16 @@ Phase 1 changes:
 
 import asyncio
 import logging
+import warnings
 from contextlib import asynccontextmanager
+
+# docling defines a `model_spec` field on its Pydantic models; Pydantic v2 warns
+# about the `model_` namespace collision. This is a third-party issue — suppress it.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*model_spec.*conflict with protected namespace.*",
+    category=UserWarning,
+)
 
 import chromadb
 from fastapi import FastAPI
