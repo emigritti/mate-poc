@@ -45,7 +45,7 @@ async def suggest_tags_via_llm(
         f"with these requirements:\n{short_req}\n"
         "Suggest up to 2 short tags (1-3 words each) that best categorize "
         "this integration.\n"
-        'Reply with a JSON array only. Example: ["Data Sync", "Real-time"]'
+        'Reply with a JSON array only. Example: ["Data Sync", "Real-time"] /no_think'
     )
     try:
         raw = await generate_with_retry(
@@ -87,7 +87,7 @@ async def suggest_kb_tags_via_llm(
         f"{short_text}\n\n"
         "Suggest up to 3 short tags (1-3 words each) that best categorize "
         "this best-practice or reference document.\n"
-        'Reply with a JSON array only. Example: ["Data Mapping", "Integration Pattern", "Error Handling"]'
+        'Reply with a JSON array only. Example: ["Data Mapping", "Integration Pattern", "Error Handling"] /no_think'
     )
     try:
         raw = await generate_with_retry(

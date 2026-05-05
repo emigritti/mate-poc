@@ -87,8 +87,8 @@ services:
     # Idempotent: if a model is already present, exits in seconds.
     # integration-agent depends on service_completed_successfully so it
     # never starts a generation job against a missing model.
-    # Pulls in order: doc-LLM, VLM (ADR-X1), VLM fallback (only if requested).
-    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:14b} && ollama pull ${VLM_MODEL_NAME:-granite3.2-vision:2b} && ollama pull ${EMBEDDER_MODEL_NAME:-nomic-embed-text:v1.5} && { [ \"${VLM_PULL_FALLBACK:-false}\" = \"true\" ] && ollama pull ${VLM_FALLBACK_MODEL_NAME:-llava:7b} || true; }"]
+    # Pulls in order: doc-LLM, tag-LLM, VLM (ADR-X1), embedder, VLM fallback (only if requested).
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:14b} && ollama pull ${TAG_MODEL:-qwen3:8b} && ollama pull ${VLM_MODEL_NAME:-granite3.2-vision:2b} && ollama pull ${EMBEDDER_MODEL_NAME:-nomic-embed-text:v1.5} && { [ \"${VLM_PULL_FALLBACK:-false}\" = \"true\" ] && ollama pull ${VLM_FALLBACK_MODEL_NAME:-llava:7b} || true; }"]
     environment:
       - OLLAMA_HOST=http://mate-ollama:11434
     depends_on:
@@ -281,6 +281,7 @@ services:
       - CHROMA_HOST=mate-chromadb
       - MONGO_URI=mongodb://mate-mongodb:27017
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
+      - TAG_MODEL=${TAG_MODEL:-qwen3:8b}
       - TAG_NUM_PREDICT=${TAG_NUM_PREDICT:-50}
       - TAG_TIMEOUT_SECONDS=${TAG_TIMEOUT_SECONDS:-60}
       - TAG_TEMPERATURE=${TAG_TEMPERATURE:-0.0}
