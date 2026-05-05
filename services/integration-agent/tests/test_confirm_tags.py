@@ -54,7 +54,7 @@ def test_confirm_tags_wrong_status(client, pending_entry):
 def test_confirm_tags_too_many(client, pending_entry):
     resp = client.post(
         f"/api/v1/catalog/integrations/{pending_entry}/confirm-tags",
-        json={"tags": ["A", "B", "C", "D", "E", "F"]},
+        json={"tags": [f"Tag{i}" for i in range(16)]},
     )
     assert resp.status_code == 422
 

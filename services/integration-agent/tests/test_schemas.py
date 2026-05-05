@@ -29,7 +29,7 @@ def test_confirm_tags_request_too_many():
     import pytest
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
-        ConfirmTagsRequest(tags=["A", "B", "C", "D", "E", "F"])
+        ConfirmTagsRequest(tags=[f"Tag{i}" for i in range(16)])
 
 
 def test_confirm_tags_request_empty_list():

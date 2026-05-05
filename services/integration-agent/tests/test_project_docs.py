@@ -29,7 +29,7 @@ def test_list_docs_all_categories_present(client):
     """Manifest covers all five expected categories."""
     res = client.get("/api/v1/admin/docs")
     categories = {e["category"] for e in res.json()["data"]}
-    assert categories == {"Guide", "ADR", "Checklist", "Test Plan", "Mapping"}
+    assert categories == {"Guide", "ADR", "Checklist", "Test Plan", "Mapping", "How-To"}
 
 
 def test_get_doc_returns_content(client, tmp_path, monkeypatch):
@@ -39,6 +39,9 @@ def test_get_doc_returns_content(client, tmp_path, monkeypatch):
     fake_file = fake_docs / "README.md"
     fake_file.write_text("# Hello", encoding="utf-8")
     monkeypatch.setattr(admin_mod, "DOCS_ROOT", fake_docs)
+    monkeypatch.setattr(admin_mod, "DOCS_MANIFEST", [
+        {"path": "README.md", "name": "README", "category": "Guide", "description": "Test doc"},
+    ])
 
     res = client.get("/api/v1/admin/docs/README.md")
     assert res.status_code == 200

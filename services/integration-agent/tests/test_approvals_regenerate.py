@@ -87,7 +87,7 @@ class TestRegenerateEndpoint:
         with patch(
             "routers.approvals.generate_integration_doc",
             new_callable=AsyncMock,
-            return_value=_good_doc(),
+            return_value=(_good_doc(), None),
         ):
             res = client.post("/api/v1/approvals/APP-R1/regenerate")
         assert res.status_code == 200
@@ -102,7 +102,7 @@ class TestRegenerateEndpoint:
         with patch(
             "routers.approvals.generate_integration_doc",
             new_callable=AsyncMock,
-            return_value=_good_doc(),
+            return_value=(_good_doc(), None),
         ):
             res = client.post("/api/v1/approvals/APP-R2/regenerate")
         data = res.json()["data"]
@@ -114,7 +114,7 @@ class TestRegenerateEndpoint:
         with patch(
             "routers.approvals.generate_integration_doc",
             new_callable=AsyncMock,
-            return_value=_good_doc(),
+            return_value=(_good_doc(), None),
         ) as mock_gen:
             client.post("/api/v1/approvals/APP-R3/regenerate")
         call_kwargs = mock_gen.call_args.kwargs
