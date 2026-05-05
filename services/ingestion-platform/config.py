@@ -45,10 +45,20 @@ class Settings(BaseSettings):
     # MUST match integration-agent/config.py — both services write to the same
     # kb_collection in ChromaDB, and dimensions must be consistent.
     ollama_host: str = "http://mate-ollama:11434"
+    ollama_timeout_seconds: float = 120.0
     embedder_provider: str = "ollama"
     embedder_model_name: str = "nomic-embed-text:v1.5"
     embedder_doc_prefix: str = "search_document: "
     embedder_query_prefix: str = "search_query: "
+
+    # ── Contextual Retrieval (ADR-X4) ─────────────────────────────────────────
+    # Mirrors integration-agent/config.py — same env vars, same defaults.
+    # Set CONTEXTUAL_RETRIEVAL_ENABLED=false in tests (conftest.py).
+    contextual_retrieval_enabled: bool = True
+    contextual_provider: str = "claude"
+    contextual_model_claude: str = "claude-haiku-4-5-20251001"
+    contextual_model_ollama: str = "llama3.1:8b"
+    contextual_max_tokens: int = 120
 
 
 settings = Settings()

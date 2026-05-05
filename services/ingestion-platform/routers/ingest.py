@@ -200,14 +200,23 @@ async def _run_openapi_ingestion(source_id: str, run: SourceRun) -> None:
         chunker = OpenAPIChunker()
         chunks = chunker.chunk(caps, source_code=source.code, tags=source.tags, spec_overview=spec)
 
-        # 8. Index into shared ChromaDB
+        # 8. ADR-X4: Contextual Retrieval — situating annotations before embedding
+        if settings.contextual_retrieval_enabled and len(chunks) > 1:
+            try:
+                from services.contextual_retrieval_service import add_context_to_chunks
+                full_doc = "\n\n".join(c.text for c in chunks)
+                chunks = await add_context_to_chunks(full_doc, chunks)
+            except Exception as exc:
+                logger.warning("[Ingest/OpenAPI] Contextual retrieval failed (graceful): %s", exc)
+
+        # 8b. Index into shared ChromaDB
         kb_col = _get_chroma_collection()
         indexer = IndexingService(kb_collection=kb_col)
         # Delete old chunks for this source before re-indexing
         indexer.delete_source_chunks(source.code)
         chunks_created = indexer.upsert_chunks(chunks, snapshot_id=run.id)
 
-        # 8b. Notify integration-agent to rebuild BM25 (includes new ingestion chunks)
+        # 8c. Notify integration-agent to rebuild BM25 (includes new ingestion chunks)
         if chunks_created > 0:
             await _rebuild_agent_bm25(source.code)
 
@@ -310,13 +319,22 @@ async def _run_html_ingestion(source_id: str, run: SourceRun) -> None:
         chunker = HTMLChunker()
         chunks = chunker.chunk(all_capabilities, source_code=source.code, tags=source.tags)
 
-        # 7. Index into shared ChromaDB (delete old chunks first)
+        # 7. ADR-X4: Contextual Retrieval — situating annotations before embedding
+        if settings.contextual_retrieval_enabled and len(chunks) > 1:
+            try:
+                from services.contextual_retrieval_service import add_context_to_chunks
+                full_doc = "\n\n".join(c.text for c in chunks)
+                chunks = await add_context_to_chunks(full_doc, chunks)
+            except Exception as exc:
+                logger.warning("[Ingest/HTML] Contextual retrieval failed (graceful): %s", exc)
+
+        # 7b. Index into shared ChromaDB (delete old chunks first)
         kb_col = _get_chroma_collection()
         indexer = IndexingService(kb_collection=kb_col)
         indexer.delete_source_chunks(source.code)
         chunks_created = indexer.upsert_chunks(chunks, snapshot_id=run.id)
 
-        # 7b. Notify integration-agent to rebuild BM25 (includes new ingestion chunks)
+        # 7c. Notify integration-agent to rebuild BM25 (includes new ingestion chunks)
         if chunks_created > 0:
             await _rebuild_agent_bm25(source.code)
 

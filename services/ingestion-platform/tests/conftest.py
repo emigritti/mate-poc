@@ -10,8 +10,10 @@ import os
 os.environ.setdefault("MONGO_URI", "mongodb://localhost:27017")
 os.environ.setdefault("CHROMA_HOST", "localhost")
 
-# ANTHROPIC_API_KEY is optional in Phase 1; ensure it doesn't break Settings
+# ANTHROPIC_API_KEY is optional; ensure it doesn't break Settings
 os.environ.pop("ANTHROPIC_API_KEY", None)
+# ADR-X4: disable contextual retrieval in tests (no LLM reachable in CI)
+os.environ.setdefault("CONTEXTUAL_RETRIEVAL_ENABLED", "false")
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
