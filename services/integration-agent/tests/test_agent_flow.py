@@ -87,20 +87,19 @@ class TestAgentTrigger:
                 description="Lock contention test",
             )
         ]
-        # Python 3.13 no longer creates a default event loop in the main thread;
-        # use an explicit new loop to acquire the lock without depending on loop state
-        # left by previous tests.
-        _loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(_loop)
+        # Python 3.13 removed the implicit main-thread event loop; create one explicitly.
+        loop = asyncio.new_event_loop()
+        acquired = False
         try:
-            _loop.run_until_complete(agent_main._agent_lock.acquire())
+            loop.run_until_complete(agent_main._agent_lock.acquire())
+            acquired = True
             response = client.post("/api/v1/agent/trigger")
             assert response.status_code == 409
             assert "running" in response.json().get("detail", "").lower()
         finally:
-            agent_main._agent_lock.release()
-            _loop.close()
-            asyncio.set_event_loop(None)
+            if acquired:
+                agent_main._agent_lock.release()
+            loop.close()
             agent_main.parsed_requirements.clear()
 
     def test_trigger_starts_successfully_with_requirements(self, client):
