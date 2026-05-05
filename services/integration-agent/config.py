@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # (tag suggestion, query expansion). Pull: `ollama pull qwen3:8b`.
     # Override via TAG_MODEL and TAG_* siblings.
     tag_model: str = "qwen3:8b"
-    tag_num_predict: int = 50
+    tag_num_predict: int = 200
     tag_timeout_seconds: int = 60
     tag_temperature: float = 0.0
     tag_num_ctx: int = 4096

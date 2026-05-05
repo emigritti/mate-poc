@@ -48,6 +48,7 @@ async def generate_with_ollama(
     top_p: float | None = None,
     top_k: int | None = None,
     repeat_penalty: float | None = None,
+    think: bool | None = None,
     log_fn: Callable[[str], None] | None = None,
 ) -> str:
     """
@@ -79,22 +80,27 @@ async def generate_with_ollama(
         f"num_predict={_num_predict} "
         f"num_ctx={_num_ctx}"
     )
+    body: dict = {
+        "model":   _model,
+        "prompt":  prompt,
+        "stream":  False,
+        "options": {
+            "num_predict":    _num_predict,
+            "temperature":    _temperature,
+            "num_ctx":        _num_ctx,
+            "top_p":          _top_p,
+            "top_k":          _top_k,
+            "repeat_penalty": _repeat_penalty,
+        },
+    }
+    # qwen3 thinking mode: pass at top level (not inside options)
+    if think is not None:
+        body["think"] = think
+
     async with httpx.AsyncClient(timeout=_timeout) as client:
         res = await client.post(
             f"{settings.ollama_host}/api/generate",
-            json={
-                "model": _model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "num_predict":    _num_predict,
-                    "temperature":    _temperature,
-                    "num_ctx":        _num_ctx,
-                    "top_p":          _top_p,
-                    "top_k":          _top_k,
-                    "repeat_penalty": _repeat_penalty,
-                },
-            },
+            json=body,
         )
         res.raise_for_status()
         body = res.json()
@@ -256,6 +262,7 @@ async def generate_with_retry(
     top_p: float | None = None,
     top_k: int | None = None,
     repeat_penalty: float | None = None,
+    think: bool | None = None,
     log_fn: Callable[[str], None] | None = None,
 ) -> str:
     """
@@ -315,6 +322,7 @@ async def generate_with_retry(
                     top_p=top_p,
                     top_k=top_k,
                     repeat_penalty=repeat_penalty,
+                    think=think,
                     log_fn=log_fn,
                 )
         except ValueError:

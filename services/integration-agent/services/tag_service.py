@@ -45,7 +45,7 @@ async def suggest_tags_via_llm(
         f"with these requirements:\n{short_req}\n"
         "Suggest up to 2 short tags (1-3 words each) that best categorize "
         "this integration.\n"
-        'Reply with a JSON array only. Example: ["Data Sync", "Real-time"] /no_think'
+        'Reply with a JSON array only. Example: ["Data Sync", "Real-time"]'
     )
     try:
         raw = await generate_with_retry(
@@ -55,6 +55,7 @@ async def suggest_tags_via_llm(
             num_predict=llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
             timeout=llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
             temperature=llm_overrides.get("tag_temperature",    settings.tag_temperature),
+            think=False,
             log_fn=log_fn,
         )
         # Extract JSON array from response (LLM may wrap it in prose)
@@ -87,7 +88,7 @@ async def suggest_kb_tags_via_llm(
         f"{short_text}\n\n"
         "Suggest up to 3 short tags (1-3 words each) that best categorize "
         "this best-practice or reference document.\n"
-        'Reply with a JSON array only. Example: ["Data Mapping", "Integration Pattern", "Error Handling"] /no_think'
+        'Reply with a JSON array only. Example: ["Data Mapping", "Integration Pattern", "Error Handling"]'
     )
     try:
         raw = await generate_with_retry(
@@ -97,6 +98,7 @@ async def suggest_kb_tags_via_llm(
             num_predict=llm_overrides.get("tag_num_predict",    settings.tag_num_predict),
             timeout=llm_overrides.get("tag_timeout_seconds", settings.tag_timeout_seconds),
             temperature=llm_overrides.get("tag_temperature",    settings.tag_temperature),
+            think=False,
             log_fn=log_fn,
         )
         match = re.search(r"\[.*?\]", raw, re.DOTALL)

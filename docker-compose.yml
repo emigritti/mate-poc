@@ -282,7 +282,7 @@ services:
       - MONGO_URI=mongodb://mate-mongodb:27017
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
       - TAG_MODEL=${TAG_MODEL:-qwen3:8b}
-      - TAG_NUM_PREDICT=${TAG_NUM_PREDICT:-50}
+      - TAG_NUM_PREDICT=${TAG_NUM_PREDICT:-200}
       - TAG_TIMEOUT_SECONDS=${TAG_TIMEOUT_SECONDS:-60}
       - TAG_TEMPERATURE=${TAG_TEMPERATURE:-0.0}
       - DOCS_ROOT=/app
