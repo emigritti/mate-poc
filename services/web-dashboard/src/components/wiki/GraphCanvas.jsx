@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ZoomIn } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import {
     ReactFlow,
     Background,
@@ -10,7 +10,6 @@ import {
     MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import EntityTypeBadge from './EntityTypeBadge.jsx';
 import { API } from '../../api.js';
 
 const ENTITY_TYPE_COLORS = {
@@ -39,34 +38,36 @@ export default function GraphCanvas({ seedEntityId, onSelectEntity }) {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
     const [relTypeFilter, setRelTypeFilter] = useState('');
+    const [rawNodes, setRawNodes] = useState([]);
 
     const loadGraph = useCallback(async () => {
         setLoading(true);
+        setError(null);
         try {
             const params = new URLSearchParams({ limit_nodes: 50 });
             if (seedEntityId) params.set('entity_id', seedEntityId);
             if (relTypeFilter) params.set('rel_types', relTypeFilter);
             const res = await API.wiki.graph(params.toString());
+            if (!res.ok) throw new Error(`API error ${res.status}`);
             const data = await res.json();
+
+            setRawNodes(data.nodes || []);
 
             const rfNodes = layoutNodes((data.nodes || []).map(n => ({
                 id: n.id,
                 type: 'default',
                 data: {
-                    label: (
-                        <div className="flex flex-col items-start gap-0.5 p-1">
-                            <span className="text-xs font-semibold text-slate-800">{n.data.label}</span>
-                            <EntityTypeBadge type={n.data.entity_type} />
-                        </div>
-                    ),
+                    label: `${n.data.label} (${n.data.entity_type})`,
                 },
                 style: {
                     background: '#fff',
                     border: `2px solid ${ENTITY_TYPE_COLORS[n.data.entity_type] ?? '#94a3b8'}`,
                     borderRadius: 8,
-                    fontSize: 12,
+                    fontSize: 11,
                     minWidth: 120,
+                    padding: '4px 8px',
                 },
             })));
 
@@ -83,8 +84,10 @@ export default function GraphCanvas({ seedEntityId, onSelectEntity }) {
 
             setNodes(rfNodes);
             setEdges(rfEdges);
-        } catch { /* silently fail */ }
-        finally { setLoading(false); }
+        } catch (err) {
+            console.error('[GraphCanvas]', err);
+            setError(err?.message ?? String(err));
+        } finally { setLoading(false); }
     }, [seedEntityId, relTypeFilter, setNodes, setEdges]);
 
     useEffect(() => { loadGraph(); }, [loadGraph]);
@@ -96,7 +99,7 @@ export default function GraphCanvas({ seedEntityId, onSelectEntity }) {
     return (
         <div className="flex flex-col h-full min-h-[500px] gap-3">
             {/* Toolbar */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
                 <select
                     value={relTypeFilter}
                     onChange={e => setRelTypeFilter(e.target.value)}
@@ -108,11 +111,35 @@ export default function GraphCanvas({ seedEntityId, onSelectEntity }) {
                     ))}
                 </select>
                 {loading && <Loader2 size={14} className="animate-spin text-indigo-500" />}
-                {!loading && nodes.length === 0 && (
+                {!loading && !error && nodes.length === 0 && (
                     <span className="text-xs text-slate-400">No graph data. Upload and process documents first.</span>
+                )}
+                {error && (
+                    <span className="text-xs text-red-500 font-medium">Graph render error: {error}</span>
                 )}
                 <span className="ml-auto text-xs text-slate-400">{nodes.length} nodes · {edges.length} edges</span>
             </div>
+
+            {/* Fallback table — shown when ReactFlow has no nodes but API returned data */}
+            {!loading && nodes.length === 0 && rawNodes.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-xs font-medium text-amber-800 mb-3">
+                        ReactFlow canvas unavailable — showing entity list ({rawNodes.length} entities):
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                        {rawNodes.map(n => (
+                            <button
+                                key={n.id}
+                                onClick={() => onSelectEntity?.(n.id)}
+                                className="px-2 py-1 rounded-lg text-xs border"
+                                style={{ borderColor: ENTITY_TYPE_COLORS[n.data.entity_type] ?? '#94a3b8', color: ENTITY_TYPE_COLORS[n.data.entity_type] ?? '#94a3b8' }}
+                            >
+                                {n.data.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* React Flow canvas */}
             <div className="flex-1 rounded-xl border border-slate-200 overflow-hidden bg-slate-50" style={{ minHeight: 460 }}>
