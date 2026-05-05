@@ -1384,6 +1384,14 @@ All endpoints are served by `mate-integration-agent` on port `3003` (internal). 
 | `/api/v1/wiki/search` | GET | — | Full-text search over entity names and aliases (ADR-052) |
 | `/api/v1/wiki/rebuild` | POST | Token | Trigger async graph rebuild; returns `{job_id, status}` (ADR-052) |
 | `/api/v1/wiki/rebuild/{job_id}` | GET | — | Poll async rebuild job status (ADR-052) |
+| `/api/v1/eval/domains` | GET | — | List available golden-question domain names |
+| `/api/v1/eval/run` | POST | — | Start an eval run; body: `{label, domain?, domains?}`; returns `{job_id}` |
+| `/api/v1/eval/stream/{job_id}` | GET (SSE) | — | Server-Sent Events stream: per-question progress events + final `done` event with metrics |
+| `/api/v1/eval/jobs/{job_id}` | GET | — | Poll eval job status and result (polling alternative to SSE) |
+| `/api/v1/eval/reports` | GET | — | List all saved reports with summary metrics |
+| `/api/v1/eval/reports/{label}` | GET | — | Get full report JSON for a given label |
+| `/api/v1/eval/reports/{label}` | DELETE | Token | Delete a saved report |
+| `/api/v1/eval/compare` | GET | — | Compare two reports; `?a=label_a&b=label_b`; returns per-metric delta table |
 | `/api/v1/documents` | GET | — | List all generated and approved documents |
 | `/api/v1/documents/{id}/promote-to-kb` | POST | Token | Promote an approved document into the RAG store (ADR-023) |
 | `/api/v1/catalog/integrations/{id}/suggest-tags` | GET | — | LLM-suggested tags for an integration (ADR-019) |
@@ -1973,6 +1981,12 @@ gantt
 | ADR-050 | Multi-Client Requirements Persistence | Accepted | `Requirement` has `upload_id` + `project_id`; `requirements_col` MongoDB collection with write-through; last unfinalized session reloaded at startup; `GET /requirements?project_id=X` queries persisted requirements; `current_upload_id` in state |
 | ADR-051 | KB Export / Import | Accepted | `GET /api/v1/kb/export` downloads `KBExportBundle` JSON (documents + chunks, no embeddings); `POST /api/v1/kb/import` restores from bundle; both endpoints require Bearer token; `source_types` query param selects subset (`file,url,openapi,html,mcp`); `overwrite=true` replaces existing records by ID; BM25 rebuilt after import; `KBExportImportModal.jsx` in UI with Export + Import tabs |
 | ADR-052 | LLM Wiki / Graph RAG | Accepted | Additive knowledge graph layer over the flat KB vector store; `wiki_entities` + `wiki_relationships` MongoDB collections; rule-based entity/relationship extraction from v2 chunk metadata (ADR-048) with optional LLM enrichment via `qwen3:8b`; `WikiGraphBuilder` upserts idempotently; retrieval step 8 in `retriever.py` runs `$graphLookup` traversal (depth 2) and injects neighbour chunks with `score=0.05`; `ContextAssembler.assemble()` extended with `## KNOWLEDGE GRAPH CONTEXT` section; `WikiPage.jsx` (3 tabs: Entities / Detail / Graph) with `@xyflow/react` canvas; 8 wiki API endpoints; CLI migration script `scripts/build_wiki_graph.py`; 8 new `wiki_*` config settings; graceful no-op when graph not yet built |
+| **Phase 6 — RAG Pipeline Modernization** | | | |
+| ADR-053 | Parser/VLM Upgrade: Granite-Vision 2b | Accepted | `granite3.2-vision:2b` replaces `llava:7b` as primary VLM for figure captioning; 3–5× faster (8–15 s/fig vs 25–40 s), purpose-built for enterprise tables/charts; fallback chain: granite → llava → sentinel; 4 new config vars (`VLM_MODEL_NAME`, `VLM_FALLBACK_MODEL_NAME`, `VLM_FORCE_FALLBACK`, `VISION_CAPTIONING_ENABLED`); instant rollback via `VLM_FORCE_FALLBACK=true` |
+| ADR-054 | Embedder Upgrade: nomic-embed-text-v1.5 | Accepted | Replaces ChromaDB default `all-MiniLM-L6-v2` (384d, 256-token) with `nomic-embed-text-v1.5` via Ollama (768d, 8192-token, multilingual, Matryoshka); custom `OllamaEmbeddingFunction(mode)` prepends `search_document:`/`search_query:` task prefixes; hard prerequisite for ADR-056; KB re-creation required (incompatible dimensions); 4 new config vars |
+| ADR-055 | RRF Fusion + Cross-Encoder Reranker | Accepted | `_ensemble_merge()` replaced by Reciprocal Rank Fusion (`RRF_score = Σ 1/(k+rank_i)`, k=60); `_tfidf_rerank()` replaced by `bge-reranker-base` cross-encoder (278M params, ~600MB RAM, 800–1500 ms/30 pairs, lazy-loaded); opt-in `LLM_JUDGE_ENABLED` Claude Haiku final gate with prompt caching; pipeline: `RRF(top-30) → cross-encoder → top-10 → (opt) LLM judge → top-K`; 7 new config vars; instant rollback via env vars |
+| ADR-056 | Contextual Retrieval: Situating Annotations | Accepted | 50–100 token LLM-generated annotation prepended to each chunk before embedding; dual provider (Claude Haiku with prompt caching ~$0.05/doc, or Ollama `llama3.1:8b` fallback); XML-structured format `<situating>…</situating><original>…</original>`; applied at both ingestion entry points (KB upload + ingestion-platform); compliance §1: chunk text sent to Claude API only when `ANTHROPIC_API_KEY` set; disabled in CI tests; 5 new config vars; instant rollback via `CONTEXTUAL_RETRIEVAL_ENABLED=false` |
+| Eval Web UI | RAG Eval Harness — Web Interface | Implemented | `routers/eval.py`: 8 endpoints including SSE stream (`GET /stream/{job_id}`) for live per-question progress; `runner.py` extended with `on_progress` callback; `EvalPage.jsx` (4 tabs: Run / Reports / Compare / Guide); domain checkboxes, live log terminal, color-coded metrics, delta comparison table, inline metric guidelines; reports persisted to `tests/eval/reports/` |
 | **Phase 4 — UI Polish & Observability** | | | |
 | R4 | KnowledgeBasePage & RequirementsPage Sub-component Decomposition | Implemented | `KnowledgeBasePage.jsx` split into `kb/` sub-components (`kbHelpers.js`, `TagEditModal`, `PreviewModal`, `SearchPanel`, `UnifiedDocumentsPanel`, `AddUrlForm`); `TagConfirmPanel` extracted from `RequirementsPage.jsx` into `requirements/` |
 | R6 | Global Toast Notification System (sonner) | Implemented | `sonner` installed; `<Toaster>` added to `App.jsx`; `AddUrlForm` uses `toast.error()`/`toast.success()` replacing local error-state prop callbacks |
@@ -2002,6 +2016,6 @@ gantt
 | Audit logging | MongoDB append-only `events` collection with 90-day TTL (R19-MVP) | PostgreSQL with 7-year retention; structured query API |
 | Thought chain UI | Basic log terminal | Interactive timeline visualization |
 | Multi-agent | Single sequential agent | Parallel agent execution with DAG planning |
-| Real-time updates | REST polling (2s interval) | WebSocket / SSE for dashboard updates |
+| Real-time updates | REST polling (2s interval) for agent logs; SSE implemented for eval harness (`/api/v1/eval/stream/{job_id}`) | WebSocket for agent-workspace live updates |
 | Circuit breakers | Basic error catch + log | Per-service circuit breakers with dashboard indicators |
 | Saga compensation | Not implemented | Full saga rollback for multi-system operations |

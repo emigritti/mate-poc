@@ -1868,7 +1868,52 @@ Each YAML entry:
   tags: [plm, lifecycle]
 ```
 
-#### CLI Usage
+#### Web UI (primary)
+
+The eval harness is accessible from the dashboard sidebar under **Quality → RAG Eval**. No command-line access to the container is required.
+
+The page has four tabs:
+
+**Run**
+- Check one or more domains (or use the **All** toggle) and enter a label (e.g. `post-x4`)
+- Click **Run Eval** — the job starts immediately and a live log streams each question result:
+  ```
+  [3/50]  How does PLM track lifecycle states?    142ms  10 chunks  ●
+  ```
+  Green dot = top-1 hit (correct document ranked first). Grey = no `expected_doc_ids` set. The run can be stopped mid-flight with the Stop button.
+- On completion, a metrics panel appears with color-coded bars:
+  - green ≥ good threshold, amber ≥ ok threshold, red below threshold
+  - Thresholds: recall@5 ≥ 0.70, MRR ≥ 0.60, NDCG@5 ≥ 0.65, faithfulness ≥ 0.60
+
+**Reports**
+- Lists all saved runs with their metric snapshots. Delete any run with the trash icon.
+
+**Compare**
+- Select two run labels (A = baseline, B = post-ADR) from dropdowns, then click **Compare**.
+- A table shows A value, B value, Δ absolute, and Δ % for every metric. Positive deltas are green, negative red.
+
+**Guide**
+- Collapsible explanations of each metric (recall@5, MRR, NDCG@5, faithfulness, latency), their thresholds, and recommended actions when a metric is low.
+- Includes the full baseline → delta workflow description.
+
+**Backend API** (`services/integration-agent/routers/eval.py`):
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/eval/domains` | — | List available domain names |
+| `POST` | `/api/v1/eval/run` | — | Start eval job → `{job_id}` |
+| `GET` | `/api/v1/eval/stream/{job_id}` | — | SSE stream: per-question progress + final metrics |
+| `GET` | `/api/v1/eval/jobs/{job_id}` | — | Poll job status + result |
+| `GET` | `/api/v1/eval/reports` | — | List saved reports with summary metrics |
+| `GET` | `/api/v1/eval/reports/{label}` | — | Get full report JSON |
+| `DELETE` | `/api/v1/eval/reports/{label}` | Token | Delete a report |
+| `GET` | `/api/v1/eval/compare?a=&b=` | — | Compare two saved reports |
+
+Job state is in-process (lost on container restart, which is expected for an eval tool). Reports are persisted to `tests/eval/reports/<label>.json` inside the container.
+
+#### CLI (alternative)
+
+The CLI remains available for scripted pipelines or when running from inside the container directly:
 
 ```bash
 # List available domains
@@ -1882,30 +1927,23 @@ python tests/eval/run_rag_eval.py --domains plm_pim_dam,generic --label "post-x3
 
 # Run all domains
 python tests/eval/run_rag_eval.py --domain all --label "post-x4-baseline"
-
-# Legacy: use a specific golden questions file
-python tests/eval/run_rag_eval.py --path tests/eval/golden_questions.yaml --label "legacy"
 ```
 
-`--label` is required unless `--list-domains` is passed. Results are written to `tests/eval/results/<label>-<timestamp>.json`.
+`--label` is required. Results are written to `tests/eval/reports/<label>.json`.
 
 #### Running Baseline + Delta
 
-The recommended workflow for measuring the impact of each ADR:
+The recommended workflow for measuring per-ADR impact (using the web UI):
 
-```bash
-# 1. Capture baseline (before deploying X2)
-python tests/eval/run_rag_eval.py --domain all --label "baseline-pre-x2"
+1. Before deploying an ADR: open **RAG Eval → Run**, select all domains, label `baseline`, click Run
+2. Deploy the ADR and re-ingest the KB if required (X2 and X4 change chunk content)
+3. Run again with label `post-x2` (or `post-x3`, `post-x4`)
+4. Open **RAG Eval → Compare**, select `baseline` vs `post-x2` → inspect the delta table
 
-# 2. Deploy X2 (re-ingest KB), then capture post-X2
-python tests/eval/run_rag_eval.py --domain all --label "post-x2"
-
-# 3. Repeat for X3, X4
-python tests/eval/run_rag_eval.py --domain all --label "post-x3"
-python tests/eval/run_rag_eval.py --domain all --label "post-x4"
-```
-
-Compare result JSON files to compute recall@5, recall@20, MRR, and NDCG@5 deltas per domain.
+Expected gains from Anthropic benchmarks:
+- X4 (contextual retrieval) alone: +35% recall@20
+- X4 + X3 (BM25 + reranker stack): +49% recall@20
+- X3 primarily improves MRR and NDCG@5 (ranking quality), X4 improves recall (coverage)
 
 ---
 
