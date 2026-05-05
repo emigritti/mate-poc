@@ -1,0 +1,53 @@
+# Domain: Generic — Domain-agnostic integration patterns
+# Use these when the KB is mixed-domain or domain is unknown.
+# Covers: authentication, error handling, data mapping, API design, security
+---
+- id: gen-001
+  query: "What authentication mechanism is used to secure API calls between services?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "authentication"
+    - "token"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "authentication"
+
+- id: gen-002
+  query: "How are integration errors logged and alerted?"
+  intent: errors
+  expected_chunk_keywords:
+    - "error"
+    - "log"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "error"
+
+- id: gen-003
+  query: "What data transformation rules apply when mapping source to target fields?"
+  intent: data_mapping
+  expected_chunk_keywords:
+    - "mapping"
+    - "transformation"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "mapping"
+
+- id: gen-004
+  query: "Describe the high-level architecture of the integration."
+  intent: overview
+  expected_chunk_keywords:
+    - "architecture"
+    - "integration"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "integration"
+
+- id: gen-005
+  query: "What are the retry and idempotency guarantees for message delivery?"
+  intent: business_rules
+  expected_chunk_keywords:
+    - "retry"
+    - "idempotent"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "retry"

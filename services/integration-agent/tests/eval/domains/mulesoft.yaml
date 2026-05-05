@@ -1,0 +1,72 @@
+# Domain: MuleSoft / Anypoint — API-led connectivity and integration platform
+# Covers: flows, connectors, error handling, DataWeave, API management
+---
+- id: mule-001
+  query: "How is an Anypoint API protected with OAuth2 client credentials?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "OAuth2"
+    - "client_credentials"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "OAuth"
+
+- id: mule-002
+  query: "What is the recommended error handling strategy in a MuleSoft flow?"
+  intent: errors
+  expected_chunk_keywords:
+    - "error"
+    - "on-error-propagate"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "error"
+
+- id: mule-003
+  query: "How do you transform a JSON payload to XML using DataWeave?"
+  intent: data_mapping
+  expected_chunk_keywords:
+    - "DataWeave"
+    - "transform"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "DataWeave"
+
+- id: mule-004
+  query: "What is the difference between a Process API and an Experience API in API-led connectivity?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "Process API"
+    - "Experience API"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "API"
+
+- id: mule-005
+  query: "How are MuleSoft connectors configured for Salesforce integration?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "connector"
+    - "Salesforce"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "connector"
+
+- id: mule-006
+  query: "What retry and reconnection policies are available for unreliable endpoints?"
+  intent: errors
+  expected_chunk_keywords:
+    - "retry"
+    - "reconnection"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "retry"
+
+- id: mule-007
+  query: "How is a batch job structured to process large CSV files in MuleSoft?"
+  intent: overview
+  expected_chunk_keywords:
+    - "batch"
+    - "CSV"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "batch"

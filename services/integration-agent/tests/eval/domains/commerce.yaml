@@ -1,0 +1,82 @@
+# Domain: Commerce — E-commerce platform integrations
+# Covers: catalog sync, order management, pricing, promotions, inventory
+---
+- id: com-001
+  query: "How are product prices synchronized from ERP to the commerce platform?"
+  intent: data_mapping
+  expected_chunk_keywords:
+    - "price"
+    - "ERP"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "price"
+
+- id: com-002
+  query: "What is the order lifecycle from placement to fulfilment?"
+  intent: overview
+  expected_chunk_keywords:
+    - "order"
+    - "fulfilment"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "order"
+
+- id: com-003
+  query: "How are inventory levels updated in real time across warehouses?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "inventory"
+    - "warehouse"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "inventory"
+
+- id: com-004
+  query: "What promotions and discount rules can be applied to a cart?"
+  intent: business_rules
+  expected_chunk_keywords:
+    - "discount"
+    - "promotion"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "discount"
+
+- id: com-005
+  query: "How is the product catalog structured for multi-channel distribution?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "catalog"
+    - "channel"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "catalog"
+
+- id: com-006
+  query: "What happens when a payment gateway returns a timeout error during checkout?"
+  intent: errors
+  expected_chunk_keywords:
+    - "payment"
+    - "timeout"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "payment"
+
+- id: com-007
+  query: "How are customer segments defined and used for personalization?"
+  intent: business_rules
+  expected_chunk_keywords:
+    - "segment"
+    - "personalization"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "customer"
+
+- id: com-008
+  query: "What is the return and refund flow and which systems are involved?"
+  intent: overview
+  expected_chunk_keywords:
+    - "return"
+    - "refund"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "refund"

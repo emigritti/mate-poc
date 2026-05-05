@@ -1,0 +1,102 @@
+# Domain: PLM / PIM / DAM — Product Lifecycle & Asset Management integrations
+# Covers: product status mapping, asset distribution, metadata sync, lifecycle transitions
+---
+- id: plm-001
+  query: "What are the status mapping rules from PIM to PLM?"
+  intent: data_mapping
+  expected_chunk_keywords:
+    - "product_status"
+    - "lifecycle_state"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "status"
+
+- id: plm-002
+  query: "How is authentication handled between PLM and DAM?"
+  intent: architecture
+  expected_chunk_keywords:
+    - "OAuth"
+    - "token"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "authentication"
+
+- id: plm-003
+  query: "What error handling pattern is used for failed PIM uploads?"
+  intent: errors
+  expected_chunk_keywords:
+    - "retry"
+    - "dead-letter"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "retry"
+
+- id: plm-004
+  query: "Describe the end-to-end product data flow."
+  intent: overview
+  expected_chunk_keywords:
+    - "product"
+    - "flow"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "PIM"
+
+- id: plm-005
+  query: "What validation rules apply to product_status?"
+  intent: business_rules
+  expected_chunk_keywords:
+    - "validation"
+    - "mandatory"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "validation"
+
+- id: plm-006
+  query: "How are digital assets linked to product variants in DAM?"
+  intent: data_mapping
+  expected_chunk_keywords:
+    - "asset"
+    - "variant"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "asset"
+
+- id: plm-007
+  query: "What triggers a product lifecycle state transition in PLM?"
+  intent: business_rules
+  expected_chunk_keywords:
+    - "lifecycle"
+    - "transition"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "lifecycle"
+
+- id: plm-008
+  query: "How is product metadata synchronized between PIM and the e-commerce channel?"
+  intent: data_mapping
+  expected_chunk_keywords:
+    - "metadata"
+    - "sync"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "sync"
+
+- id: plm-009
+  query: "What is the rollback procedure when a PLM → PIM sync fails?"
+  intent: errors
+  expected_chunk_keywords:
+    - "rollback"
+    - "sync"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "rollback"
+
+- id: plm-010
+  query: "Which mandatory fields are required before a product can be approved in PLM?"
+  intent: business_rules
+  expected_chunk_keywords:
+    - "mandatory"
+    - "approval"
+  expected_doc_ids: []
+  expected_answer_must_contain:
+    - "mandatory"
