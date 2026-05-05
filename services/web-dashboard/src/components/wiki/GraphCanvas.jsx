@@ -1,15 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-import {
-    ReactFlow,
-    Background,
-    Controls,
-    MiniMap,
-    useNodesState,
-    useEdgesState,
-    MarkerType,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
 import { API } from '../../api.js';
 
 const ENTITY_TYPE_COLORS = {
@@ -23,81 +13,79 @@ const ENTITY_TYPE_COLORS = {
     generic:       '#94a3b8',
 };
 
-function layoutNodes(rawNodes) {
-    const cols = Math.ceil(Math.sqrt(rawNodes.length));
-    return rawNodes.map((n, i) => ({
-        ...n,
-        position: {
-            x: (i % cols) * 180,
-            y: Math.floor(i / cols) * 100,
-        },
-    }));
+const NODE_W = 148, NODE_H = 50, COL_GAP = 195, ROW_GAP = 95;
+
+function computeLayout(nodes) {
+    const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
+    const positions = {};
+    nodes.forEach((n, i) => {
+        positions[n.id] = {
+            x: (i % cols) * COL_GAP + NODE_W / 2 + 10,
+            y: Math.floor(i / cols) * ROW_GAP + NODE_H / 2 + 10,
+        };
+    });
+    return positions;
 }
 
+const REL_TYPES = [
+    'TRANSITIONS_TO','DEPENDS_ON','CALLS','MAPS_TO',
+    'GOVERNS','TRIGGERS','HANDLES_ERROR','DEFINED_BY','RELATED_TO',
+];
+
 export default function GraphCanvas({ seedEntityId, onSelectEntity }) {
-    const [nodes, setNodes, onNodesChange] = useNodesState([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    const [rawNodes, setRawNodes] = useState([]);
+    const [rawEdges, setRawEdges] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [relTypeFilter, setRelTypeFilter] = useState('');
-    const [rawNodes, setRawNodes] = useState([]);
+    const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+    const dragging = useRef(null);
 
     const loadGraph = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const params = new URLSearchParams({ limit_nodes: 50 });
+            const params = new URLSearchParams({ limit_nodes: 60 });
             if (seedEntityId) params.set('entity_id', seedEntityId);
             if (relTypeFilter) params.set('rel_types', relTypeFilter);
             const res = await API.wiki.graph(params.toString());
-            if (!res.ok) throw new Error(`API error ${res.status}`);
+            if (!res.ok) throw new Error(`API ${res.status}`);
             const data = await res.json();
-
             setRawNodes(data.nodes || []);
-
-            const rfNodes = layoutNodes((data.nodes || []).map(n => ({
-                id: n.id,
-                type: 'default',
-                data: {
-                    label: `${n.data.label} (${n.data.entity_type})`,
-                },
-                style: {
-                    background: '#fff',
-                    border: `2px solid ${ENTITY_TYPE_COLORS[n.data.entity_type] ?? '#94a3b8'}`,
-                    borderRadius: 8,
-                    fontSize: 11,
-                    minWidth: 120,
-                    padding: '4px 8px',
-                },
-            })));
-
-            const rfEdges = (data.edges || []).map(e => ({
-                id: e.id,
-                source: e.source,
-                target: e.target,
-                label: e.label,
-                markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-                style: { strokeWidth: 1.5, stroke: '#94a3b8' },
-                labelStyle: { fontSize: 9, fill: '#64748b' },
-                animated: e.data?.rel_type === 'TRANSITIONS_TO',
-            }));
-
-            setNodes(rfNodes);
-            setEdges(rfEdges);
+            setRawEdges(data.edges || []);
         } catch (err) {
             console.error('[GraphCanvas]', err);
             setError(err?.message ?? String(err));
         } finally { setLoading(false); }
-    }, [seedEntityId, relTypeFilter, setNodes, setEdges]);
+    }, [seedEntityId, relTypeFilter]);
 
     useEffect(() => { loadGraph(); }, [loadGraph]);
 
-    const handleNodeClick = useCallback((_, node) => {
-        onSelectEntity?.(node.id);
-    }, [onSelectEntity]);
+    const positions = computeLayout(rawNodes);
+
+    const handleWheel = useCallback((e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : 0.89;
+        setTransform(t => ({ ...t, k: Math.min(3, Math.max(0.15, t.k * factor)) }));
+    }, []);
+
+    const handleMouseDown = useCallback((e) => {
+        if (e.button !== 0 || e.target.closest('[data-node]')) return;
+        dragging.current = { x: e.clientX, y: e.clientY };
+    }, []);
+
+    const handleMouseMove = useCallback((e) => {
+        if (!dragging.current) return;
+        const dx = e.clientX - dragging.current.x;
+        const dy = e.clientY - dragging.current.y;
+        dragging.current = { x: e.clientX, y: e.clientY };
+        setTransform(t => ({ ...t, x: t.x + dx, y: t.y + dy }));
+    }, []);
+
+    const stopDrag = useCallback(() => { dragging.current = null; }, []);
 
     return (
-        <div className="flex flex-col h-full min-h-[500px] gap-3">
+        <div className="flex flex-col gap-3">
             {/* Toolbar */}
             <div className="flex items-center gap-3 flex-wrap">
                 <select
@@ -106,61 +94,99 @@ export default function GraphCanvas({ seedEntityId, onSelectEntity }) {
                     className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none"
                 >
                     <option value="">All relationship types</option>
-                    {['TRANSITIONS_TO','DEPENDS_ON','CALLS','MAPS_TO','GOVERNS','TRIGGERS','HANDLES_ERROR','DEFINED_BY','RELATED_TO'].map(t => (
-                        <option key={t} value={t}>{t}</option>
-                    ))}
+                    {REL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+                <button
+                    onClick={() => setTransform({ x: 0, y: 0, k: 1 })}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                >
+                    Reset view
+                </button>
                 {loading && <Loader2 size={14} className="animate-spin text-indigo-500" />}
-                {!loading && !error && nodes.length === 0 && (
-                    <span className="text-xs text-slate-400">No graph data. Upload and process documents first.</span>
+                {error && <span className="text-xs text-red-500 font-medium">Error: {error}</span>}
+                {!loading && !error && rawNodes.length === 0 && (
+                    <span className="text-xs text-slate-400">No graph data — upload documents first.</span>
                 )}
-                {error && (
-                    <span className="text-xs text-red-500 font-medium">Graph render error: {error}</span>
-                )}
-                <span className="ml-auto text-xs text-slate-400">{nodes.length} nodes · {edges.length} edges</span>
+                <span className="ml-auto text-xs text-slate-400">
+                    {rawNodes.length} nodes · {rawEdges.length} edges
+                </span>
             </div>
 
-            {/* Fallback table — shown when ReactFlow has no nodes but API returned data */}
-            {!loading && nodes.length === 0 && rawNodes.length > 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <p className="text-xs font-medium text-amber-800 mb-3">
-                        ReactFlow canvas unavailable — showing entity list ({rawNodes.length} entities):
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                        {rawNodes.map(n => (
-                            <button
-                                key={n.id}
-                                onClick={() => onSelectEntity?.(n.id)}
-                                className="px-2 py-1 rounded-lg text-xs border"
-                                style={{ borderColor: ENTITY_TYPE_COLORS[n.data.entity_type] ?? '#94a3b8', color: ENTITY_TYPE_COLORS[n.data.entity_type] ?? '#94a3b8' }}
-                            >
-                                {n.data.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* React Flow canvas */}
-            <div className="flex-1 rounded-xl border border-slate-200 overflow-hidden bg-slate-50" style={{ minHeight: 460 }}>
-                <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onNodeClick={handleNodeClick}
-                    fitView
-                    fitViewOptions={{ padding: 0.3 }}
-                    minZoom={0.2}
-                    maxZoom={2}
-                >
-                    <Background />
-                    <Controls />
-                    <MiniMap nodeColor={n => {
-                        const style = n.style?.border;
-                        return style ? style.replace('2px solid ', '') : '#94a3b8';
-                    }} />
-                </ReactFlow>
+            {/* SVG canvas — no external deps, pan + scroll-zoom */}
+            <div
+                className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
+                style={{ height: 480, cursor: dragging.current ? 'grabbing' : 'grab', userSelect: 'none' }}
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={stopDrag}
+                onMouseLeave={stopDrag}
+            >
+                <svg width="100%" height="100%">
+                    <defs>
+                        <marker id="gc-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+                            <path d="M0,0 L0,6 L8,3 z" fill="#cbd5e1" />
+                        </marker>
+                    </defs>
+                    <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
+                        {/* Edges */}
+                        {rawEdges.map(e => {
+                            const sp = positions[e.source];
+                            const tp = positions[e.target];
+                            if (!sp || !tp) return null;
+                            const mx = (sp.x + tp.x) / 2;
+                            const my = (sp.y + tp.y) / 2;
+                            return (
+                                <g key={e.id}>
+                                    <line
+                                        x1={sp.x} y1={sp.y} x2={tp.x} y2={tp.y}
+                                        stroke="#cbd5e1" strokeWidth={1.5}
+                                        markerEnd="url(#gc-arrow)"
+                                    />
+                                    {e.label && (
+                                        <text x={mx} y={my - 4} textAnchor="middle" fontSize={8} fill="#94a3b8">
+                                            {e.label}
+                                        </text>
+                                    )}
+                                </g>
+                            );
+                        })}
+                        {/* Nodes */}
+                        {rawNodes.map(n => {
+                            const p = positions[n.id];
+                            if (!p) return null;
+                            const color = ENTITY_TYPE_COLORS[n.data?.entity_type] ?? '#94a3b8';
+                            return (
+                                <g
+                                    key={n.id}
+                                    data-node="1"
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={() => onSelectEntity?.(n.id)}
+                                >
+                                    <rect
+                                        x={p.x - NODE_W / 2} y={p.y - NODE_H / 2}
+                                        width={NODE_W} height={NODE_H}
+                                        rx={8} fill="white"
+                                        stroke={color} strokeWidth={2}
+                                    />
+                                    <text
+                                        x={p.x} y={p.y - 7}
+                                        textAnchor="middle" fontSize={11}
+                                        fontWeight="600" fill="#1e293b"
+                                    >
+                                        {n.data?.label ?? n.id}
+                                    </text>
+                                    <text
+                                        x={p.x} y={p.y + 10}
+                                        textAnchor="middle" fontSize={9} fill={color}
+                                    >
+                                        {n.data?.entity_type ?? ''}
+                                    </text>
+                                </g>
+                            );
+                        })}
+                    </g>
+                </svg>
             </div>
         </div>
     );
