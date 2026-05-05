@@ -23,6 +23,9 @@
 14. [Phase 5 — Multi-Source Ingestion Platform](#14-phase-5--multi-source-ingestion-platform)
 15. [Pixel UI Mode (ADR-047)](#15-pixel-ui-mode-adr-047)
 16. [Document Quality Improvements (#1–#4)](#16-document-quality-improvements-14)
+17. [KB Export / Import (ADR-051)](#17-kb-export--import-adr-051)
+18. [LLM Wiki — Graph RAG (ADR-052)](#18-llm-wiki--graph-rag-adr-052)
+19. [RAG Pipeline Modernization (ADR-053–056)](#19-rag-pipeline-modernization-adr-053056)
 
 ---
 
@@ -1613,3 +1616,306 @@ All settings are live (no restart required if passed as env vars):
 | `POST` | `/api/v1/wiki/rebuild` | Trigger async graph rebuild [token] |
 | `GET` | `/api/v1/wiki/rebuild/{job_id}` | Poll rebuild job status |
 | `DELETE` | `/api/v1/wiki/entities/{entity_id}` | Delete entity + cascade [token] |
+
+---
+
+## 19. RAG Pipeline Modernization (ADR-053–056)
+
+Four sequential improvements — X1 through X4 — upgrade every layer of the retrieval pipeline from parsing to embedding to fusion to contextual annotation. Each ADR is independently rollback-able via a single environment variable.
+
+### Modernized Pipeline Overview
+
+```
+PDF / HTML / OpenAPI
+        │
+        ▼
+parse_with_docling()          ← X1: granite3.2-vision:2b (ADR-053)
+        │
+        ▼
+add_context_to_chunks()       ← X4: situating annotations (ADR-056)
+        │
+        ▼
+OllamaEmbeddingFunction       ← X2: nomic-embed-text-v1.5, 768d, 8k ctx (ADR-054)
+        │
+        ▼
+ChromaDB upsert
+        │
+(at query time)
+        ▼
+expand_queries()  →  ChromaDB dense  +  BM25Plus
+        │
+        ▼
+_rrf_merge()                  ← X3: Reciprocal Rank Fusion (ADR-055)
+        │
+        ▼
+CrossEncoderReranker           ← X3: bge-reranker-base (ADR-055)
+        │
+        ▼
+(opt) LLM judge               ← X3: Claude Haiku opt-in gate (ADR-055)
+        │
+        ▼
+ContextAssembler → Agent
+```
+
+---
+
+### X1 — Parser / VLM Upgrade (ADR-053)
+
+**Problem:** `llava:7b` (~14 GB RAM, 25–40 s/figure) is a generalist model with poor quality on enterprise tables and charts.
+
+**Change:** Primary VLM replaced by `granite3.2-vision:2b` (IBM Apache-2.0):
+- 3–5× faster (8–15 s/figure vs 25–40 s)
+- Purpose-built for enterprise document content
+- Half the RAM footprint, freeing memory for the cross-encoder (X3)
+
+**Fallback chain:**
+
+```
+granite3.2-vision:2b  →  (on error / VLM_FORCE_FALLBACK=true)
+llava:7b              →  (on both failures)
+"[FIGURE: no caption available]"
+```
+
+**Configuration:**
+
+| Env var | Default | Effect |
+|---|---|---|
+| `VLM_MODEL_NAME` | `granite3.2-vision:2b` | Primary VLM |
+| `VLM_FALLBACK_MODEL_NAME` | `llava:7b` | Fallback VLM |
+| `VLM_FORCE_FALLBACK` | `false` | Skip primary; use `llava:7b` directly |
+| `VISION_CAPTIONING_ENABLED` | `true` | Master switch for figure captioning |
+
+**Rollback:** `export VLM_FORCE_FALLBACK=true` (no redeploy, instant).
+
+---
+
+### X2 — Embedder Upgrade (ADR-054)
+
+**Problem:** ChromaDB's built-in `all-MiniLM-L6-v2` (384d, 256-token context) silently truncates Docling semantic chunks that exceed 256 tokens; it is also English-only.
+
+**Change:** `nomic-embed-text-v1.5` via Ollama (768d, 8192-token context, multilingual):
+
+| Model | Dim | Context | Notes |
+|---|---|---|---|
+| `all-MiniLM-L6-v2` (prev) | 384 | 256 tokens | English only, 2020 |
+| **`nomic-embed-text-v1.5`** | 768 | 8192 tokens | Multilingual, Matryoshka, top CPU MTEB |
+
+A custom `OllamaEmbeddingFunction(model, ollama_host, mode)` prepends the required task prefixes:
+- Ingestion: `search_document: ` + chunk text
+- Query: `search_query: ` + query text
+
+**Important:** The 384d and 768d collections are incompatible. A full KB re-creation is required after deploying X2:
+```bash
+# Snapshot ChromaDB volume first, then re-ingest
+docker compose run integration-agent python -c "
+from db import get_chroma_client
+get_chroma_client().delete_collection('knowledge_base')
+"
+# Then re-upload all documents via the KB upload endpoint
+```
+
+**Configuration:**
+
+| Env var | Default | Effect |
+|---|---|---|
+| `EMBEDDER_PROVIDER` | `ollama` | `ollama` → nomic; `default` → MiniLM |
+| `EMBEDDER_MODEL_NAME` | `nomic-embed-text:v1.5` | Ollama model name |
+| `EMBEDDER_DOC_PREFIX` | `search_document: ` | Ingestion prefix |
+| `EMBEDDER_QUERY_PREFIX` | `search_query: ` | Retrieval prefix |
+
+**Rollback:** `export EMBEDDER_PROVIDER=default` (drops collection — re-ingest required).
+
+---
+
+### X3 — RRF Fusion + Cross-Encoder Reranker (ADR-055)
+
+**Problem:** Score-weighted merge (`_ensemble_merge`) is fragile to scale heterogeneity; TF-IDF reranker is keyword-overlap only, blind to paraphrase and negation.
+
+#### A — Reciprocal Rank Fusion (RRF)
+
+Replaces `_ensemble_merge`:
+
+```
+RRF_score(d) = Σ_i  1 / (k + rank_i(d))     k = 60
+```
+
+RRF fuses by rank, not score — no normalization, no tuning, future-proof for additional retrieval sources.
+
+#### B — `bge-reranker-base` Cross-Encoder
+
+Replaces `_tfidf_rerank`:
+
+| Model | Params | RAM | CPU latency / 30 pairs |
+|---|---|---|---|
+| TF-IDF cosine (prev) | — | — | <50 ms |
+| **`bge-reranker-base`** | 278M | ~600 MB | 800–1500 ms |
+
+The cross-encoder scores chunk–query pairs jointly, capturing semantic equivalence, negation, and intent that keyword overlap misses. It is lazy-loaded on first call.
+
+#### C — LLM Judge (opt-in)
+
+When `LLM_JUDGE_ENABLED=true` and `ANTHROPIC_API_KEY` is present, Claude Haiku scores the top-10 cross-encoder results for relevance. Uses prompt caching for ~90% cost reduction. This is a **soft signal** final gate; the cross-encoder always runs first.
+
+**Configuration:**
+
+| Env var | Default | Effect |
+|---|---|---|
+| `RAG_USE_RRF` | `true` | RRF fusion; `false` → legacy weighted-merge |
+| `RAG_RRF_K` | `60` | RRF constant |
+| `RERANKER_ENABLED` | `true` | Cross-encoder; `false` → TF-IDF |
+| `RERANKER_MODEL_NAME` | `BAAI/bge-reranker-base` | HuggingFace model |
+| `RERANKER_TOP_N` | `30` | Candidates fed to cross-encoder |
+| `LLM_JUDGE_ENABLED` | `false` | Opt-in Claude Haiku final reranker |
+| `LLM_JUDGE_TOP_K` | `10` | Candidates fed to judge |
+| `LLM_JUDGE_MODEL` | `claude-haiku-4-5-20251001` | Judge model |
+
+**Rollback:**
+```bash
+export RERANKER_ENABLED=false   # restores TF-IDF
+export RAG_USE_RRF=false        # restores weighted-merge
+```
+
+---
+
+### X4 — Contextual Retrieval (ADR-056)
+
+**Problem:** Each chunk loses its document-level context at embedding time. A chunk reading "The mapping is uppercase" carries no signal about which field, system, or document it belongs to.
+
+**Change:** A short LLM-generated situating annotation (50–100 tokens) is prepended to every chunk **before** embedding:
+
+```xml
+<situating>
+This chunk is from "Field Mapping — PIM to PLM" of "PLM Integration
+Best-Practice v3.2". It defines the canonical mapping for product_status
+across both systems, and applies only to SKUs in "release" lifecycle stage.
+</situating>
+
+<original>
+| pim_field       | plm_field            | transform  |
+| product_status  | item.lifecycle_state | uppercase  |
+...
+</original>
+```
+
+Anthropic benchmarks show +35% recall@20 with embeddings alone, +49% with BM25 + reranker (the post-X3 stack).
+
+#### Dual-Provider Architecture
+
+| Provider | When | Cost | Quality |
+|---|---|---|---|
+| Claude Haiku (default) | `ANTHROPIC_API_KEY` present | ~$0.05/doc with caching | Highest |
+| Ollama `llama3.1:8b` (fallback) | No API key | $0 | Good |
+| Passthrough | `CONTEXTUAL_RETRIEVAL_ENABLED=false` | $0 | Baseline |
+
+**Prompt caching** is mandatory when using Claude: both the system prompt and the full document text are cached as `ephemeral` blocks (5-min TTL). Only the per-chunk user message varies across the loop, reducing cost from ~$1.20 to ~$0.05 per document.
+
+#### Pipeline Position
+
+Applied at both ingestion entry points:
+- `services/integration-agent/routers/kb.py` — document upload
+- `services/ingestion-platform/routers/ingest.py` — OpenAPI and HTML ingestion
+
+Individual chunk annotation failure is graceful: the original chunk is preserved unchanged.
+
+#### Compliance Note
+
+When `ANTHROPIC_API_KEY` is set, chunk text is sent to the Claude API. This feature must only be used with **synthetic, public, or Accenture-Internal** data. A warning is emitted on every call:
+
+```
+[Ctx-Retrieval] sending chunk to Claude API — ensure only synthetic/public/internal data
+```
+
+The feature is disabled in CI tests (`CONTEXTUAL_RETRIEVAL_ENABLED=false` in `conftest.py`).
+
+**Configuration:**
+
+| Env var | Default | Effect |
+|---|---|---|
+| `CONTEXTUAL_RETRIEVAL_ENABLED` | `true` (`false` in tests) | Master switch |
+| `CONTEXTUAL_PROVIDER` | `claude` | `claude` → auto-fallback to `ollama` if no key |
+| `CONTEXTUAL_MODEL_CLAUDE` | `claude-haiku-4-5-20251001` | Claude model |
+| `CONTEXTUAL_MODEL_OLLAMA` | `llama3.1:8b` | Ollama fallback model |
+| `CONTEXTUAL_MAX_TOKENS` | `120` | Max annotation length |
+
+**Rollback:** `export CONTEXTUAL_RETRIEVAL_ENABLED=false` (no redeploy, instant; existing chunks unchanged).
+
+---
+
+### Eval Harness — Domain Infrastructure
+
+The evaluation harness at `services/integration-agent/tests/eval/` supports domain-scoped golden question sets for measuring recall@K, MRR, and NDCG@5 across retrieval pipeline changes.
+
+#### Directory Layout
+
+```
+tests/eval/
+├── run_rag_eval.py          # CLI entry point
+├── domains/                 # 250 questions across 5 domains
+│   ├── plm_pim_dam.yaml     # PLM/PIM/DAM lifecycle, assets, taxonomy (50 q)
+│   ├── commerce.yaml        # Catalog, orders, pricing, inventory (50 q)
+│   ├── mulesoft.yaml        # DataWeave, flows, CloudHub, Anypoint (50 q)
+│   ├── generic.yaml         # Auth, data mapping, observability, saga (50 q)
+│   └── integration.yaml     # Outbox, CDC, CQRS, ESB, event sourcing (50 q)
+└── golden_questions.yaml    # Legacy flat list (still supported)
+```
+
+Each YAML entry:
+```yaml
+- id: plm_001
+  question: "How does PLM track the lifecycle state of a product SKU?"
+  expected_doc_ids: []      # populated after a baseline retrieval run
+  min_score: 0.5
+  tags: [plm, lifecycle]
+```
+
+#### CLI Usage
+
+```bash
+# List available domains
+python tests/eval/run_rag_eval.py --list-domains
+
+# Run a single domain
+python tests/eval/run_rag_eval.py --domain plm_pim_dam --label "post-x2"
+
+# Run multiple domains
+python tests/eval/run_rag_eval.py --domains plm_pim_dam,generic --label "post-x3"
+
+# Run all domains
+python tests/eval/run_rag_eval.py --domain all --label "post-x4-baseline"
+
+# Legacy: use a specific golden questions file
+python tests/eval/run_rag_eval.py --path tests/eval/golden_questions.yaml --label "legacy"
+```
+
+`--label` is required unless `--list-domains` is passed. Results are written to `tests/eval/results/<label>-<timestamp>.json`.
+
+#### Running Baseline + Delta
+
+The recommended workflow for measuring the impact of each ADR:
+
+```bash
+# 1. Capture baseline (before deploying X2)
+python tests/eval/run_rag_eval.py --domain all --label "baseline-pre-x2"
+
+# 2. Deploy X2 (re-ingest KB), then capture post-X2
+python tests/eval/run_rag_eval.py --domain all --label "post-x2"
+
+# 3. Repeat for X3, X4
+python tests/eval/run_rag_eval.py --domain all --label "post-x3"
+python tests/eval/run_rag_eval.py --domain all --label "post-x4"
+```
+
+Compare result JSON files to compute recall@5, recall@20, MRR, and NDCG@5 deltas per domain.
+
+---
+
+### Rollback Summary
+
+| ADR | Rollback command | Notes |
+|---|---|---|
+| ADR-053 (VLM) | `export VLM_FORCE_FALLBACK=true` | Instant; no redeploy |
+| ADR-054 (Embedder) | `export EMBEDDER_PROVIDER=default` | Drops collection; re-ingest required |
+| ADR-055 (Reranker/RRF) | `export RERANKER_ENABLED=false RAG_USE_RRF=false` | Instant; no redeploy |
+| ADR-056 (Contextual) | `export CONTEXTUAL_RETRIEVAL_ENABLED=false` | Instant; existing chunks unchanged |
+
+Git tags `pre-adr-x1-merge` through `pre-adr-x4-merge` on `main` mark the state before each ADR was merged.
