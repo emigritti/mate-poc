@@ -37,6 +37,7 @@ from routers.documents import router as documents_router
 from routers.kb import router as kb_router
 from routers.admin import router as admin_router
 from routers.wiki import router as wiki_router
+from routers.eval import router as eval_router
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,7 @@ app.include_router(documents_router)
 app.include_router(kb_router)
 app.include_router(admin_router)
 app.include_router(wiki_router)
+app.include_router(eval_router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

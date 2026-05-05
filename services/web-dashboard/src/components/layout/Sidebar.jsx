@@ -1,4 +1,4 @@
-import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap, Settings2, Network } from 'lucide-react';
+import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap, Settings2, Network, FlaskConical } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
@@ -23,6 +23,12 @@ const NAV_GROUPS = [
       { id: 'catalog',   label: 'Integration Catalog', icon: BookOpen    },
       { id: 'documents', label: 'Generated Docs',       icon: FileText    },
       { id: 'approvals', label: 'HITL Approvals',       icon: CheckSquare },
+    ],
+  },
+  {
+    label: 'Quality',
+    items: [
+      { id: 'eval', label: 'RAG Eval', icon: FlaskConical },
     ],
   },
   {

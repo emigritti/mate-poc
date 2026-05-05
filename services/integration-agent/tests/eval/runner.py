@@ -17,7 +17,7 @@ async def _retrieve_for_query(query: str, intent: str) -> list:
     )
 
 
-async def _run_async(questions: list[dict]) -> dict[str, Any]:
+async def _run_async(questions: list[dict], on_progress=None) -> dict[str, Any]:
     """Run all golden questions through the retriever and aggregate metrics.
 
     Note: faithfulness_substring measures whether the top-3 retrieved chunks
@@ -31,19 +31,21 @@ async def _run_async(questions: list[dict]) -> dict[str, Any]:
     faithfulness_scores: list[float] = []
     latencies_ms: list[float] = []
 
-    for q in questions:
+    for i, q in enumerate(questions):
         t0 = time.perf_counter()
         chunks = await _retrieve_for_query(q["query"], q.get("intent", ""))
-        latencies_ms.append((time.perf_counter() - t0) * 1000)
+        latency = (time.perf_counter() - t0) * 1000
+        latencies_ms.append(latency)
 
         retrieved_ids = [c.doc_id for c in chunks if getattr(c, "doc_id", "")]
         relevant = set(q.get("expected_doc_ids") or [])
         if relevant:
+            r1 = float(recall_at_k(retrieved_ids, relevant, k=1))
             recall5_scores.append(recall_at_k(retrieved_ids, relevant, k=5))
             ndcg5_scores.append(ndcg_at_k(retrieved_ids, relevant, k=5))
             mrr_inputs.append((retrieved_ids, relevant))
-        # Keyword-based recall fallback when expected_doc_ids is empty
         else:
+            r1 = None
             keywords = q.get("expected_chunk_keywords") or []
             hits = sum(
                 1 for kw in keywords
@@ -51,11 +53,21 @@ async def _run_async(questions: list[dict]) -> dict[str, Any]:
             )
             recall5_scores.append(hits / len(keywords) if keywords else 0.0)
 
-        # End-to-end faithfulness: stitch chunk text as proxy answer
         answer = " ".join(c.text for c in chunks[:3])
         must = q.get("expected_answer_must_contain") or []
         if must:
             faithfulness_scores.append(substring_faithfulness(answer, must))
+
+        if on_progress:
+            on_progress({
+                "n": i + 1,
+                "total": len(questions),
+                "question": q["query"][:80],
+                "qid": q.get("id", ""),
+                "latency_ms": round(latency, 1),
+                "n_chunks": len(chunks),
+                "recall1": r1,
+            })
 
     return {
         "recall@5": sum(recall5_scores) / len(recall5_scores) if recall5_scores else 0.0,
@@ -71,5 +83,5 @@ async def _run_async(questions: list[dict]) -> dict[str, Any]:
     }
 
 
-def execute_pipeline(questions: list[dict]) -> dict[str, Any]:
-    return asyncio.run(_run_async(questions))
+def execute_pipeline(questions: list[dict], on_progress=None) -> dict[str, Any]:
+    return asyncio.run(_run_async(questions, on_progress=on_progress))

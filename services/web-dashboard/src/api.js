@@ -229,6 +229,27 @@ export const API = {
     health:             ()         => fetch(`${INGESTION}/health`),
   },
 
+  eval: {
+    domains: () =>
+      fetch(`${AGENT}/api/v1/eval/domains`),
+    run: (body) =>
+      fetch(`${AGENT}/api/v1/eval/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    job: (jobId) =>
+      fetch(`${AGENT}/api/v1/eval/jobs/${encodeURIComponent(jobId)}`),
+    reports: () =>
+      fetch(`${AGENT}/api/v1/eval/reports`),
+    report: (label) =>
+      fetch(`${AGENT}/api/v1/eval/reports/${encodeURIComponent(label)}`),
+    deleteReport: (label) =>
+      fetch(`${AGENT}/api/v1/eval/reports/${encodeURIComponent(label)}`, { method: 'DELETE' }),
+    compare: (a, b) =>
+      fetch(`${AGENT}/api/v1/eval/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),
+  },
+
   health: {
     // service: 'agent' | 'plm' | 'pim' | 'ingestion'
     check: (service) => {

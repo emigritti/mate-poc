@@ -21,6 +21,7 @@ import LlmSettingsPage from './components/pages/LlmSettingsPage.jsx';
 import AgentSettingsPage from './components/pages/AgentSettingsPage.jsx';
 import IngestionSourcesPage from './components/pages/IngestionSourcesPage.jsx';
 import WikiPage from './components/pages/WikiPage.jsx';
+import EvalPage from './components/pages/EvalPage.jsx';
 import PixelSidebar from './components/pixel/PixelSidebar.jsx';
 import PixelAgentWorkspace from './components/pixel/PixelAgentWorkspace.jsx';
 import { API } from './api.js';
@@ -49,6 +50,7 @@ const PAGE_META = {
   'agent-settings':     { title: 'Agent Settings',     subtitle: 'Quality gate, RAG, FactPack, vision and KB chunking parameters', step: null },
   'ingestion-sources':  { title: 'Ingestion Sources',  subtitle: 'Manage OpenAPI, HTML and MCP knowledge base sources',            step: null },
   wiki:                 { title: 'LLM Wiki',           subtitle: 'Knowledge graph — entities, relationships and Graph RAG',          step: null, hideTopBar: true },
+  eval:                 { title: 'RAG Eval Harness',   subtitle: 'Measure recall@5, MRR, NDCG@5 across pipeline versions',             step: null },
 };
 
 function renderPage(page) {
@@ -66,6 +68,7 @@ function renderPage(page) {
     case 'agent-settings':    return <AgentSettingsPage />;
     case 'ingestion-sources': return <IngestionSourcesPage />;
     case 'wiki': return <WikiPage />;
+    case 'eval': return <EvalPage />;
     default: return <RequirementsPage />;
   }
 }
