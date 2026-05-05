@@ -68,7 +68,7 @@ class TestSettings:
             ollama_host="http://localhost:11434",
             mongo_uri="mongodb://localhost:27017",
         )
-        assert s.ollama_model == "llama3.1:8b"
+        assert s.ollama_model == "qwen2.5:14b"
 
 
 def test_log_ttl_hours_default():
@@ -85,15 +85,15 @@ def test_log_ttl_hours_env_override(monkeypatch):
 
 
 def test_tag_num_predict_default():
-    """tag_num_predict defaults to 20 (vs 1000 for main LLM)."""
+    """tag_num_predict defaults to 50."""
     s = Settings()
-    assert s.tag_num_predict == 20
+    assert s.tag_num_predict == 50
 
 
 def test_tag_timeout_seconds_default():
-    """tag_timeout_seconds defaults to 15 (vs 120s for main LLM)."""
+    """tag_timeout_seconds defaults to 60."""
     s = Settings()
-    assert s.tag_timeout_seconds == 15
+    assert s.tag_timeout_seconds == 60
 
 
 def test_tag_temperature_default():

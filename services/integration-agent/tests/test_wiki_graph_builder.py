@@ -48,7 +48,8 @@ def _async_iter(items):
 
 def _make_kb_col(chunk_ids=None, documents=None, metadatas=None):
     col = AsyncMock()
-    col.get = AsyncMock(return_value={
+    # ChromaDB Collection.get() is synchronous — use MagicMock, not AsyncMock
+    col.get = MagicMock(return_value={
         "ids": chunk_ids or [],
         "documents": documents or [],
         "metadatas": metadatas or [],
