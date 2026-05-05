@@ -119,7 +119,7 @@ def extract_entities_from_chunk(
     """Return EntityCandidate list for one chunk, derived from v2 metadata."""
     doc_id: str = metadata.get("document_id", "")
     semantic_type: str = metadata.get("semantic_type", "")
-    tags_csv: str = metadata.get("tags", "")
+    tags_csv: str = metadata.get("tags_csv", "")
     source_modality: str = metadata.get("file_type", "")
     candidates: list[EntityCandidate] = []
 

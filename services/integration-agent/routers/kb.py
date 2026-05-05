@@ -193,14 +193,13 @@ async def _process_kb_file(
             documents=[c.text for c in docling_chunks],
             metadatas=[
                 {
-                    "document_id":  doc_id,
-                    "filename":     filename,
-                    "chunk_index":  c.index,
-                    "chunk_type":   c.chunk_type,
-                    "page_num":     c.page_num,
-                    "section_header": c.section_header,
-                    "tags_csv":     tags_csv,
                     **enrich_chunk_metadata(c, file_type),   # ADR-044 semantic fields
+                    # These three must come AFTER the spread: enrich_chunk_metadata
+                    # calls classify_chunk with document_id="" and filename="", so
+                    # flatten_to_chroma would overwrite the real values if placed first.
+                    "document_id":    doc_id,
+                    "filename":       filename,
+                    "tags_csv":       tags_csv,
                 }
                 for c in docling_chunks
             ],
