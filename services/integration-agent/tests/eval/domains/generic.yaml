@@ -1,53 +1,354 @@
 # Domain: Generic — Domain-agnostic integration patterns
-# Use these when the KB is mixed-domain or domain is unknown.
-# Covers: authentication, error handling, data mapping, API design, security
+# Use when the KB is mixed-domain or the domain is unknown.
+# Covers: auth, error handling, data mapping, API design, security,
+#         observability, event-driven, idempotency, performance, contracts
 ---
 - id: gen-001
   query: "What authentication mechanism is used to secure API calls between services?"
-  intent: architecture
-  expected_chunk_keywords:
-    - "authentication"
-    - "token"
+  intent: security
+  expected_chunk_keywords: ["authentication", "token"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "authentication"
+  expected_answer_must_contain: ["authentication"]
 
 - id: gen-002
-  query: "How are integration errors logged and alerted?"
+  query: "How are integration errors logged and alerted on?"
   intent: errors
-  expected_chunk_keywords:
-    - "error"
-    - "log"
+  expected_chunk_keywords: ["error", "log"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "error"
+  expected_answer_must_contain: ["error"]
 
 - id: gen-003
   query: "What data transformation rules apply when mapping source to target fields?"
   intent: data_mapping
-  expected_chunk_keywords:
-    - "mapping"
-    - "transformation"
+  expected_chunk_keywords: ["mapping", "transformation"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "mapping"
+  expected_answer_must_contain: ["mapping"]
 
 - id: gen-004
   query: "Describe the high-level architecture of the integration."
   intent: overview
-  expected_chunk_keywords:
-    - "architecture"
-    - "integration"
+  expected_chunk_keywords: ["architecture", "integration"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "integration"
+  expected_answer_must_contain: ["integration"]
 
 - id: gen-005
   query: "What are the retry and idempotency guarantees for message delivery?"
   intent: business_rules
-  expected_chunk_keywords:
-    - "retry"
-    - "idempotent"
+  expected_chunk_keywords: ["retry", "idempotent"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "retry"
+  expected_answer_must_contain: ["retry"]
+
+- id: gen-006
+  query: "How is the API versioning strategy managed to avoid breaking consumers?"
+  intent: architecture
+  expected_chunk_keywords: ["versioning", "breaking change"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["version"]
+
+- id: gen-007
+  query: "What observability tools are used to trace requests across services?"
+  intent: monitoring
+  expected_chunk_keywords: ["tracing", "observability"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["trace"]
+
+- id: gen-008
+  query: "How are secrets and API keys managed and rotated securely?"
+  intent: security
+  expected_chunk_keywords: ["secret", "rotation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["secret"]
+
+- id: gen-009
+  query: "What is the event-driven integration pattern used and which broker is involved?"
+  intent: architecture
+  expected_chunk_keywords: ["event", "broker"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["event"]
+
+- id: gen-010
+  query: "How is data consistency maintained across distributed services?"
+  intent: architecture
+  expected_chunk_keywords: ["consistency", "distributed"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["consistency"]
+
+- id: gen-011
+  query: "What circuit breaker configuration prevents cascading failures?"
+  intent: errors
+  expected_chunk_keywords: ["circuit breaker", "failure"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["circuit"]
+
+- id: gen-012
+  query: "How is the API contract documented and shared with consumers?"
+  intent: architecture
+  expected_chunk_keywords: ["contract", "documentation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["contract"]
+
+- id: gen-013
+  query: "What throttling and rate limiting policies protect downstream services?"
+  intent: security
+  expected_chunk_keywords: ["throttling", "rate limit"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["throttling"]
+
+- id: gen-014
+  query: "How is the integration tested end-to-end in a staging environment?"
+  intent: architecture
+  expected_chunk_keywords: ["end-to-end", "staging"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["staging"]
+
+- id: gen-015
+  query: "What is the data format (JSON, XML, CSV) used at each integration boundary?"
+  intent: data_mapping
+  expected_chunk_keywords: ["JSON", "format"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["format"]
+
+- id: gen-016
+  query: "How is correlation ID propagated through the entire request chain?"
+  intent: monitoring
+  expected_chunk_keywords: ["correlation ID", "request chain"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["correlation"]
+
+- id: gen-017
+  query: "What is the timeout configuration for synchronous API calls?"
+  intent: performance
+  expected_chunk_keywords: ["timeout", "synchronous"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["timeout"]
+
+- id: gen-018
+  query: "How is schema validation enforced at the API gateway layer?"
+  intent: security
+  expected_chunk_keywords: ["schema validation", "gateway"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["validation"]
+
+- id: gen-019
+  query: "What is the rollback strategy when an integration deployment fails?"
+  intent: errors
+  expected_chunk_keywords: ["rollback", "deployment"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["rollback"]
+
+- id: gen-020
+  query: "How is the integration monitored for SLA compliance?"
+  intent: monitoring
+  expected_chunk_keywords: ["SLA", "monitoring"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SLA"]
+
+- id: gen-021
+  query: "What dead-letter queue strategy is used for unprocessable messages?"
+  intent: errors
+  expected_chunk_keywords: ["dead-letter", "queue"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["dead-letter"]
+
+- id: gen-022
+  query: "How are integration dependencies documented and managed?"
+  intent: architecture
+  expected_chunk_keywords: ["dependency", "documentation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["dependency"]
+
+- id: gen-023
+  query: "What is the disaster recovery plan for the integration middleware?"
+  intent: architecture
+  expected_chunk_keywords: ["disaster recovery", "middleware"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["recovery"]
+
+- id: gen-024
+  query: "How is PII data masked or anonymised during integration processing?"
+  intent: security
+  expected_chunk_keywords: ["PII", "anonymise"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["PII"]
+
+- id: gen-025
+  query: "What is the strategy for handling large message payloads efficiently?"
+  intent: performance
+  expected_chunk_keywords: ["large payload", "streaming"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["payload"]
+
+- id: gen-026
+  query: "How is the integration onboarded for a new consumer system?"
+  intent: overview
+  expected_chunk_keywords: ["onboarding", "consumer"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["onboarding"]
+
+- id: gen-027
+  query: "What change management process governs updates to the integration contract?"
+  intent: business_rules
+  expected_chunk_keywords: ["change management", "contract"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["change"]
+
+- id: gen-028
+  query: "How is the health check endpoint implemented and consumed by load balancers?"
+  intent: monitoring
+  expected_chunk_keywords: ["health check", "load balancer"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["health"]
+
+- id: gen-029
+  query: "What encryption standards are applied to data in transit and at rest?"
+  intent: security
+  expected_chunk_keywords: ["encryption", "TLS"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["encryption"]
+
+- id: gen-030
+  query: "How are asynchronous callback patterns implemented for long-running operations?"
+  intent: architecture
+  expected_chunk_keywords: ["callback", "async"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["callback"]
+
+- id: gen-031
+  query: "What is the service dependency graph and which services are single points of failure?"
+  intent: architecture
+  expected_chunk_keywords: ["dependency graph", "single point of failure"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["failure"]
+
+- id: gen-032
+  query: "How are integration tests automated in the CI/CD pipeline?"
+  intent: architecture
+  expected_chunk_keywords: ["integration test", "CI/CD"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["CI/CD"]
+
+- id: gen-033
+  query: "What contract testing framework is used to prevent API breaking changes?"
+  intent: architecture
+  expected_chunk_keywords: ["contract testing", "Pact"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["contract"]
+
+- id: gen-034
+  query: "How are API deprecation notices communicated to downstream consumers?"
+  intent: business_rules
+  expected_chunk_keywords: ["deprecation", "consumer"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["deprecation"]
+
+- id: gen-035
+  query: "What is the caching strategy for frequently requested but rarely changing data?"
+  intent: performance
+  expected_chunk_keywords: ["cache", "TTL"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["cache"]
+
+- id: gen-036
+  query: "How are integration metrics (throughput, error rate, latency) collected?"
+  intent: monitoring
+  expected_chunk_keywords: ["throughput", "latency"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["latency"]
+
+- id: gen-037
+  query: "What is the service mesh used and how does it handle mTLS between services?"
+  intent: security
+  expected_chunk_keywords: ["service mesh", "mTLS"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["mTLS"]
+
+- id: gen-038
+  query: "How is feature flagging used to safely roll out integration changes?"
+  intent: architecture
+  expected_chunk_keywords: ["feature flag", "rollout"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["feature flag"]
+
+- id: gen-039
+  query: "What is the strategy for zero-downtime migration of a critical integration?"
+  intent: architecture
+  expected_chunk_keywords: ["zero-downtime", "migration"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["migration"]
+
+- id: gen-040
+  query: "How are distributed transactions handled without two-phase commit?"
+  intent: architecture
+  expected_chunk_keywords: ["saga", "distributed transaction"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["saga"]
+
+- id: gen-041
+  query: "What is the fan-out pattern and when is it used in this integration?"
+  intent: architecture
+  expected_chunk_keywords: ["fan-out", "publish"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["fan-out"]
+
+- id: gen-042
+  query: "How is consumer-driven contract testing implemented between services?"
+  intent: architecture
+  expected_chunk_keywords: ["consumer-driven", "contract"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["consumer"]
+
+- id: gen-043
+  query: "What is the escalation path when an integration incident occurs in production?"
+  intent: errors
+  expected_chunk_keywords: ["incident", "escalation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["incident"]
+
+- id: gen-044
+  query: "How are integration artefacts versioned in source control?"
+  intent: architecture
+  expected_chunk_keywords: ["source control", "versioning"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["version"]
+
+- id: gen-045
+  query: "What is the message ordering guarantee provided by the messaging system?"
+  intent: business_rules
+  expected_chunk_keywords: ["ordering", "guarantee"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["ordering"]
+
+- id: gen-046
+  query: "How is back-pressure handled when a downstream service is slow?"
+  intent: performance
+  expected_chunk_keywords: ["back-pressure", "downstream"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["pressure"]
+
+- id: gen-047
+  query: "What API gateway policies are applied to all inbound requests?"
+  intent: security
+  expected_chunk_keywords: ["API gateway", "policy"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["policy"]
+
+- id: gen-048
+  query: "How is the integration documented in the architecture decision record?"
+  intent: overview
+  expected_chunk_keywords: ["ADR", "architecture"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["ADR"]
+
+- id: gen-049
+  query: "What load testing approach validates the integration under peak traffic?"
+  intent: performance
+  expected_chunk_keywords: ["load test", "peak"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["load"]
+
+- id: gen-050
+  query: "How is the integration decommissioned when it is no longer needed?"
+  intent: business_rules
+  expected_chunk_keywords: ["decommission", "offboard"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["decommission"]

@@ -1,72 +1,353 @@
 # Domain: MuleSoft / Anypoint — API-led connectivity and integration platform
-# Covers: flows, connectors, error handling, DataWeave, API management
+# Covers: flows, DataWeave, connectors, error handling, API management,
+#         batch processing, security policies, CloudHub, monitoring, patterns
 ---
 - id: mule-001
   query: "How is an Anypoint API protected with OAuth2 client credentials?"
-  intent: architecture
-  expected_chunk_keywords:
-    - "OAuth2"
-    - "client_credentials"
+  intent: security
+  expected_chunk_keywords: ["OAuth2", "client_credentials"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "OAuth"
+  expected_answer_must_contain: ["OAuth"]
 
 - id: mule-002
   query: "What is the recommended error handling strategy in a MuleSoft flow?"
   intent: errors
-  expected_chunk_keywords:
-    - "error"
-    - "on-error-propagate"
+  expected_chunk_keywords: ["error", "on-error-propagate"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "error"
+  expected_answer_must_contain: ["error"]
 
 - id: mule-003
   query: "How do you transform a JSON payload to XML using DataWeave?"
   intent: data_mapping
-  expected_chunk_keywords:
-    - "DataWeave"
-    - "transform"
+  expected_chunk_keywords: ["DataWeave", "transform"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "DataWeave"
+  expected_answer_must_contain: ["DataWeave"]
 
 - id: mule-004
   query: "What is the difference between a Process API and an Experience API in API-led connectivity?"
   intent: architecture
-  expected_chunk_keywords:
-    - "Process API"
-    - "Experience API"
+  expected_chunk_keywords: ["Process API", "Experience API"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "API"
+  expected_answer_must_contain: ["API"]
 
 - id: mule-005
   query: "How are MuleSoft connectors configured for Salesforce integration?"
   intent: architecture
-  expected_chunk_keywords:
-    - "connector"
-    - "Salesforce"
+  expected_chunk_keywords: ["connector", "Salesforce"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "connector"
+  expected_answer_must_contain: ["connector"]
 
 - id: mule-006
   query: "What retry and reconnection policies are available for unreliable endpoints?"
   intent: errors
-  expected_chunk_keywords:
-    - "retry"
-    - "reconnection"
+  expected_chunk_keywords: ["retry", "reconnection"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "retry"
+  expected_answer_must_contain: ["retry"]
 
 - id: mule-007
   query: "How is a batch job structured to process large CSV files in MuleSoft?"
   intent: overview
-  expected_chunk_keywords:
-    - "batch"
-    - "CSV"
+  expected_chunk_keywords: ["batch", "CSV"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "batch"
+  expected_answer_must_contain: ["batch"]
+
+- id: mule-008
+  query: "What is the API-led connectivity three-tier model and how are layers separated?"
+  intent: architecture
+  expected_chunk_keywords: ["System API", "layer"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["layer"]
+
+- id: mule-009
+  query: "How is message routing implemented using a choice router in MuleSoft?"
+  intent: architecture
+  expected_chunk_keywords: ["choice router", "routing"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["routing"]
+
+- id: mule-010
+  query: "What are the CloudHub deployment sizing guidelines for high-throughput flows?"
+  intent: performance
+  expected_chunk_keywords: ["CloudHub", "vCore"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["CloudHub"]
+
+- id: mule-011
+  query: "How is a MuleSoft application monitored in Anypoint Monitoring?"
+  intent: monitoring
+  expected_chunk_keywords: ["Anypoint Monitoring", "alert"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["monitoring"]
+
+- id: mule-012
+  query: "What is the pattern for implementing an idempotent receiver in MuleSoft?"
+  intent: architecture
+  expected_chunk_keywords: ["idempotent", "object store"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["idempotent"]
+
+- id: mule-013
+  query: "How is a Dead Letter Queue (DLQ) configured for Anypoint MQ?"
+  intent: errors
+  expected_chunk_keywords: ["DLQ", "Anypoint MQ"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["DLQ"]
+
+- id: mule-014
+  query: "How does MuleSoft handle large file transfers using streaming?"
+  intent: performance
+  expected_chunk_keywords: ["streaming", "large file"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["streaming"]
+
+- id: mule-015
+  query: "What is the approach for securing sensitive configuration properties in MuleSoft?"
+  intent: security
+  expected_chunk_keywords: ["secure properties", "encryption"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["secure"]
+
+- id: mule-016
+  query: "How is a MuleSoft flow tested with MUnit?"
+  intent: architecture
+  expected_chunk_keywords: ["MUnit", "mock"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["MUnit"]
+
+- id: mule-017
+  query: "How are API policies applied and managed in Anypoint API Manager?"
+  intent: security
+  expected_chunk_keywords: ["API policy", "API Manager"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["policy"]
+
+- id: mule-018
+  query: "What connector is used to integrate MuleSoft with SAP and what are the prerequisites?"
+  intent: architecture
+  expected_chunk_keywords: ["SAP", "connector"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SAP"]
+
+- id: mule-019
+  query: "How is the scatter-gather pattern implemented to call multiple APIs in parallel?"
+  intent: architecture
+  expected_chunk_keywords: ["scatter-gather", "parallel"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["scatter-gather"]
+
+- id: mule-020
+  query: "What is the watermark pattern for incremental data polling in MuleSoft?"
+  intent: architecture
+  expected_chunk_keywords: ["watermark", "polling"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["watermark"]
+
+- id: mule-021
+  query: "How is circuit breaker pattern implemented in MuleSoft?"
+  intent: errors
+  expected_chunk_keywords: ["circuit breaker", "until-successful"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["circuit"]
+
+- id: mule-022
+  query: "What logging best practices are recommended for MuleSoft applications?"
+  intent: monitoring
+  expected_chunk_keywords: ["logging", "correlation ID"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["log"]
+
+- id: mule-023
+  query: "How is rate limiting enforced on an API deployed via Anypoint API Gateway?"
+  intent: security
+  expected_chunk_keywords: ["rate limiting", "API Gateway"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["rate"]
+
+- id: mule-024
+  query: "How are DataWeave 2.0 modules and libraries shared across MuleSoft projects?"
+  intent: architecture
+  expected_chunk_keywords: ["DataWeave module", "shared library"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["module"]
+
+- id: mule-025
+  query: "What is the RAML specification used for and how is it published to Anypoint Exchange?"
+  intent: architecture
+  expected_chunk_keywords: ["RAML", "Anypoint Exchange"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["RAML"]
+
+- id: mule-026
+  query: "How does MuleSoft publish and consume events on Kafka topics?"
+  intent: architecture
+  expected_chunk_keywords: ["Kafka", "topic"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["Kafka"]
+
+- id: mule-027
+  query: "What are the considerations for migrating from Mule 3 to Mule 4?"
+  intent: architecture
+  expected_chunk_keywords: ["migration", "Mule 4"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["migration"]
+
+- id: mule-028
+  query: "How is a MuleSoft CI/CD pipeline configured in Jenkins or GitHub Actions?"
+  intent: architecture
+  expected_chunk_keywords: ["CI/CD", "pipeline"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["pipeline"]
+
+- id: mule-029
+  query: "What is the role of the Object Store v2 in MuleSoft for caching?"
+  intent: architecture
+  expected_chunk_keywords: ["Object Store", "cache"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["Object Store"]
+
+- id: mule-030
+  query: "How is correlation ID propagated across services in a MuleSoft integration?"
+  intent: monitoring
+  expected_chunk_keywords: ["correlation ID", "propagate"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["correlation"]
+
+- id: mule-031
+  query: "How is JWT validation implemented as an API policy in MuleSoft?"
+  intent: security
+  expected_chunk_keywords: ["JWT", "validation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["JWT"]
+
+- id: mule-032
+  query: "What is the recommended project structure for a large MuleSoft application?"
+  intent: architecture
+  expected_chunk_keywords: ["project structure", "domain"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["structure"]
+
+- id: mule-033
+  query: "How are environment-specific properties managed in MuleSoft deployments?"
+  intent: architecture
+  expected_chunk_keywords: ["environment", "property"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["environment"]
+
+- id: mule-034
+  query: "What is the MuleSoft approach for handling SOAP to REST transformation?"
+  intent: data_mapping
+  expected_chunk_keywords: ["SOAP", "REST"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SOAP"]
+
+- id: mule-035
+  query: "How is pagination handled when consuming a paginated REST API in MuleSoft?"
+  intent: architecture
+  expected_chunk_keywords: ["pagination", "REST"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["pagination"]
+
+- id: mule-036
+  query: "What is the maximum payload size recommendation for synchronous MuleSoft flows?"
+  intent: performance
+  expected_chunk_keywords: ["payload size", "synchronous"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["payload"]
+
+- id: mule-037
+  query: "How does Anypoint Visualizer help with dependency mapping between APIs?"
+  intent: monitoring
+  expected_chunk_keywords: ["Anypoint Visualizer", "dependency"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["Visualizer"]
+
+- id: mule-038
+  query: "What is the strategy for handling partial batch job failures in MuleSoft?"
+  intent: errors
+  expected_chunk_keywords: ["batch", "partial failure"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["batch"]
+
+- id: mule-039
+  query: "How is a MuleSoft API versioned and deprecated gracefully?"
+  intent: architecture
+  expected_chunk_keywords: ["versioning", "deprecation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["version"]
+
+- id: mule-040
+  query: "How are MuleSoft applications deployed to on-premise Runtime Fabric?"
+  intent: architecture
+  expected_chunk_keywords: ["Runtime Fabric", "on-premise"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["Runtime Fabric"]
+
+- id: mule-041
+  query: "What DataWeave functions are used for date and time manipulation?"
+  intent: data_mapping
+  expected_chunk_keywords: ["DataWeave", "date"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["DataWeave"]
+
+- id: mule-042
+  query: "How is a request-reply pattern implemented in MuleSoft with async messaging?"
+  intent: architecture
+  expected_chunk_keywords: ["request-reply", "async"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["async"]
+
+- id: mule-043
+  query: "What is the performance impact of using the HTTP caching policy in Anypoint?"
+  intent: performance
+  expected_chunk_keywords: ["HTTP caching", "performance"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["cache"]
+
+- id: mule-044
+  query: "How is IP allowlisting enforced on APIs in Anypoint API Gateway?"
+  intent: security
+  expected_chunk_keywords: ["IP allowlist", "API Gateway"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["allowlist"]
+
+- id: mule-045
+  query: "What is the approach for blue-green deployments on CloudHub?"
+  intent: architecture
+  expected_chunk_keywords: ["blue-green", "CloudHub"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["blue-green"]
+
+- id: mule-046
+  query: "How is SFTP file ingestion automated in a MuleSoft flow?"
+  intent: architecture
+  expected_chunk_keywords: ["SFTP", "file"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SFTP"]
+
+- id: mule-047
+  query: "What Anypoint Platform roles and permissions should be assigned to integration developers?"
+  intent: security
+  expected_chunk_keywords: ["role", "permission"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["role"]
+
+- id: mule-048
+  query: "How are long-running processes managed with the async flow pattern in Mule 4?"
+  intent: architecture
+  expected_chunk_keywords: ["async", "long-running"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["async"]
+
+- id: mule-049
+  query: "What SLA tiers are recommended for MuleSoft API products in Anypoint Exchange?"
+  intent: performance
+  expected_chunk_keywords: ["SLA tier", "Anypoint Exchange"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SLA"]
+
+- id: mule-050
+  query: "How is MuleSoft integrated with an API gateway like AWS API Gateway or Apigee?"
+  intent: architecture
+  expected_chunk_keywords: ["AWS API Gateway", "Apigee"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["gateway"]

@@ -1,102 +1,353 @@
 # Domain: PLM / PIM / DAM — Product Lifecycle & Asset Management integrations
-# Covers: product status mapping, asset distribution, metadata sync, lifecycle transitions
+# Covers: product status mapping, asset distribution, metadata sync, lifecycle transitions,
+#         taxonomy, versioning, approval workflows, channel publishing
 ---
 - id: plm-001
   query: "What are the status mapping rules from PIM to PLM?"
   intent: data_mapping
-  expected_chunk_keywords:
-    - "product_status"
-    - "lifecycle_state"
+  expected_chunk_keywords: ["product_status", "lifecycle_state"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "status"
+  expected_answer_must_contain: ["status"]
 
 - id: plm-002
   query: "How is authentication handled between PLM and DAM?"
-  intent: architecture
-  expected_chunk_keywords:
-    - "OAuth"
-    - "token"
+  intent: security
+  expected_chunk_keywords: ["OAuth", "token"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "authentication"
+  expected_answer_must_contain: ["authentication"]
 
 - id: plm-003
   query: "What error handling pattern is used for failed PIM uploads?"
   intent: errors
-  expected_chunk_keywords:
-    - "retry"
-    - "dead-letter"
+  expected_chunk_keywords: ["retry", "dead-letter"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "retry"
+  expected_answer_must_contain: ["retry"]
 
 - id: plm-004
   query: "Describe the end-to-end product data flow."
   intent: overview
-  expected_chunk_keywords:
-    - "product"
-    - "flow"
+  expected_chunk_keywords: ["product", "flow"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "PIM"
+  expected_answer_must_contain: ["PIM"]
 
 - id: plm-005
   query: "What validation rules apply to product_status?"
   intent: business_rules
-  expected_chunk_keywords:
-    - "validation"
-    - "mandatory"
+  expected_chunk_keywords: ["validation", "mandatory"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "validation"
+  expected_answer_must_contain: ["validation"]
 
 - id: plm-006
   query: "How are digital assets linked to product variants in DAM?"
   intent: data_mapping
-  expected_chunk_keywords:
-    - "asset"
-    - "variant"
+  expected_chunk_keywords: ["asset", "variant"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "asset"
+  expected_answer_must_contain: ["asset"]
 
 - id: plm-007
   query: "What triggers a product lifecycle state transition in PLM?"
   intent: business_rules
-  expected_chunk_keywords:
-    - "lifecycle"
-    - "transition"
+  expected_chunk_keywords: ["lifecycle", "transition"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "lifecycle"
+  expected_answer_must_contain: ["lifecycle"]
 
 - id: plm-008
   query: "How is product metadata synchronized between PIM and the e-commerce channel?"
   intent: data_mapping
-  expected_chunk_keywords:
-    - "metadata"
-    - "sync"
+  expected_chunk_keywords: ["metadata", "sync"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "sync"
+  expected_answer_must_contain: ["sync"]
 
 - id: plm-009
   query: "What is the rollback procedure when a PLM → PIM sync fails?"
   intent: errors
-  expected_chunk_keywords:
-    - "rollback"
-    - "sync"
+  expected_chunk_keywords: ["rollback", "sync"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "rollback"
+  expected_answer_must_contain: ["rollback"]
 
 - id: plm-010
   query: "Which mandatory fields are required before a product can be approved in PLM?"
   intent: business_rules
-  expected_chunk_keywords:
-    - "mandatory"
-    - "approval"
+  expected_chunk_keywords: ["mandatory", "approval"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "mandatory"
+  expected_answer_must_contain: ["mandatory"]
+
+- id: plm-011
+  query: "How is the product taxonomy structured and managed in PIM?"
+  intent: architecture
+  expected_chunk_keywords: ["taxonomy", "category"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["taxonomy"]
+
+- id: plm-012
+  query: "What is the versioning strategy for product specifications in PLM?"
+  intent: architecture
+  expected_chunk_keywords: ["version", "specification"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["version"]
+
+- id: plm-013
+  query: "How are product images and renditions stored and retrieved from DAM?"
+  intent: architecture
+  expected_chunk_keywords: ["image", "rendition"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["rendition"]
+
+- id: plm-014
+  query: "What approval workflow governs the release of a new product version?"
+  intent: business_rules
+  expected_chunk_keywords: ["approval", "workflow"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["approval"]
+
+- id: plm-015
+  query: "How are attribute sets defined and assigned to product families in PIM?"
+  intent: data_mapping
+  expected_chunk_keywords: ["attribute", "family"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["attribute"]
+
+- id: plm-016
+  query: "What is the process for bulk-importing product data into PIM?"
+  intent: overview
+  expected_chunk_keywords: ["bulk", "import"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["import"]
+
+- id: plm-017
+  query: "How does PIM handle multi-language product descriptions?"
+  intent: data_mapping
+  expected_chunk_keywords: ["locale", "translation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["locale"]
+
+- id: plm-018
+  query: "What are the channel-specific publication rules for product data?"
+  intent: business_rules
+  expected_chunk_keywords: ["channel", "publication"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["channel"]
+
+- id: plm-019
+  query: "How is completeness score calculated for a product record in PIM?"
+  intent: business_rules
+  expected_chunk_keywords: ["completeness", "score"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["completeness"]
+
+- id: plm-020
+  query: "What events does PLM emit when a product reaches end-of-life?"
+  intent: architecture
+  expected_chunk_keywords: ["end-of-life", "event"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["event"]
+
+- id: plm-021
+  query: "How are DAM assets expired or archived when a product is discontinued?"
+  intent: business_rules
+  expected_chunk_keywords: ["archive", "discontinued"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["archive"]
+
+- id: plm-022
+  query: "What conflict resolution strategy is used when PIM and PLM have different product data?"
+  intent: errors
+  expected_chunk_keywords: ["conflict", "resolution"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["conflict"]
+
+- id: plm-023
+  query: "How is media asset metadata extracted and mapped to PIM attributes?"
+  intent: data_mapping
+  expected_chunk_keywords: ["media", "metadata"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["metadata"]
+
+- id: plm-024
+  query: "What API rate limits apply to the PIM integration endpoints?"
+  intent: architecture
+  expected_chunk_keywords: ["rate limit", "throttle"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["rate"]
+
+- id: plm-025
+  query: "How is product data quality enforced before publishing to a sales channel?"
+  intent: business_rules
+  expected_chunk_keywords: ["quality", "publish"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["quality"]
+
+- id: plm-026
+  query: "What is the difference between a draft and published product record in PIM?"
+  intent: business_rules
+  expected_chunk_keywords: ["draft", "published"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["draft"]
+
+- id: plm-027
+  query: "How are product bundles and kit configurations managed in PLM?"
+  intent: architecture
+  expected_chunk_keywords: ["bundle", "kit"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["bundle"]
+
+- id: plm-028
+  query: "What is the data flow for supplier-provided product specifications entering PLM?"
+  intent: overview
+  expected_chunk_keywords: ["supplier", "specification"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["supplier"]
+
+- id: plm-029
+  query: "How are product change requests tracked and approved in PLM?"
+  intent: business_rules
+  expected_chunk_keywords: ["change request", "approved"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["change"]
+
+- id: plm-030
+  query: "What monitoring and alerting is in place for PIM synchronization failures?"
+  intent: monitoring
+  expected_chunk_keywords: ["monitoring", "alert"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["alert"]
+
+- id: plm-031
+  query: "How are product classifications mapped between PLM and ERP systems?"
+  intent: data_mapping
+  expected_chunk_keywords: ["classification", "ERP"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["classification"]
+
+- id: plm-032
+  query: "What deduplication logic is applied when the same asset is uploaded multiple times to DAM?"
+  intent: business_rules
+  expected_chunk_keywords: ["deduplication", "checksum"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["dedup"]
+
+- id: plm-033
+  query: "How is access control enforced for sensitive product data in PIM?"
+  intent: security
+  expected_chunk_keywords: ["access control", "permission"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["access"]
+
+- id: plm-034
+  query: "What happens to related DAM assets when a PLM product record is deleted?"
+  intent: errors
+  expected_chunk_keywords: ["delete", "cascade"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["delete"]
+
+- id: plm-035
+  query: "How are product variants and their attributes modeled in PIM?"
+  intent: architecture
+  expected_chunk_keywords: ["variant", "attribute"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["variant"]
+
+- id: plm-036
+  query: "What is the cadence and trigger for scheduled PIM → PLM synchronization jobs?"
+  intent: architecture
+  expected_chunk_keywords: ["scheduled", "sync"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["scheduled"]
+
+- id: plm-037
+  query: "How is product regulatory compliance information stored and linked in PLM?"
+  intent: business_rules
+  expected_chunk_keywords: ["compliance", "regulatory"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["compliance"]
+
+- id: plm-038
+  query: "What is the maximum file size and supported formats for DAM asset uploads?"
+  intent: architecture
+  expected_chunk_keywords: ["file size", "format"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["format"]
+
+- id: plm-039
+  query: "How does PIM export product data to a print catalogue or InDesign?"
+  intent: overview
+  expected_chunk_keywords: ["export", "catalogue"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["export"]
+
+- id: plm-040
+  query: "What SLA governs the latency of PLM-to-PIM product updates?"
+  intent: performance
+  expected_chunk_keywords: ["SLA", "latency"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SLA"]
+
+- id: plm-041
+  query: "How are structured product data models enforced via JSON Schema in PIM?"
+  intent: architecture
+  expected_chunk_keywords: ["JSON Schema", "model"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["schema"]
+
+- id: plm-042
+  query: "What is the retry policy for failed DAM rendition generation jobs?"
+  intent: errors
+  expected_chunk_keywords: ["retry", "rendition"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["retry"]
+
+- id: plm-043
+  query: "How are product data changes audited and who can view the audit log?"
+  intent: security
+  expected_chunk_keywords: ["audit", "log"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["audit"]
+
+- id: plm-044
+  query: "What is the handoff process when a product moves from R&D in PLM to commercial in PIM?"
+  intent: overview
+  expected_chunk_keywords: ["handoff", "commercial"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["handoff"]
+
+- id: plm-045
+  query: "How are localized product names and descriptions validated before channel publication?"
+  intent: business_rules
+  expected_chunk_keywords: ["localized", "validation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["localized"]
+
+- id: plm-046
+  query: "What disaster recovery procedure applies to the PIM database?"
+  intent: architecture
+  expected_chunk_keywords: ["disaster recovery", "backup"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["recovery"]
+
+- id: plm-047
+  query: "How are test and production environments kept in sync for PIM configuration?"
+  intent: architecture
+  expected_chunk_keywords: ["environment", "configuration"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["environment"]
+
+- id: plm-048
+  query: "How is the DAM CDN invalidation triggered when a product image is updated?"
+  intent: architecture
+  expected_chunk_keywords: ["CDN", "invalidation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["CDN"]
+
+- id: plm-049
+  query: "What performance benchmarks exist for PIM bulk-export operations?"
+  intent: performance
+  expected_chunk_keywords: ["performance", "bulk-export"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["performance"]
+
+- id: plm-050
+  query: "How is end-of-life product data archived to cold storage from PLM?"
+  intent: business_rules
+  expected_chunk_keywords: ["archive", "cold storage"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["archive"]

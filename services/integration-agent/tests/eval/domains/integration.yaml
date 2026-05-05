@@ -1,0 +1,354 @@
+# Domain: Integration — Enterprise integration patterns and middleware
+# Covers: EAI patterns, message brokers, ESB/iPaaS, event-driven architecture,
+#         data contracts, orchestration vs choreography, API management,
+#         CDC, ETL/ELT, saga, outbox, CQRS, and integration governance
+---
+- id: int-001
+  query: "What is the difference between orchestration and choreography in integration design?"
+  intent: architecture
+  expected_chunk_keywords: ["orchestration", "choreography"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["orchestration"]
+
+- id: int-002
+  query: "How is the Outbox Pattern implemented to guarantee event delivery?"
+  intent: architecture
+  expected_chunk_keywords: ["outbox", "transactional"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["outbox"]
+
+- id: int-003
+  query: "What message broker is used and how are topics/queues partitioned?"
+  intent: architecture
+  expected_chunk_keywords: ["broker", "partition"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["broker"]
+
+- id: int-004
+  query: "How is Change Data Capture (CDC) implemented to stream database changes?"
+  intent: architecture
+  expected_chunk_keywords: ["CDC", "Debezium"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["CDC"]
+
+- id: int-005
+  query: "What is the Saga pattern and when is it preferred over two-phase commit?"
+  intent: architecture
+  expected_chunk_keywords: ["saga", "compensating transaction"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["saga"]
+
+- id: int-006
+  query: "How are integration data contracts versioned to support backward compatibility?"
+  intent: architecture
+  expected_chunk_keywords: ["data contract", "backward compatibility"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["contract"]
+
+- id: int-007
+  query: "What is the iPaaS platform used and which connectors are available out of the box?"
+  intent: architecture
+  expected_chunk_keywords: ["iPaaS", "connector"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["iPaaS"]
+
+- id: int-008
+  query: "How is the message envelope standard (headers, correlation ID, timestamp) defined?"
+  intent: data_mapping
+  expected_chunk_keywords: ["envelope", "header"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["envelope"]
+
+- id: int-009
+  query: "What ETL or ELT pipeline is used to load data into the data warehouse?"
+  intent: architecture
+  expected_chunk_keywords: ["ETL", "data warehouse"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["ETL"]
+
+- id: int-010
+  query: "How is exactly-once delivery guaranteed in the messaging layer?"
+  intent: business_rules
+  expected_chunk_keywords: ["exactly-once", "idempotent"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["exactly-once"]
+
+- id: int-011
+  query: "What is the CQRS pattern and how is it applied in the integration design?"
+  intent: architecture
+  expected_chunk_keywords: ["CQRS", "command"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["CQRS"]
+
+- id: int-012
+  query: "How does the integration handle schema evolution when producers add new fields?"
+  intent: architecture
+  expected_chunk_keywords: ["schema evolution", "backward"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["schema"]
+
+- id: int-013
+  query: "What is the publish-subscribe pattern and which systems act as publishers?"
+  intent: architecture
+  expected_chunk_keywords: ["publish-subscribe", "publisher"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["publish"]
+
+- id: int-014
+  query: "How is message deduplication handled when the same event arrives twice?"
+  intent: business_rules
+  expected_chunk_keywords: ["deduplication", "idempotent"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["deduplication"]
+
+- id: int-015
+  query: "What is the content-based routing pattern and how is it implemented?"
+  intent: architecture
+  expected_chunk_keywords: ["content-based routing", "filter"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["routing"]
+
+- id: int-016
+  query: "How is the ESB (Enterprise Service Bus) topology structured in this architecture?"
+  intent: architecture
+  expected_chunk_keywords: ["ESB", "topology"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["ESB"]
+
+- id: int-017
+  query: "What integration governance model controls who can publish new APIs?"
+  intent: business_rules
+  expected_chunk_keywords: ["governance", "API"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["governance"]
+
+- id: int-018
+  query: "How is the aggregator pattern used to combine responses from multiple services?"
+  intent: architecture
+  expected_chunk_keywords: ["aggregator", "combine"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["aggregator"]
+
+- id: int-019
+  query: "What is the event sourcing pattern and how does it relate to the integration?"
+  intent: architecture
+  expected_chunk_keywords: ["event sourcing", "event store"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["event sourcing"]
+
+- id: int-020
+  query: "How is message routing configured using header-based routing?"
+  intent: architecture
+  expected_chunk_keywords: ["header", "routing"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["routing"]
+
+- id: int-021
+  query: "What is the integration testing strategy for an event-driven system?"
+  intent: architecture
+  expected_chunk_keywords: ["integration test", "event-driven"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["test"]
+
+- id: int-022
+  query: "How is the API catalogue maintained and kept up to date?"
+  intent: architecture
+  expected_chunk_keywords: ["API catalogue", "discovery"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["catalogue"]
+
+- id: int-023
+  query: "What is the splitting pattern for decomposing a bulk message into individual records?"
+  intent: architecture
+  expected_chunk_keywords: ["splitter", "decompose"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["splitter"]
+
+- id: int-024
+  query: "How is a canonical data model defined and enforced across integration boundaries?"
+  intent: data_mapping
+  expected_chunk_keywords: ["canonical", "data model"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["canonical"]
+
+- id: int-025
+  query: "What back-off strategy is used when retrying failed integration calls?"
+  intent: errors
+  expected_chunk_keywords: ["back-off", "exponential"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["back-off"]
+
+- id: int-026
+  query: "How are integration flows deployed and promoted across dev, test, and prod?"
+  intent: architecture
+  expected_chunk_keywords: ["promote", "deployment"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["deployment"]
+
+- id: int-027
+  query: "What monitoring is in place to detect integration bottlenecks in real time?"
+  intent: monitoring
+  expected_chunk_keywords: ["bottleneck", "real time"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["bottleneck"]
+
+- id: int-028
+  query: "How is a request normalisation pattern applied to accept multiple input formats?"
+  intent: data_mapping
+  expected_chunk_keywords: ["normalisation", "input format"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["normalisation"]
+
+- id: int-029
+  query: "What is the strangler fig pattern and how is it applied during system migration?"
+  intent: architecture
+  expected_chunk_keywords: ["strangler fig", "migration"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["strangler"]
+
+- id: int-030
+  query: "How are integration SLAs tracked and reported to stakeholders?"
+  intent: monitoring
+  expected_chunk_keywords: ["SLA", "reporting"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SLA"]
+
+- id: int-031
+  query: "What schema registry is used and how does it enforce message compatibility?"
+  intent: architecture
+  expected_chunk_keywords: ["schema registry", "Avro"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["schema registry"]
+
+- id: int-032
+  query: "How is event replay implemented to recover from a processing failure?"
+  intent: errors
+  expected_chunk_keywords: ["replay", "event"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["replay"]
+
+- id: int-033
+  query: "What is the compensating transaction strategy in the Saga pattern?"
+  intent: errors
+  expected_chunk_keywords: ["compensating", "saga"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["compensating"]
+
+- id: int-034
+  query: "How is the integration access log used for compliance auditing?"
+  intent: security
+  expected_chunk_keywords: ["access log", "audit"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["audit"]
+
+- id: int-035
+  query: "What data masking rules protect sensitive fields during integration processing?"
+  intent: security
+  expected_chunk_keywords: ["masking", "sensitive"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["masking"]
+
+- id: int-036
+  query: "How are integration platform upgrades coordinated with connected systems?"
+  intent: architecture
+  expected_chunk_keywords: ["upgrade", "coordination"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["upgrade"]
+
+- id: int-037
+  query: "What is the process trigger (schedule, event, API call) for each integration flow?"
+  intent: overview
+  expected_chunk_keywords: ["trigger", "schedule"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["trigger"]
+
+- id: int-038
+  query: "How is the integration platform scaled horizontally under increased load?"
+  intent: performance
+  expected_chunk_keywords: ["horizontal scaling", "load"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["scaling"]
+
+- id: int-039
+  query: "What alerting rules fire when message lag on a queue exceeds the threshold?"
+  intent: monitoring
+  expected_chunk_keywords: ["message lag", "alert"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["alert"]
+
+- id: int-040
+  query: "How is multi-tenancy handled in a shared integration platform?"
+  intent: architecture
+  expected_chunk_keywords: ["multi-tenancy", "isolation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["tenant"]
+
+- id: int-041
+  query: "What is the event schema standard (Avro, JSON Schema, Protobuf) used in this platform?"
+  intent: data_mapping
+  expected_chunk_keywords: ["Avro", "Protobuf"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["schema"]
+
+- id: int-042
+  query: "How are integration jobs prioritised when resources are constrained?"
+  intent: business_rules
+  expected_chunk_keywords: ["priority", "queue"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["priority"]
+
+- id: int-043
+  query: "What is the graceful shutdown procedure for a running integration flow?"
+  intent: architecture
+  expected_chunk_keywords: ["graceful shutdown", "drain"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["shutdown"]
+
+- id: int-044
+  query: "How are integration flows documented in the integration design specification?"
+  intent: overview
+  expected_chunk_keywords: ["design specification", "flow"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["specification"]
+
+- id: int-045
+  query: "What is the anti-corruption layer pattern and where is it applied?"
+  intent: architecture
+  expected_chunk_keywords: ["anti-corruption", "layer"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["anti-corruption"]
+
+- id: int-046
+  query: "How is sensitive data encrypted end-to-end through the integration pipeline?"
+  intent: security
+  expected_chunk_keywords: ["end-to-end encryption", "pipeline"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["encryption"]
+
+- id: int-047
+  query: "What is the approach for handling time zone differences across integrated systems?"
+  intent: data_mapping
+  expected_chunk_keywords: ["time zone", "UTC"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["UTC"]
+
+- id: int-048
+  query: "How is consumer registration and discovery managed in the integration hub?"
+  intent: architecture
+  expected_chunk_keywords: ["consumer registration", "discovery"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["discovery"]
+
+- id: int-049
+  query: "What is the cost model for high-volume message processing on the integration platform?"
+  intent: performance
+  expected_chunk_keywords: ["cost", "volume"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["cost"]
+
+- id: int-050
+  query: "How is the integration platform's configuration managed as code (IaC)?"
+  intent: architecture
+  expected_chunk_keywords: ["IaC", "configuration as code"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["IaC"]

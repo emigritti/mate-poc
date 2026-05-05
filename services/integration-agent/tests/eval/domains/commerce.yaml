@@ -1,82 +1,353 @@
 # Domain: Commerce — E-commerce platform integrations
-# Covers: catalog sync, order management, pricing, promotions, inventory
+# Covers: catalog, orders, pricing, promotions, inventory, payment, shipping,
+#         returns, customer, tax, search, personalisation, analytics
 ---
 - id: com-001
   query: "How are product prices synchronized from ERP to the commerce platform?"
   intent: data_mapping
-  expected_chunk_keywords:
-    - "price"
-    - "ERP"
+  expected_chunk_keywords: ["price", "ERP"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "price"
+  expected_answer_must_contain: ["price"]
 
 - id: com-002
   query: "What is the order lifecycle from placement to fulfilment?"
   intent: overview
-  expected_chunk_keywords:
-    - "order"
-    - "fulfilment"
+  expected_chunk_keywords: ["order", "fulfilment"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "order"
+  expected_answer_must_contain: ["order"]
 
 - id: com-003
   query: "How are inventory levels updated in real time across warehouses?"
   intent: architecture
-  expected_chunk_keywords:
-    - "inventory"
-    - "warehouse"
+  expected_chunk_keywords: ["inventory", "warehouse"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "inventory"
+  expected_answer_must_contain: ["inventory"]
 
 - id: com-004
   query: "What promotions and discount rules can be applied to a cart?"
   intent: business_rules
-  expected_chunk_keywords:
-    - "discount"
-    - "promotion"
+  expected_chunk_keywords: ["discount", "promotion"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "discount"
+  expected_answer_must_contain: ["discount"]
 
 - id: com-005
   query: "How is the product catalog structured for multi-channel distribution?"
   intent: architecture
-  expected_chunk_keywords:
-    - "catalog"
-    - "channel"
+  expected_chunk_keywords: ["catalog", "channel"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "catalog"
+  expected_answer_must_contain: ["catalog"]
 
 - id: com-006
   query: "What happens when a payment gateway returns a timeout error during checkout?"
   intent: errors
-  expected_chunk_keywords:
-    - "payment"
-    - "timeout"
+  expected_chunk_keywords: ["payment", "timeout"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "payment"
+  expected_answer_must_contain: ["payment"]
 
 - id: com-007
-  query: "How are customer segments defined and used for personalization?"
+  query: "How are customer segments defined and used for personalisation?"
   intent: business_rules
-  expected_chunk_keywords:
-    - "segment"
-    - "personalization"
+  expected_chunk_keywords: ["segment", "personalisation"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "customer"
+  expected_answer_must_contain: ["customer"]
 
 - id: com-008
   query: "What is the return and refund flow and which systems are involved?"
   intent: overview
-  expected_chunk_keywords:
-    - "return"
-    - "refund"
+  expected_chunk_keywords: ["return", "refund"]
   expected_doc_ids: []
-  expected_answer_must_contain:
-    - "refund"
+  expected_answer_must_contain: ["refund"]
+
+- id: com-009
+  query: "How are shipping rates calculated and which carriers are supported?"
+  intent: architecture
+  expected_chunk_keywords: ["shipping", "carrier"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["shipping"]
+
+- id: com-010
+  query: "What tax calculation engine is used and how are tax rules configured?"
+  intent: architecture
+  expected_chunk_keywords: ["tax", "calculation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["tax"]
+
+- id: com-011
+  query: "How is the search index kept in sync with the product catalog?"
+  intent: architecture
+  expected_chunk_keywords: ["search", "index"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["index"]
+
+- id: com-012
+  query: "What data is sent to the analytics platform on each order event?"
+  intent: data_mapping
+  expected_chunk_keywords: ["analytics", "event"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["analytics"]
+
+- id: com-013
+  query: "How is out-of-stock handling configured to prevent overselling?"
+  intent: business_rules
+  expected_chunk_keywords: ["out-of-stock", "overselling"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["stock"]
+
+- id: com-014
+  query: "What is the checkout flow and what validations are performed per step?"
+  intent: overview
+  expected_chunk_keywords: ["checkout", "validation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["checkout"]
+
+- id: com-015
+  query: "How is the wishlist or saved-cart data persisted across sessions?"
+  intent: architecture
+  expected_chunk_keywords: ["wishlist", "session"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["session"]
+
+- id: com-016
+  query: "What fraud detection rules are applied to new orders?"
+  intent: security
+  expected_chunk_keywords: ["fraud", "detection"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["fraud"]
+
+- id: com-017
+  query: "How are product reviews and ratings moderated before publication?"
+  intent: business_rules
+  expected_chunk_keywords: ["review", "moderation"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["review"]
+
+- id: com-018
+  query: "What is the data model for a configurable product with multiple options?"
+  intent: architecture
+  expected_chunk_keywords: ["configurable", "option"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["configurable"]
+
+- id: com-019
+  query: "How are B2B price lists and contract prices managed separately from B2C?"
+  intent: business_rules
+  expected_chunk_keywords: ["B2B", "price list"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["B2B"]
+
+- id: com-020
+  query: "What is the integration pattern between the commerce platform and OMS?"
+  intent: architecture
+  expected_chunk_keywords: ["OMS", "integration"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["OMS"]
+
+- id: com-021
+  query: "How is the guest checkout converted to a registered account post-purchase?"
+  intent: business_rules
+  expected_chunk_keywords: ["guest", "account"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["guest"]
+
+- id: com-022
+  query: "What events are emitted when an order status changes to shipped?"
+  intent: architecture
+  expected_chunk_keywords: ["shipped", "event"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["event"]
+
+- id: com-023
+  query: "How are multi-currency prices stored and converted at checkout?"
+  intent: data_mapping
+  expected_chunk_keywords: ["currency", "conversion"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["currency"]
+
+- id: com-024
+  query: "What SLA governs order processing and warehouse dispatch?"
+  intent: performance
+  expected_chunk_keywords: ["SLA", "dispatch"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["SLA"]
+
+- id: com-025
+  query: "How is PCI-DSS compliance ensured for payment card data?"
+  intent: security
+  expected_chunk_keywords: ["PCI-DSS", "payment card"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["PCI"]
+
+- id: com-026
+  query: "What is the abandoned cart recovery mechanism and how is it triggered?"
+  intent: architecture
+  expected_chunk_keywords: ["abandoned cart", "recovery"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["abandoned"]
+
+- id: com-027
+  query: "How are product bundles priced and their components managed?"
+  intent: business_rules
+  expected_chunk_keywords: ["bundle", "component"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["bundle"]
+
+- id: com-028
+  query: "What caching strategy is used for product listing pages?"
+  intent: performance
+  expected_chunk_keywords: ["cache", "listing"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["cache"]
+
+- id: com-029
+  query: "How is customer order history exposed via API for external CRM integration?"
+  intent: architecture
+  expected_chunk_keywords: ["order history", "CRM"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["CRM"]
+
+- id: com-030
+  query: "What retry logic applies when the fulfilment warehouse API is unavailable?"
+  intent: errors
+  expected_chunk_keywords: ["retry", "warehouse"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["retry"]
+
+- id: com-031
+  query: "How are digital goods (downloads, licenses) delivered after purchase?"
+  intent: overview
+  expected_chunk_keywords: ["digital", "download"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["digital"]
+
+- id: com-032
+  query: "What is the data flow for a split shipment order across multiple warehouses?"
+  intent: overview
+  expected_chunk_keywords: ["split shipment", "warehouse"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["shipment"]
+
+- id: com-033
+  query: "How are subscription products and recurring billing handled?"
+  intent: architecture
+  expected_chunk_keywords: ["subscription", "recurring"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["subscription"]
+
+- id: com-034
+  query: "What search ranking signals are used on the product search results page?"
+  intent: architecture
+  expected_chunk_keywords: ["ranking", "search"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["ranking"]
+
+- id: com-035
+  query: "How is GDPR compliance ensured for customer personal data in commerce?"
+  intent: security
+  expected_chunk_keywords: ["GDPR", "personal data"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["GDPR"]
+
+- id: com-036
+  query: "What monitoring dashboards track commerce platform uptime and error rates?"
+  intent: monitoring
+  expected_chunk_keywords: ["monitoring", "dashboard"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["monitoring"]
+
+- id: com-037
+  query: "How are flash sale high-traffic scenarios handled at the infrastructure level?"
+  intent: performance
+  expected_chunk_keywords: ["flash sale", "traffic"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["traffic"]
+
+- id: com-038
+  query: "What is the schema for a product recommendation payload sent to the frontend?"
+  intent: data_mapping
+  expected_chunk_keywords: ["recommendation", "schema"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["recommendation"]
+
+- id: com-039
+  query: "How are marketplace seller products ingested and validated?"
+  intent: architecture
+  expected_chunk_keywords: ["marketplace", "seller"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["marketplace"]
+
+- id: com-040
+  query: "What is the process for issuing a store credit or gift card?"
+  intent: business_rules
+  expected_chunk_keywords: ["store credit", "gift card"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["credit"]
+
+- id: com-041
+  query: "How are order fulfilment notifications sent to the customer?"
+  intent: architecture
+  expected_chunk_keywords: ["notification", "fulfilment"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["notification"]
+
+- id: com-042
+  query: "What is the approach for A/B testing product page layouts?"
+  intent: architecture
+  expected_chunk_keywords: ["A/B test", "experiment"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["test"]
+
+- id: com-043
+  query: "How is the product feed generated and sent to Google Shopping?"
+  intent: data_mapping
+  expected_chunk_keywords: ["product feed", "Google Shopping"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["feed"]
+
+- id: com-044
+  query: "What happens when an order is placed for a product that is discontinued?"
+  intent: errors
+  expected_chunk_keywords: ["discontinued", "order"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["discontinued"]
+
+- id: com-045
+  query: "How is cross-border shipping and customs documentation handled?"
+  intent: overview
+  expected_chunk_keywords: ["cross-border", "customs"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["customs"]
+
+- id: com-046
+  query: "What is the data contract between the checkout service and the payment provider?"
+  intent: data_mapping
+  expected_chunk_keywords: ["data contract", "payment"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["contract"]
+
+- id: com-047
+  query: "How are loyalty points earned and redeemed in the commerce platform?"
+  intent: business_rules
+  expected_chunk_keywords: ["loyalty", "points"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["loyalty"]
+
+- id: com-048
+  query: "What is the deployment strategy for zero-downtime commerce platform upgrades?"
+  intent: architecture
+  expected_chunk_keywords: ["deployment", "zero-downtime"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["deployment"]
+
+- id: com-049
+  query: "How is the category tree managed and published across storefront channels?"
+  intent: architecture
+  expected_chunk_keywords: ["category tree", "storefront"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["category"]
+
+- id: com-050
+  query: "What disaster recovery plan exists for the order management database?"
+  intent: architecture
+  expected_chunk_keywords: ["disaster recovery", "order management"]
+  expected_doc_ids: []
+  expected_answer_must_contain: ["recovery"]
