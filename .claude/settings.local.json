@@ -114,7 +114,9 @@
       "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc status)",
       "Bash(git -C:*)",
       "Bash(git -C /c/Project/Agentic/my-functional-integration-mate-poc push origin main)",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(gh pr create --title 'feat\\(rag\\): modernize pipeline — eval harness + ADR-X1..X4 \\(parser/embedder/reranker/contextual\\)' --body ' *)",
+      "Bash(git cherry-pick *)"
     ]
   },
   "hooks": {
