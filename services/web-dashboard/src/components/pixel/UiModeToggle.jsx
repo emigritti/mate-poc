@@ -26,12 +26,12 @@ export default function UiModeToggle() {
     <button
       onClick={() => setMode('pixel')}
       title="Switch to Commodore 64 mode"
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                 border border-slate-200 text-slate-600 hover:border-indigo-400
-                 hover:text-indigo-600 transition-colors"
+      className="flex items-center justify-center gap-1.5 w-full px-3 py-1.5 rounded-lg text-xs font-semibold
+                 border border-zinc-700 text-zinc-500 hover:border-sky-500
+                 hover:text-sky-400 transition-colors"
     >
       <Tv size={13} />
-      C-64
+      C-64 Mode
     </button>
   );
 }
