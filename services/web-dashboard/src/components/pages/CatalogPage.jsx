@@ -4,6 +4,8 @@ import MarkdownViewer from '../ui/MarkdownViewer.jsx';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
 import { useProject } from '../../context/ProjectContext.jsx';
+import { SkeletonCardGrid } from '../ui/SkeletonCard.jsx';
+import EmptyState from '../ui/EmptyState.jsx';
 
 const STATUS_MAP = {
   APPROVED:           { variant: 'success', label: 'Approved' },
@@ -253,21 +255,23 @@ export default function CatalogPage() {
 
       {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={24} className="animate-spin text-indigo-400" />
-        </div>
+        <SkeletonCardGrid count={6} />
       ) : error ? (
-        <div className="flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm">
-          <AlertCircle size={16} /> {error}
-        </div>
+        <EmptyState
+          variant="error"
+          title="Failed to load integrations"
+          description={error}
+          action={
+            <button onClick={load} className="px-4 py-2 text-sm font-medium text-white bg-sky-600 rounded-lg hover:bg-sky-700">
+              Retry
+            </button>
+          }
+        />
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <BookOpen size={40} className="text-slate-200 mb-3" />
-          <p className="font-semibold text-slate-500" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            No integrations yet
-          </p>
-          <p className="text-slate-400 text-sm mt-1">Run the agent to generate integration specifications</p>
-        </div>
+        <EmptyState
+          title={filter === 'all' ? 'No integrations yet' : `No ${STATUS_MAP[filter]?.label ?? filter} integrations`}
+          description={filter === 'all' ? 'Run the agent to generate integration specifications' : 'Try a different status filter'}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(int => (

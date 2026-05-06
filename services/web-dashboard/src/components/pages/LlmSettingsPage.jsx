@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SlidersHorizontal, RotateCcw, Save, AlertCircle, CheckCircle2, Loader2, Info, Zap } from 'lucide-react';
 import { API } from '../../api.js';
+import { SkeletonTable } from '../ui/SkeletonTable.jsx';
 
 const MODEL_FIELDS = [
   { key: 'model',           label: 'Model',             type: 'text',   unit: '',    hint: 'Model name — Ollama: qwen2.5:14b · Gemini: gemini-2.0-flash · Anthropic: claude-sonnet-4-6' },
@@ -258,8 +259,8 @@ export default function LlmSettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-indigo-400" />
+      <div className="max-w-3xl space-y-5">
+        <SkeletonTable rows={6} cols={2} />
       </div>
     );
   }

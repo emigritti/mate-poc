@@ -5,6 +5,10 @@ import EntityDetail from '../wiki/EntityDetail.jsx';
 import GraphCanvas from '../wiki/GraphCanvas.jsx';
 import WikiSearchBar from '../wiki/WikiSearchBar.jsx';
 import { API } from '../../api.js';
+import {
+    AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+    AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '../ui/alert-dialog.jsx';
 
 export default function WikiPage() {
     const [activeTab, setActiveTab] = useState('entities');
@@ -12,6 +16,7 @@ export default function WikiPage() {
     const [stats, setStats] = useState(null);
     const [rebuilding, setRebuilding] = useState(false);
     const [rebuildMsg, setRebuildMsg] = useState(null);
+    const [showRebuildDialog, setShowRebuildDialog] = useState(false);
 
     useEffect(() => {
         API.wiki.stats()
@@ -25,8 +30,8 @@ export default function WikiPage() {
         if (id) { setSelectedEntityId(id); setActiveTab('detail'); }
     };
 
-    const handleRebuild = async () => {
-        if (!confirm('Trigger a full wiki graph rebuild? This runs in the background.')) return;
+    const confirmRebuild = async () => {
+        setShowRebuildDialog(false);
         setRebuilding(true); setRebuildMsg(null);
         try {
             const res = await API.wiki.rebuild();
@@ -51,12 +56,12 @@ export default function WikiPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Network size={20} className="text-indigo-500" />
-                    <h1 className="text-xl font-bold text-slate-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                    <Network size={20} className="text-sky-500" />
+                    <h1 className="text-xl font-bold text-zinc-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
                         LLM Wiki
                     </h1>
                     {stats && (
-                        <span className="ml-2 text-xs text-slate-400">
+                        <span className="ml-2 text-xs text-zinc-400">
                             {stats.total_entities} entities · {stats.total_relationships} relationships
                         </span>
                     )}
@@ -66,9 +71,9 @@ export default function WikiPage() {
                         <WikiSearchBar onSelect={handleSelectEntity} />
                     </div>
                     <button
-                        onClick={handleRebuild}
+                        onClick={() => setShowRebuildDialog(true)}
                         disabled={rebuilding}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-600 border border-zinc-200 rounded-lg hover:bg-zinc-50 disabled:opacity-50"
                     >
                         {rebuilding
                             ? <Loader2 size={12} className="animate-spin" />
@@ -80,7 +85,7 @@ export default function WikiPage() {
             </div>
 
             {rebuildMsg && (
-                <div className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                <div className="text-xs text-sky-700 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
                     {rebuildMsg}
                 </div>
             )}
@@ -89,24 +94,24 @@ export default function WikiPage() {
             {stats && stats.entity_types?.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                     {stats.entity_types.slice(0, 6).map(t => (
-                        <span key={t.type} className="px-2.5 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-600">
-                            {t.type} <strong className="text-slate-800">{t.count}</strong>
+                        <span key={t.type} className="px-2.5 py-0.5 bg-white border border-zinc-200 rounded-full text-xs text-zinc-600">
+                            {t.type} <strong className="text-zinc-800">{t.count}</strong>
                         </span>
                     ))}
                 </div>
             )}
 
             {/* Tabs */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="flex border-b border-slate-200">
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+                <div className="flex border-b border-zinc-200">
                     {TABS.map(t => (
                         <button
                             key={t.id}
                             onClick={() => setActiveTab(t.id)}
                             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
                                 activeTab === t.id
-                                    ? 'border-indigo-500 text-indigo-600'
-                                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                                    ? 'border-sky-500 text-sky-600'
+                                    : 'border-transparent text-zinc-500 hover:text-zinc-700'
                             }`}
                         >
                             <t.icon size={14} />
@@ -133,6 +138,22 @@ export default function WikiPage() {
                     )}
                 </div>
             </div>
+
+            {/* Rebuild confirmation */}
+            <AlertDialog open={showRebuildDialog} onOpenChange={setShowRebuildDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Rebuild wiki graph</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Trigger a full wiki graph rebuild? This runs in the background and may take several minutes.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmRebuild}>Rebuild</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

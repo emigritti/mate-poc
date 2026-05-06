@@ -6,6 +6,7 @@ import RequirementValidationModal from '../ui/RequirementValidationModal.jsx';
 import TagConfirmPanel from '../requirements/TagConfirmPanel.jsx';
 import { API } from '../../api.js';
 import { useProject } from '../../context/ProjectContext.jsx';
+import { SkeletonTable } from '../ui/SkeletonTable.jsx';
 
 const STATUS_MAP = {
   APPROVED:           { variant: 'success', label: 'Approved' },
@@ -20,6 +21,7 @@ export default function RequirementsPage() {
   const [requirements, setRequirements] = useState([]);
   const [pendingTags, setPendingTags]   = useState([]);
   const [confirmedIds, setConfirmedIds] = useState(new Set());
+  const [loading, setLoading]           = useState(true);
   const [uploading, setUploading]       = useState(false);
   const [dragOver, setDragOver]         = useState(false);
   const [error, setError]               = useState(null);
@@ -114,13 +116,13 @@ export default function RequirementsPage() {
         API.catalog.list(activeProjectId),
       ]);
       const reqs = await reqRes.json();
-      // Backend returns { status, data: [...] }
       setRequirements(reqs.data || []);
       const cats = await catRes.json();
-      // Backend returns { status, data: [...] }
       setPendingTags((cats.data || []).filter(i => i.status === 'PENDING_TAG_REVIEW'));
     } catch (e) {
       setError(`Could not load data: ${e.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -223,7 +225,9 @@ export default function RequirementsPage() {
       )}
 
       {/* Requirements table */}
-      {requirements.length > 0 && (
+      {loading ? (
+        <SkeletonTable rows={4} cols={5} />
+      ) : requirements.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
             <FileText size={15} className="text-slate-400" />

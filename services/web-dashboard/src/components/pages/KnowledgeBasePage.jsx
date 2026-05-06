@@ -6,6 +6,10 @@ import {
     ArrowDownToLine,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
+import {
+    AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+    AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '../ui/alert-dialog.jsx';
 import { API } from '../../api.js';
 import TagEditModal from '../kb/TagEditModal';
 import PreviewModal from '../kb/PreviewModal';
@@ -13,31 +17,11 @@ import SearchPanel from '../kb/SearchPanel';
 import UnifiedDocumentsPanel from '../kb/UnifiedDocumentsPanel';
 import AddUrlForm from '../kb/AddUrlForm';
 import KBExportImportModal from '../kb/KBExportImportModal';
-
-const FILE_TYPE_ICONS = {
-    pdf: FileText,
-    docx: FileType,
-    xlsx: FileSpreadsheet,
-    pptx: Presentation,
-    md: FileText,
-};
-
-const FILE_TYPE_LABELS = {
-    pdf: 'PDF',
-    docx: 'Word',
-    xlsx: 'Excel',
-    pptx: 'PowerPoint',
-    md: 'Markdown',
-};
+import { SkeletonTable } from '../ui/SkeletonTable.jsx';
+import EmptyState from '../ui/EmptyState.jsx';
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.md,.txt,.png,.jpg,.jpeg,.svg';
 
-// ── Unified KB helpers ───────────────────────────────────────────────────────
-
-/**
- * Merge KB-uploaded docs and promoted integration docs into a single array.
- * Only integration docs with kb_status === "promoted" are included.
- */
 function normalizeKBDocs(kbList = [], intList = []) {
     const uploaded = kbList.map(d => ({
         id: d.id,
@@ -48,7 +32,7 @@ function normalizeKBDocs(kbList = [], intList = []) {
         previewText: d.content_preview || '',
         chunkCount: d.chunk_count,
         url: d.url || null,
-        _kbDoc: d,             // kept for delete / tag-edit actions
+        _kbDoc: d,
     }));
     const integration = intList
         .filter(d => d.kb_status === 'promoted')
@@ -65,21 +49,23 @@ function normalizeKBDocs(kbList = [], intList = []) {
     return [...uploaded, ...integration];
 }
 
-
-// ── Main Page ───────────────────────────────────────────────────────────────
-
 export default function KnowledgeBasePage() {
-    const [docs, setDocs] = useState([]);
+    const [docs, setDocs]           = useState([]);
     const [unifiedDocs, setUnifiedDocs] = useState([]);
-    const [stats, setStats] = useState(null);
+    const [stats, setStats]         = useState(null);
+    const [loading, setLoading]     = useState(true);
     const [uploading, setUploading] = useState(false);
-    const [dragOver, setDragOver] = useState(false);
-    const [error, setError] = useState(null);
-    const [editingDoc, setEditingDoc] = useState(null);
-    const [previewDoc, setPreviewDoc] = useState(null);
-    const [deletingId, setDeletingId] = useState(null);
-    const [activeTab, setActiveTab] = useState('file');
+    const [dragOver, setDragOver]   = useState(false);
+    const [error, setError]         = useState(null);
+    const [editingDoc, setEditingDoc]   = useState(null);
+    const [previewDoc, setPreviewDoc]   = useState(null);
+    const [deletingId, setDeletingId]   = useState(null);
+    const [activeTab, setActiveTab]     = useState('file');
     const [showExportImport, setShowExportImport] = useState(false);
+
+    // AlertDialog state: { id, type: 'kb' | 'integration', message }
+    const [deleteTarget, setDeleteTarget] = useState(null);
+
     const fileInputRef = useRef(null);
 
     useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -98,9 +84,6 @@ export default function KnowledgeBasePage() {
             const statsData = await statsRes.json();
             setStats(statsData);
 
-            // Integration docs: graceful fallback if endpoint fails or returns error.
-            // GET /api/v1/documents returns a bare array (response_model=list[Document]),
-            // not the {"status","data":[]} envelope used by other endpoints.
             let intDocs = [];
             if (intDocsRes.ok) {
                 const intData = await intDocsRes.json();
@@ -110,6 +93,8 @@ export default function KnowledgeBasePage() {
             setUnifiedDocs(normalizeKBDocs(kbDocs, intDocs));
         } catch (e) {
             setError(`Could not load data: ${e.message}`);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -131,28 +116,18 @@ export default function KnowledgeBasePage() {
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!confirm('Delete this document from the Knowledge Base?')) return;
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+        const { id, type } = deleteTarget;
+        setDeleteTarget(null);
         setDeletingId(id);
         try {
-            const res = await API.kb.delete(id);
-            if (!res.ok) throw new Error('Delete failed');
-            await loadData();
-        } catch (e) {
-            setError(e.message);
-        } finally {
-            setDeletingId(null);
-        }
-    };
-
-    const handleDeleteIntegration = async (id) => {
-        if (!confirm('Remove this integration document from the Knowledge Base?\nThe document will revert to "staged" status and can be re-promoted later.')) return;
-        setDeletingId(id);
-        try {
-            const res = await API.documents.removeFromKB(id);
+            const res = type === 'kb'
+                ? await API.kb.delete(id)
+                : await API.documents.removeFromKB(id);
             if (!res.ok) {
                 const d = await res.json().catch(() => ({}));
-                throw new Error(d.detail || 'Remove from KB failed');
+                throw new Error(d.detail || 'Delete failed');
             }
             await loadData();
         } catch (e) {
@@ -172,16 +147,16 @@ export default function KnowledgeBasePage() {
 
     return (
         <div className="space-y-6 max-w-5xl">
-            {/* Page header with Export/Import button */}
+            {/* Page header */}
             <div className="flex items-center justify-between">
-                <h1 className="text-xl font-bold text-slate-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                <h1 className="text-xl font-bold text-zinc-900" style={{ fontFamily: 'Outfit, sans-serif' }}>
                     Knowledge Base
                 </h1>
                 <button
                     onClick={() => setShowExportImport(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-indigo-300 transition-colors shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-700 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 hover:border-sky-300 transition-colors shadow-sm"
                 >
-                    <ArrowDownToLine size={14} className="text-indigo-500" />
+                    <ArrowDownToLine size={14} className="text-sky-500" />
                     Export / Import
                 </button>
             </div>
@@ -191,18 +166,17 @@ export default function KnowledgeBasePage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {[
                         { label: 'Documents', value: stats.total_documents, icon: BookOpen },
-                        { label: 'Chunks', value: stats.total_chunks, icon: BarChart3 },
+                        { label: 'Chunks',    value: stats.total_chunks,    icon: BarChart3 },
                         { label: 'File Types', value: Object.keys(stats.file_types).length, icon: FileText },
-                        { label: 'Tags', value: stats.all_tags.length, icon: Tag },
+                        { label: 'Tags',      value: stats.all_tags.length, icon: Tag },
                     ].map(s => (
-                        <div key={s.label}
-                            className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                                <s.icon size={16} className="text-indigo-500" />
+                        <div key={s.label} className="bg-white rounded-xl border border-zinc-200 shadow-sm px-4 py-3 flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                                <s.icon size={16} className="text-sky-500" />
                             </div>
                             <div>
-                                <p className="text-lg font-bold text-slate-900" style={{ fontFamily: 'Outfit, sans-serif' }}>{s.value}</p>
-                                <p className="text-xs text-slate-400">{s.label}</p>
+                                <p className="text-lg font-bold text-zinc-900" style={{ fontFamily: 'Outfit, sans-serif' }}>{s.value}</p>
+                                <p className="text-xs text-zinc-400">{s.label}</p>
                             </div>
                         </div>
                     ))}
@@ -210,9 +184,8 @@ export default function KnowledgeBasePage() {
             )}
 
             {/* Add to KB — tabbed: Upload File / Add URL */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                {/* Tab switcher */}
-                <div className="flex border-b border-slate-200">
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+                <div className="flex border-b border-zinc-200">
                     {[
                         { id: 'file', label: 'Upload File', icon: Upload },
                         { id: 'url',  label: 'Add URL',     icon: Link   },
@@ -222,8 +195,8 @@ export default function KnowledgeBasePage() {
                             onClick={() => setActiveTab(tab.id)}
                             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
                                 activeTab === tab.id
-                                    ? 'border-indigo-500 text-indigo-600'
-                                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                                    ? 'border-sky-500 text-sky-600'
+                                    : 'border-transparent text-zinc-500 hover:text-zinc-700'
                             }`}
                         >
                             <tab.icon size={14} />
@@ -232,16 +205,14 @@ export default function KnowledgeBasePage() {
                     ))}
                 </div>
 
-                {/* File upload pane */}
                 {activeTab === 'file' && (
                     <div
                         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                         onDragLeave={() => setDragOver(false)}
                         onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
                         onClick={() => fileInputRef.current?.click()}
-                        className={`p-10 text-center transition-all cursor-pointer select-none ${dragOver
-                            ? 'bg-indigo-50'
-                            : 'hover:bg-slate-50/80'
+                        className={`p-10 text-center transition-all cursor-pointer select-none ${
+                            dragOver ? 'bg-sky-50' : 'hover:bg-zinc-50/80'
                         }`}
                     >
                         <input
@@ -252,7 +223,7 @@ export default function KnowledgeBasePage() {
                             onChange={e => handleFile(e.target.files[0])}
                         />
                         {uploading ? (
-                            <div className="flex flex-col items-center gap-3 text-indigo-600">
+                            <div className="flex flex-col items-center gap-3 text-sky-600">
                                 <Loader2 size={32} className="animate-spin" />
                                 <p className="font-medium" style={{ fontFamily: 'Outfit, sans-serif' }}>
                                     Uploading, parsing and tagging…
@@ -260,14 +231,14 @@ export default function KnowledgeBasePage() {
                             </div>
                         ) : (
                             <div className="flex flex-col items-center gap-3">
-                                <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                                    <Upload size={24} className="text-indigo-500" />
+                                <div className="w-14 h-14 rounded-full bg-sky-50 border border-sky-100 flex items-center justify-center">
+                                    <Upload size={24} className="text-sky-500" />
                                 </div>
                                 <div>
-                                    <p className="font-semibold text-slate-700" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                                    <p className="font-semibold text-zinc-700" style={{ fontFamily: 'Outfit, sans-serif' }}>
                                         Drop your best-practice document here
                                     </p>
-                                    <p className="text-sm text-slate-400 mt-1">
+                                    <p className="text-sm text-zinc-400 mt-1">
                                         Supports PDF, Word, Excel, PowerPoint, Markdown
                                     </p>
                                 </div>
@@ -276,17 +247,14 @@ export default function KnowledgeBasePage() {
                     </div>
                 )}
 
-                {/* Add URL pane */}
                 {activeTab === 'url' && (
                     <div className="p-6">
-                        <p className="text-xs text-slate-500 mb-4">
+                        <p className="text-xs text-zinc-500 mb-4">
                             Register an HTTP/HTTPS URL (e.g. API docs, integration specs).
                             Its content will be fetched live during document generation
                             for integrations whose tags match.
                         </p>
-                        <AddUrlForm
-                            onAdded={() => loadData()}
-                        />
+                        <AddUrlForm onAdded={() => loadData()} />
                     </div>
                 )}
             </div>
@@ -300,18 +268,54 @@ export default function KnowledgeBasePage() {
                 </div>
             )}
 
-            {/* Unified KB documents list */}
-            <UnifiedDocumentsPanel
-                docs={unifiedDocs}
-                onDelete={handleDelete}
-                onDeleteIntegration={handleDeleteIntegration}
-                deletingId={deletingId}
-                onPreview={handlePreviewUnified}
-                onEditTags={(kbDoc) => setEditingDoc(kbDoc)}
-            />
+            {/* Documents list */}
+            {loading ? (
+                <SkeletonTable rows={5} cols={4} />
+            ) : unifiedDocs.length === 0 ? (
+                <div className="bg-white rounded-xl border border-zinc-200">
+                    <EmptyState
+                        title="No documents yet"
+                        description="Upload a file or add a URL above to start building your Knowledge Base."
+                    />
+                </div>
+            ) : (
+                <UnifiedDocumentsPanel
+                    docs={unifiedDocs}
+                    onDelete={(id) => setDeleteTarget({ id, type: 'kb', message: 'Delete this document from the Knowledge Base?' })}
+                    onDeleteIntegration={(id) => setDeleteTarget({
+                        id,
+                        type: 'integration',
+                        message: 'Remove this integration document from the Knowledge Base? It will revert to "staged" status and can be re-promoted later.',
+                    })}
+                    deletingId={deletingId}
+                    onPreview={handlePreviewUnified}
+                    onEditTags={(kbDoc) => setEditingDoc(kbDoc)}
+                />
+            )}
 
             {/* Semantic Search */}
             <SearchPanel />
+
+            {/* Delete confirmation dialog */}
+            <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confirm deletion</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteTarget?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={confirmDelete}
+                            className="bg-rose-600 hover:bg-rose-700 text-white"
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {/* Modals */}
             {editingDoc && (
@@ -322,10 +326,7 @@ export default function KnowledgeBasePage() {
                 />
             )}
             {previewDoc && (
-                <PreviewModal
-                    doc={previewDoc}
-                    onClose={() => setPreviewDoc(null)}
-                />
+                <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
             )}
             {showExportImport && (
                 <KBExportImportModal

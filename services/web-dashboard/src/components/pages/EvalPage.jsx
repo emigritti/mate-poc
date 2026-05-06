@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { FlaskConical, Play, Loader2, CheckCircle, XCircle, BookOpen, BarChart2, History, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { API } from '../../api.js';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '../ui/alert-dialog.jsx';
 
 // ── Metric thresholds ─────────────────────────────────────────────────────────
 
@@ -233,6 +237,7 @@ export default function EvalPage() {
   const [compareData, setCompareData] = useState(null);
   const [compareErr, setCompareErr]   = useState(null);
   const [tab, setTab]                 = useState('run');
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const logRef = useRef(null);
   const esRef  = useRef(null);
 
@@ -317,8 +322,10 @@ export default function EvalPage() {
     setCompareData(await res.json());
   }
 
-  async function deleteReport(lbl) {
-    if (!confirm(`Delete report "${lbl}"?`)) return;
+  async function confirmDeleteReport() {
+    if (!deleteTarget) return;
+    const lbl = deleteTarget;
+    setDeleteTarget(null);
     await API.eval.deleteReport(lbl);
     fetchReports();
     if (compareA === lbl) setCompareA('');
@@ -483,7 +490,7 @@ export default function EvalPage() {
             <div key={r.label} className="border border-slate-200 rounded-lg p-3 bg-white">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold text-slate-800 font-mono">{r.label}</span>
-                <button onClick={() => deleteReport(r.label)} className="text-slate-400 hover:text-rose-500 transition-colors">
+                <button onClick={() => setDeleteTarget(r.label)} className="text-slate-400 hover:text-rose-500 transition-colors">
                   <Trash2 size={13} />
                 </button>
               </div>
@@ -550,6 +557,27 @@ export default function EvalPage() {
           </div>
         </div>
       )}
+
+      {/* Delete report confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete report</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete report &ldquo;{deleteTarget}&rdquo;? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteReport}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

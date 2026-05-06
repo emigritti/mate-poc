@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Settings2, RotateCcw, Save, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
 import { API } from '../../api.js';
+import { SkeletonTable } from '../ui/SkeletonTable.jsx';
 
 // ── Setting groups & field metadata ───────────────────────────────────────────
 
@@ -350,8 +351,8 @@ export default function AgentSettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-indigo-400" />
+      <div className="max-w-3xl space-y-5">
+        <SkeletonTable rows={6} cols={2} />
       </div>
     );
   }
