@@ -1,5 +1,7 @@
 import { Clock, CheckCircle, RefreshCw, Loader2, ChevronRight, RotateCcw } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
+import { staggerContainer, staggerItem } from '../ui/motion.js';
 
 const TYPE_PILL = {
   'REST-to-REST': 'bg-sky-100 text-sky-700',
@@ -54,13 +56,14 @@ export default function ApprovalQueue({
             <p className="text-sm text-zinc-400">No pending approvals</p>
           </div>
         ) : (
-          <div>
+          <motion.div variants={staggerContainer} initial="hidden" animate="show">
             {approvals.map(a => {
               const isSelected = selectedId === a.id;
               const typeCls = TYPE_PILL[a.type] ?? 'bg-zinc-100 text-zinc-600';
               return (
-                <button
+                <motion.button
                   key={a.id}
+                  variants={staggerItem}
                   onClick={() => onSelect(a.id)}
                   className={`w-full text-left px-4 py-3.5 border-b border-zinc-100 last:border-0 transition-colors flex items-center justify-between gap-2 ${
                     isSelected
@@ -83,10 +86,10 @@ export default function ApprovalQueue({
                     size={13}
                     className={`flex-shrink-0 ${isSelected ? 'text-sky-500' : 'text-zinc-300'}`}
                   />
-                </button>
+                </motion.button>
               );
             })}
-          </div>
+          </motion.div>
         )}
 
         {/* Rejected — available for regeneration */}

@@ -4,8 +4,10 @@ import {
   ArrowRight, FileText, CheckCircle, Library, Clock,
   Activity, Zap, AlertCircle,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useProject } from '../../context/ProjectContext.jsx';
 import { API } from '../../api.js';
+import { staggerContainer, staggerItem, fadeUp } from '../ui/motion.js';
 
 function StatCard({ label, value, icon: Icon, href, color, bg, isLoading }) {
   return (
@@ -113,47 +115,31 @@ export default function DashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          label="Requirements"
-          value={requirements.length}
-          icon={FileText}
-          href="/requirements"
-          color="text-sky-600"
-          bg="bg-sky-50"
-          isLoading={loadingReqs}
-        />
-        <StatCard
-          label="Pending Approvals"
-          value={pendingApprovals.length}
-          icon={AlertCircle}
-          href="/approvals"
-          color="text-amber-600"
-          bg="bg-amber-50"
-          isLoading={loadingApprovals}
-        />
-        <StatCard
-          label="KB Documents"
-          value={kbDocCount}
-          icon={Library}
-          href="/kb"
-          color="text-emerald-600"
-          bg="bg-emerald-50"
-          isLoading={loadingKb}
-        />
-        <StatCard
-          label="Last Agent Run"
-          value={lastRunLabel}
-          icon={Clock}
-          href="/agent"
-          color="text-violet-600"
-          bg="bg-violet-50"
-          isLoading={loadingAgent}
-        />
-      </div>
+      <motion.div
+        className="grid grid-cols-4 gap-4"
+        variants={staggerContainer}
+        initial="hidden"
+        animate="show"
+      >
+        {[
+          { label: 'Requirements',    value: requirements.length,     icon: FileText,    href: '/requirements', color: 'text-sky-600',     bg: 'bg-sky-50',     isLoading: loadingReqs      },
+          { label: 'Pending Approvals', value: pendingApprovals.length, icon: AlertCircle, href: '/approvals',    color: 'text-amber-600',   bg: 'bg-amber-50',   isLoading: loadingApprovals },
+          { label: 'KB Documents',    value: kbDocCount,              icon: Library,     href: '/kb',           color: 'text-emerald-600', bg: 'bg-emerald-50', isLoading: loadingKb        },
+          { label: 'Last Agent Run',  value: lastRunLabel,            icon: Clock,       href: '/agent',        color: 'text-violet-600',  bg: 'bg-violet-50',  isLoading: loadingAgent     },
+        ].map(card => (
+          <motion.div key={card.label} variants={staggerItem}>
+            <StatCard {...card} />
+          </motion.div>
+        ))}
+      </motion.div>
 
       {/* Continue Workflow CTA */}
-      <div className="bg-sky-600 rounded-xl p-6 flex items-center justify-between">
+      <motion.div
+        variants={fadeUp}
+        initial="hidden"
+        animate="show"
+        className="bg-sky-600 rounded-xl p-6 flex items-center justify-between"
+      >
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Zap size={15} className="text-sky-200" />
@@ -172,7 +158,7 @@ export default function DashboardPage() {
           Go
           <ArrowRight size={15} />
         </button>
-      </div>
+      </motion.div>
 
       {/* Recent Activity */}
       <div className="bg-white rounded-xl border border-zinc-200 overflow-hidden">

@@ -1,4 +1,13 @@
 import { Database, Search, Cpu, ShieldCheck, Sparkles, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
+
+const pulseRing = {
+  animate: {
+    scale:   [1, 1.55, 1],
+    opacity: [0.6, 0, 0.6],
+    transition: { duration: 1.4, repeat: Infinity, ease: 'easeInOut' },
+  },
+};
 
 const PIPELINE_STAGES = [
   {
@@ -133,7 +142,14 @@ export default function PipelineStrip({ logs, isRunning, progress }) {
                     : <Icon size={16} className={icon} />
                   }
                   {isActive && (
-                    <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-sky-500 border-2 border-zinc-900 animate-pulse" />
+                    <>
+                      <motion.span
+                        className="absolute inset-0 rounded-full bg-sky-500 opacity-60"
+                        variants={pulseRing}
+                        animate="animate"
+                      />
+                      <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-sky-400 border-2 border-zinc-900" />
+                    </>
                   )}
                 </div>
                 <p className={`text-[11px] font-medium whitespace-nowrap ${style.text}`}>

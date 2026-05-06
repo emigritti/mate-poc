@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useUiMode } from '../../context/UiModeContext.jsx';
 import GlobalLoadingBar from '../ui/GlobalLoadingBar.jsx';
 import Sidebar from './Sidebar.jsx';
@@ -9,6 +10,12 @@ import WorkflowStepper from '../WorkflowStepper.jsx';
 import PixelSidebar from '../pixel/PixelSidebar.jsx';
 import { ROUTE_META } from '../../router.jsx';
 import { API } from '../../api.js';
+
+const pageVariants = {
+  hidden: { opacity: 0, y: 8 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
+  exit:   { opacity: 0, y: -4, transition: { duration: 0.13, ease: 'easeIn' } },
+};
 
 export default function AppShell() {
   const { mode } = useUiMode();
@@ -62,9 +69,18 @@ export default function AppShell() {
             <WorkflowStepper activeStep={meta.step} />
           )}
 
-          <main key={location.pathname} className="flex-1 overflow-y-auto p-6 animate-fade-in">
-            <Outlet />
-          </main>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.main
+              key={location.pathname}
+              variants={pageVariants}
+              initial="hidden"
+              animate="show"
+              exit="exit"
+              className="flex-1 overflow-y-auto p-6"
+            >
+              <Outlet />
+            </motion.main>
+          </AnimatePresence>
         </div>
       </div>
     </>

@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BookOpen, RefreshCw, ArrowRight, Loader2, AlertCircle, X, FileText } from 'lucide-react';
+import { motion } from 'framer-motion';
 import MarkdownViewer from '../ui/MarkdownViewer.jsx';
 import Badge from '../ui/Badge.jsx';
 import { API } from '../../api.js';
 import { useProject } from '../../context/ProjectContext.jsx';
 import { SkeletonCardGrid } from '../ui/SkeletonCard.jsx';
 import EmptyState from '../ui/EmptyState.jsx';
+import { staggerContainer, staggerItem } from '../ui/motion.js';
 
 const STATUS_MAP = {
   APPROVED:           { variant: 'success', label: 'Approved' },
@@ -273,11 +275,19 @@ export default function CatalogPage() {
           description={filter === 'all' ? 'Run the agent to generate integration specifications' : 'Try a different status filter'}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <motion.div
+          key={filter}
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+          variants={staggerContainer}
+          initial="hidden"
+          animate="show"
+        >
           {filtered.map(int => (
-            <IntegrationCard key={int.id} integration={int} onRefresh={load} />
+            <motion.div key={int.id} variants={staggerItem}>
+              <IntegrationCard integration={int} onRefresh={load} />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
     </div>
   );
