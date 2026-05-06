@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════
 # Functional Integration Mate PoC — Docker Compose (Agentic RAG)
 # Containers: MongoDB, ChromaDB, Ollama, MinIO,
-#             PLM Mock, PIM Mock, DAM Mock,
+#             PLM Mock,
 #             Security Middleware, Catalog Generator,
 #             Integration Agent, Web Dashboard
 #
@@ -149,53 +149,6 @@ services:
       retries: 3
     logging: *default-logging
 
-  pim-mock:
-    build:
-      context: ./services/pim-mock-api
-      dockerfile: Dockerfile
-    container_name: mate-pim-mock
-    ports:
-      - "4002:3002"
-    environment:
-      - S3_ENDPOINT=http://mate-minio:9000
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
-    depends_on:
-      minio:
-        condition: service_started
-    networks:
-      - integration-mate-net
-    healthcheck:
-      test: curl -f http://localhost:3002/health || exit 1
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    logging: *default-logging
-
-  dam-mock:
-    build:
-      context: ./services/dam-mock-api
-      dockerfile: Dockerfile
-    container_name: mate-dam-mock
-    ports:
-      - "4005:3005"
-    environment:
-      - S3_ENDPOINT=http://mate-minio:9000
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
-    depends_on:
-      minio:
-        condition: service_started
-    networks:
-      - integration-mate-net
-    healthcheck:
-      test: curl -f http://localhost:3005/health || exit 1
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    logging: *default-logging
-
   # ── Security Layer ─────────────────────────────────────
 
   security-middleware:
@@ -213,8 +166,6 @@ services:
       - API_KEY_AGENT=${API_KEY:-agent-key-dev}
       - API_KEY_CATALOG=${API_KEY_CATALOG:-catalog-key-dev}
       - API_KEY_PLM=${API_KEY_PLM:-plm-key-dev}
-      - API_KEY_PIM=${API_KEY_PIM:-pim-key-dev}
-      - API_KEY_DAM=${API_KEY_DAM:-dam-key-dev}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
     networks:
       - integration-mate-net
@@ -415,7 +366,6 @@ services:
       - web-dashboard
       - integration-agent
       - plm-mock
-      - pim-mock
     networks:
       - integration-mate-net
     healthcheck:

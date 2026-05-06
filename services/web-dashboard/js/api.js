@@ -6,11 +6,10 @@
  */
 
 // Gateway-relative: tutta la comunicazione via porta 8080 (same-origin).
-// Routing: /agent/* → integration-agent:3003 | /plm/* → plm-mock:3001 | /pim/* → pim-mock:3002
+// Routing: /agent/* → integration-agent:3003 | /plm/* → plm-mock:3001
 const API = {
     AGENT: '/agent',
     PLM:   '/plm',
-    PIM:   '/pim',
 
     headers() {
         return { 'Content-Type': 'application/json' };
@@ -165,8 +164,7 @@ const API = {
     async checkServices() {
         const services = [
             { name: 'Agent', url: `${this.AGENT}/health` },
-            { name: 'PLM Mock', url: `${this.PLM}/health` },
-            { name: 'PIM Mock', url: `${this.PIM}/health` }
+            { name: 'PLM Mock', url: `${this.PLM}/health` }
         ];
 
         const results = [];

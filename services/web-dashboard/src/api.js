@@ -2,18 +2,16 @@
  * API Client — Gateway-relative paths
  *
  * Tutte le chiamate passano per il nginx gateway su porta 8080 (same-origin).
- * Non è necessario aprire porte separate (4003, 4001, 4002) sul firewall.
+ * Non è necessario aprire porte separate (4003, 4001) sul firewall.
  *
  * Routing gateway:
  *   /agent/*      → integration-agent:3003
  *   /plm/*        → plm-mock:3001
- *   /pim/*        → pim-mock:3002
  *   /ingestion/*  → ingestion-platform:4006
  */
 
 const AGENT     = '/agent';
 const PLM       = '/plm';
-const PIM       = '/pim';
 const INGESTION = '/ingestion';
 
 export const API = {
@@ -251,9 +249,9 @@ export const API = {
   },
 
   health: {
-    // service: 'agent' | 'plm' | 'pim' | 'ingestion'
+    // service: 'agent' | 'plm' | 'ingestion'
     check: (service) => {
-      const paths = { agent: AGENT, plm: PLM, pim: PIM, ingestion: INGESTION };
+      const paths = { agent: AGENT, plm: PLM, ingestion: INGESTION };
       const base = paths[service] ?? `/${service}`;
       return fetch(`${base}/health`);
     },

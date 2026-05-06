@@ -45,8 +45,6 @@ _SERVICE_KEYS: dict[str, str] = {
     "integration-agent": os.environ.get("API_KEY_AGENT", "agent-key-dev"),
     "catalog-generator": os.environ.get("API_KEY_CATALOG", "catalog-key-dev"),
     "plm-mock":          os.environ.get("API_KEY_PLM",     "plm-key-dev"),
-    "pim-mock":          os.environ.get("API_KEY_PIM",     "pim-key-dev"),
-    "dam-mock":          os.environ.get("API_KEY_DAM",     "dam-key-dev"),
 }
 
 if _JWT_SECRET == "dev-only-change-in-production":
