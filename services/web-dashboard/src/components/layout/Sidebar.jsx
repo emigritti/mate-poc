@@ -1,3 +1,4 @@
+import { NavLink } from 'react-router-dom';
 import { Upload, Plug, Bot, BookOpen, FileText, CheckSquare, Trash2, Zap, Library, BookMarked, SlidersHorizontal, DatabaseZap, Settings2, Network, FlaskConical } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -56,7 +57,7 @@ function ServiceDot({ status }) {
   );
 }
 
-export default function Sidebar({ currentPage, onNavigate, services }) {
+export default function Sidebar({ services }) {
   return (
     <aside
       className="flex flex-col w-60 min-w-60 h-full bg-slate-900 overflow-hidden border-r border-slate-800"
@@ -84,19 +85,21 @@ export default function Sidebar({ currentPage, onNavigate, services }) {
             </p>
             {group.items.map(item => {
               const Icon = item.icon;
-              const active = currentPage === item.id;
               return (
-                <button
+                <NavLink
                   key={item.id}
-                  onClick={() => onNavigate(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 text-left mb-0.5 ${active
-                      ? 'bg-indigo-600 text-white font-medium shadow-md shadow-indigo-900/40'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
-                    }`}
+                  to={`/${item.id}`}
+                  className={({ isActive }) =>
+                    `w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 text-left mb-0.5 ${
+                      isActive
+                        ? 'bg-indigo-600 text-white font-medium shadow-md shadow-indigo-900/40'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                    }`
+                  }
                 >
                   <Icon size={15} className="flex-shrink-0" />
                   <span className="truncate">{item.label}</span>
-                </button>
+                </NavLink>
               );
             })}
           </div>

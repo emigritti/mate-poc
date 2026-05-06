@@ -17,12 +17,39 @@
     font-family: 'Plus Jakarta Sans', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #f8fafc;
+    background-color: hsl(var(--background));
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Outfit', sans-serif;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Classic mode design tokens — shadcn/ui CSS variables
+   Base color: zinc | Primary accent: sky-600 (#0284c7)
+───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 199 98% 39%;           /* sky-600 #0284c7 */
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 199 98% 39%;
+  --radius: 0.5rem;
 }
 
 @layer components {
@@ -52,10 +79,11 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    C64 Mode Design System (ADR-047 — Commodore 64 edition)
    Authentic VIC-II color palette. Applied when .pixel-mode is on root wrapper.
-   All pixel-* classes are scoped so they never leak into classic mode.
+   All pixel-* classes and variables are scoped so they never leak into classic mode.
 ───────────────────────────────────────────────────────────────────────────── */
-:root {
-  /* VIC-II authentic colors */
+
+/* VIC-II authentic colors — scoped to .pixel-mode to avoid bleeding into classic */
+.pixel-mode {
   --pixel-bg:        #4040A0;   /* C64 blue screen background */
   --pixel-surface:   #2D2D8C;   /* Deeper blue for panels */
   --pixel-primary:   #8888FF;   /* C64 light blue — default text/border */
@@ -66,16 +94,14 @@
   --pixel-border:    #8888FF;   /* C64 light blue borders */
   --pixel-shadow:    4px 4px 0px #1C1C6E;  /* Deep navy shadow */
   --pixel-font:      'Press Start 2P', monospace;
-}
 
-/* Root wrapper — C64 phosphor CRT feel */
-.pixel-mode {
   background-color: var(--pixel-bg);
   color: var(--pixel-text);
   font-family: var(--pixel-font);
   text-shadow: 0 0 6px rgba(136, 136, 255, 0.4);
   image-rendering: pixelated;
   position: relative;
+  animation: c64-flicker 8s ease-in-out infinite;
 }
 
 /* CRT scanlines overlay — fixed so it covers the whole viewport */
@@ -235,9 +261,7 @@
   98%             { opacity: 1; }
   99%             { opacity: 0.98; }
 }
-.pixel-mode {
-  animation: c64-flicker 8s ease-in-out infinite;
-}
+
 .pixel-working { animation: pixel-blink  0.8s ease-in-out infinite; }
 .pixel-success { animation: pixel-glow   1.5s ease-in-out infinite; }
 .pixel-error   { animation: pixel-shake  0.4s ease-in-out; }
