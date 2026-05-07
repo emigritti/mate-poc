@@ -64,7 +64,7 @@ export default function AppLayout() {
             <WorkflowStepper activeStep={meta.step} />
           )}
 
-          <main key={location.pathname} className="flex-1 overflow-y-auto p-6 animate-fade-in">
+          <main key={location.pathname} className="flex-1 overflow-y-auto px-6 py-4 animate-fade-in">
             <Outlet />
           </main>
         </div>
